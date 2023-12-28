@@ -231,6 +231,16 @@ data-mine CVS repositories.  This section describes the assumptions
 because it is not unlikely they will be a continuing source of
 correctness issues.
 
+Here's what the CVS documentation has to say under the documentation
+of the "import" command: "The [vendor] source is saved in a
+first-level RCS branch, by default 1.1.1. Updates are leaves of this
+branch; for example, files from the first imported collection of
+source will be revision 1.1.1.1, then files from the first imported
+update will be revision 1.1.1.2, and so on."
+
+It is possible to have imports from multiple vendors using the -b
+option of "import" to set a base branch other than 1.1.1.
+
 In "CVS II: Parallelizing Software Development" (1990) Brian Berliner,
 one of the principal CVS developers, write a major section 2.2 titled
 "Tracking Third-Party Source Distributions". It begins:
