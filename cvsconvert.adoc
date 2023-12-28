@@ -77,7 +77,7 @@ the master branch - is bad news and indicates either a severe
 repository malformation or a bug in cvs-fast-export (or possibly
 both). Any such situation should be reported as a bug.
 
-Conversion bugs are disproportionately likely to occur on older,
+Conversion bugs are disproportionately likely to occur on older
 branches or tags from before CVS had reliable commitids. Often the
 most efficient remedy is simply to delete junk branches and tags;
 reposurgeon(1) makes this easy to do.  

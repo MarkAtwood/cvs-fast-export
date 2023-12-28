@@ -10,7 +10,9 @@ Description: Export an RCS or CVS history as a fast-import stream.
  rendered this way; the program tries to emit useful warnings when it
  can't.  The program can also produce a visualization of the resulting
  commit DAG in the DOT format handled by the graphviz suite.  The package
- also includes cvssync, a tool for mirroring masters from remote CVS hosts.
+ also includes cvssync (a tool for mirroring masters from remote CVS hosts) and
+ cvsconvert (a tool that does a trial conversion and checks its correctness
+ against the original).
 
 Homepage: http://www.catb.org/~esr/cvs-fast-export
 
