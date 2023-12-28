@@ -366,7 +366,9 @@ cleanup.
 
 CVS vendor branches are a source of trouble. Sufficiently strange
 combinations of imports and local modifications will translate
-badly, producing incorrect content on master and elsewhere.
+badly, producing incorrect content on master and elsewhere. Some of
+these problems can be prevented by ensuring that the last (latest)
+commit in your repository is on trunk, rather than a branch.
 
 Some other CVS exporters try, or have tried, to deduce changesets from 
 shared tags even when comment metadata doesn't match perfectly. This

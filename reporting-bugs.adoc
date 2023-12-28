@@ -1,17 +1,17 @@
-= Reporting bugs in cvs-fast-export =
+= Reporting bugs in cvs-fast-export
 
 CVS is a wretched hive of scum and villainy.  Lifting a CVS repository
 into a clean revision history is difficult and has rebarbative edge
 cases. If you are reading this, you have probably tripped over one
 of them.  Here is what to do about it.
 
-== Build and port errors ==
+== Build and port errors
 
 These are relatively simple to fix.  Specify your build environment:
 OS, compiler version, and platform.  Include a transcript of the compiler
 errors.
 
-== Stack-smashing errors ==
+== Stack-smashing errors
 
 If you get a crash message that says
 
@@ -28,17 +28,17 @@ The reason the default isn't higher is that increasing this limit
 blows up the program's working-set size. You'll know you've pushed it
 too far if the program OOMs.
 
-== Core dumps ==
+== Core dumps
 
 If cvs-fast-export core dumps on you, try the same invocation with -t
 0 to force it to run single-threaded. It is fairly likely you will get
 a message telling you you have overrun one of the hard limits in
 cvs.h. If this happens, build from source with the limit raised.
 
-== Branch cycle and vendor-branch errors ==
+== Branch cycle errors
 
-Sorry, these are a hard fail.  Both errors are rare and mysterious.
-If you stumble over either, none of your options are good.
+Sorry, these are a hard fail.  These errors are rare and mysterious.
+If you stumble over one, none of your options are good.
 
 The branch-cycle error is a symptom of some problem deep in the core
 clique-resolution logic in cvs-fast-export, and unfortunately nobody
@@ -75,17 +75,33 @@ almost always do a better and faster job.
 But, it has been reported that cv2git can sometimes break branch
 cycles.
 
-Trouble with vendor branches stems from the fact that their semantics
-has never been well documented. There is code in cvs-fast-export that
-handles some cases correctly, but messes up others - for example, if
-your repository has more than one vendor import.  We don't know what
-correct behavior should look like in the general case and don't have
-test pairs to verify it.
+== Branch commits landing on trunk
 
-Again, you *might* get better results from cv2git.  More likely
-it will merely fail in a different way than cvs-fast-export does.
-If you have fix patches for our vendor-branch code, we'll take them.
-(Please include a test load and documentation as well.)
+This is probably caused by past imports to a vendor branch.
+
+Vendor branches are an obscure feature of CVS that can badly confuse
+cvs-fast-export. Some cases are handled correctly, but others are not
+- for example, if your repository has more than one vendor import.
+We're not sure what correct behavior should look like in the general
+case and don't have test pairs to verify it.
+
+There is one known workaround, which is to ensure that the last
+commit in your CVS repository was on trunk rather than a branch.
+Do this in your working directory:
+
+----
+$ for file in $(find . -type d -name CVS -prune -o -type f -print); do echo >>${file}; done
+$ cvs commit -m "extra commit in trunk"
+----
+
+This might cause the errant branch commit to be landed correctly.
+The extra commit can be removed with reposurgeon(1) after conversion.
+
+If this workaround doesn't make the problem go away, you *might* get
+better results from cv2git.  More likely it will merely fail in a
+different way than cvs-fast-export does.  If you have fix patches for
+our vendor-branch code, we'll take them.  (Please include a test load
+and documentation as well.)
 
 == Other translation errors ==
 
