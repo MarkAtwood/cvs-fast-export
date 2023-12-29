@@ -304,6 +304,20 @@ file_compare(const void *f1, const void *f2)
     return path_deep_compare(r1.rectified, r2.rectified);
 }
 
+static bool
+has_suffix(const char *str, const char *suffix) {
+    size_t str_len = strlen(str);
+    size_t suffix_len = strlen(suffix);
+
+    // Check if the string is shorter than the suffix
+    if (str_len < suffix_len) {
+        return 0;  // String is too short to have the specified suffix
+    }
+
+    // Compare the suffix of the string with the specified suffix
+    return strcmp(str + (str_len - suffix_len), suffix) == 0;
+}
+
 void analyze_masters(int argc, const char *argv[],
 			  import_options_t *analyzer, 
 			  forest_t *forest)
@@ -349,7 +363,7 @@ void analyze_masters(int argc, const char *argv[],
 	    continue;
 	else if (S_ISDIR(stb.st_mode) != 0) {
 	    if (strstr(file, "CVSROOT") != NULL)
-	        forest->cvsroot = true;
+	        forest->is_cvs = true;
 	    continue;
 	} else if (!analyzer->promiscuous) {
 	    char *end = file + strlen(file);
@@ -390,6 +404,12 @@ void analyze_masters(int argc, const char *argv[],
     rev_filename *tn;
     for (fn = fn_head; fn; fn = tn) {
 	tn = fn->next;
+	// (ESR) Should we accept unsuffixed .cvsignore in promiscuous
+	// mode?  Unclear. I don't think CVS allows unsuffixed
+	// masters, and it's enough of a weird corner case that I
+	// can't be arsed to dive into the CVS source code to check.
+	if (has_suffix(fn->file, ".cvsignore,v"))
+	    forest->is_cvs = true;
 	sorted_files[i].name = fn->file;
 	sorted_files[i++].rectified = atom_rectify_name(fn->file);
 	free(fn);

@@ -179,12 +179,12 @@ have a monotonic-increasing attributed date computed from its mark in
 the output stream - the mark value times the commit time window times two.
 
 --reposurgeon::
-Ship a header comment for reposurgeom to use, declaring "cvs" if a
-CVSROOT file has been seen and RCS otherwise.  Emit for each commit a
-list of the CVS file:revision pairs composing it as a bzr-style commit
-property named "cvs-revisions".  From version 2.12 onward,
-reposurgeon(1) can interpret these and use them as hints for
-reference-lifting.  Also, suppresses emission of "done" trailer.
+Ship a header comment for reposurgeon to use, declaring "cvs" if a
+.cvsignore master or CVSROOT file has been seen and "rcs" otherwise.
+Emit for each commit a list of the CVS file:revision pairs composing
+it as a bzr-style commit property named "cvs-revisions".  From version
+2.12 onward, reposurgeon(1) can interpret these and use them as hints
+for reference-lifting.
 
 --embed-id::
 Append to each commit comment identification of the CVS commits that

@@ -486,13 +486,13 @@ typedef struct _tag {
  * Be careful when modifying this structure.
  * It has been obseved thar moving vendor_warming
  * too the end breaks regression tests, somehow
- * interfering with the setting of cvsroot.
+ * interfering with the setting of is_cvs.
  */
 typedef struct _forest {
     int filecount;
     off_t textsize;
     int errcount;
-    bool cvsroot;
+    bool is_cvs;
     bool vendor_warning;
     cvs_master *cvs;
     git_repo *git;

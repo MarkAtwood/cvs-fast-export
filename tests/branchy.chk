@@ -1,4 +1,4 @@
-#reposurgeon sourcetype rcs
+#reposurgeon sourcetype cvs
 blob
 mark :1
 data 46
