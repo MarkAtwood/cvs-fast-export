@@ -15,7 +15,7 @@ PYTHON = python3
 check:
 	@$(MAKE) --quiet tap | ./tapview
 
-# Full test with rebuild of genert
+# Full test with rebuild of generated files
 fullcheck:
 	@$(MAKE) --quiet clean tap | ./tapview
 

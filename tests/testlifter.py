@@ -5,7 +5,7 @@ Test framework for cvs-fast-export.
 # Preserve this property!
 
 # Ugh. This is needed because puyylint removed the no-self-use check in 2.14.
-# This is the only wqy to prevent spurious pylint failures on earlier versions.
+# This is the only way to prevent spurious pylint failures on earlier versions.
 # pylint: disable=useless-option-value
 
 # pylint: disable=line-too-long,invalid-name,useless-object-inheritance,missing-function-docstring,missing-class-docstring,.too-many-branches,too-many-arguments,too-many-locals,consider-using-f-string
