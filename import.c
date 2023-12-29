@@ -42,6 +42,7 @@ static volatile cvstime_t   skew_vulnerable;
 static volatile size_t      total_revisions, load_current_file;
 static volatile generator_t *generators;
 static volatile int         err;
+static volatile bool        vendor_warning;
 
 static int total_files, striplen;
 static int verbose;
@@ -55,6 +56,7 @@ static pthread_t *workers;
 typedef struct _analysis {
     cvstime_t skew_vulnerable;
     unsigned int total_revisions;
+    bool vendor_warning;
     generator_t generator;
 } analysis_t;
 
@@ -152,6 +154,7 @@ rev_list_file(rev_file *file, analysis_t *out, cvs_master *cm, rev_master *rm)
     } else {
 	out->total_revisions = cvs->nversions;
 	out->skew_vulnerable = cvs->skew_vulnerable;
+	out->vendor_warning = cvs->vendor_warning;
     }
     out->generator = cvs->gen;
     cvs_file_free(cvs);
@@ -180,7 +183,7 @@ strcommonendingwith(const char *a, const char *b, char endc)
 static void *worker(void *arg)
 /* consume masters off the queue */
 {
-    analysis_t out = {0, 0};
+  analysis_t out = {0, 0, 0};
     for (;;)
     {
 	/* pop a master off the queue, terminating if none left */
@@ -209,6 +212,8 @@ static void *worker(void *arg)
 	    total_revisions += out.total_revisions;
 	    if (out.skew_vulnerable > skew_vulnerable)
 		skew_vulnerable = out.skew_vulnerable;
+	    if (out.vendor_warning)
+		vendor_warning = true;
 	}
 #ifdef THREADS
 	if (threads > 1)
@@ -450,6 +455,7 @@ void analyze_masters(int argc, const char *argv[],
     forest->skew_vulnerable = skew_vulnerable;
     forest->cvs = cvs_masters;
     forest->generators = (generator_t *)generators;
+    forest->vendor_warning = vendor_warning;
 }
 
 /* end */

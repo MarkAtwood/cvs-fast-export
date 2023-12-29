@@ -412,10 +412,15 @@ Editing and Conversion With Reposurgeon]; browse it for more.
 
 0 if all files were found and successfully converted, 1 otherwise.
 
-== ERROR MESSAGES ==
+== WARNING AND ERROR MESSAGES ==
 Most of the messages cvs-fast-export emits are self-explanatory.  Here
 are a few that aren't. Where it says "check head", be sure to
 sanity-check against the head revision.
+
+vendor branch detected::
+     Source tree contains vendored commits. Check head carefully,
+     branch content might have landed on trunk. If this happens, you
+     may be able to prefent it ny adding a dummy commit to trunk.
 
 null branch name, probably from a damaged Attic file::
      The code was unable to deduce a name for a branch and tried to

@@ -853,6 +853,9 @@ void export_commits(forest_t *forest,
 
     cleanup(opts);
 
+    if (forest->vendor_warning)
+        warn("vendor branch detected.\n");
+    
     if (forest->skew_vulnerable > 0 && forest->filecount > 1 && !opts->force_dates) {
 	time_t udate = forest->skew_vulnerable;
 	warn("no commitids before %s.\n", cvstime2rfc3339(udate));

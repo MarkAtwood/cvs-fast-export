@@ -218,6 +218,7 @@ typedef struct {
     serial_t		nversions;
     mode_t		mode;
     unsigned short	verbose;
+    bool		vendor_warning;
 } cvs_file;
 
 typedef struct _master_dir {
@@ -481,11 +482,18 @@ typedef struct _tag {
 	const char *last;
 } tag_t;
 
+/*
+ * Be careful when modifying this structure.
+ * It has been obseved thar moving vendor_warming
+ * too the end breaks regression tests, somehow
+ * interfering with the setting of cvsroot.
+ */
 typedef struct _forest {
     int filecount;
     off_t textsize;
     int errcount;
     bool cvsroot;
+    bool vendor_warning;
     cvs_master *cvs;
     git_repo *git;
     generator_t *generators;

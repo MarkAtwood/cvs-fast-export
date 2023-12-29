@@ -295,12 +295,13 @@ excise_branch(cvs_master *cm, rev_ref *branchtokill)
  * A side effect of this code is to give a synthetic label to each
  * vendor branch that has not already been named.
  */
-static void
+static bool
 cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs)
 {
     rev_ref	*trunk = cm->heads;
     rev_ref	*vendor = NULL;
     rev_ref	*nvendor = NULL;
+    bool        found_vendor = false;
 
     assert(strcmp(trunk->ref_name, "master") == 0);
     /* walk all the list of branch heads */
@@ -308,6 +309,7 @@ cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs)
 	if (vendor->commit && cvs_is_vendor(vendor->commit->number))
 	{
 	    /* found a vendor branch by its numbering scheme (1.1.{odd}.n) */
+	    found_vendor = true;
 #ifdef CVSDEBUG
 	    char	vrev[CVS_MAX_REV_LEN];
 	    cvs_number_string(vendor->commit->number, vrev, sizeof(vrev));
@@ -365,6 +367,8 @@ cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs)
 	    if (vendor->next == nvendor)
 		vendor->next = nvendor->next;
     }
+
+    return found_vendor;
 }
 
 static void
@@ -865,7 +869,8 @@ cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 	    rev_list_add_head(cm, branch, NULL, 0);
 	}
     }
-    cvs_master_patch_vendor_branch(cm, cvs);
+    if (cvs_master_patch_vendor_branch(cm, cvs))
+        cvs->vendor_warning = true;
     cvs_master_graft_branches(cm, cvs);
     cvs_master_set_refs(cm, cvs);
     cvs_master_sort_heads(cm, cvs);

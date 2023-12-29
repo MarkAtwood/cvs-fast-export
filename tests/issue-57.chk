@@ -1,3 +1,4 @@
+cvs-fast-export: vendor branch detected.
 #reposurgeon sourcetype rcs
 blob
 mark :1

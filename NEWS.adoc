@@ -1,6 +1,7 @@
 = cvs-fast-export project news =
 
 Repository head::
+   Now issues a warning when a vendor branch is detected.
    Leading !\n in .cvsignore files is translated correctly.
    Leading # characters on .cvsignore lines get escaped.
    Spaces in .cvsignore files are translated correctly.
