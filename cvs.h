@@ -304,9 +304,9 @@ typedef struct _cvs_commit {
     cvstime_t		date;
     serial_t            serial;
     branchcount_t	refcount;
-    unsigned		tail:1;
-    unsigned		tailed:1;
-    unsigned		dead:1;
+    unsigned		tail:1;	     // True if this is the first on a branch (after the root)
+    unsigned		tailed:1;    // True if this commit has a child wyth tail bit set
+    unsigned		dead:1;      // Carries forward CVS "dead" state
     /* CVS-only members begin here */
     bool                emitted:1;
     hash_t              hash;

@@ -302,7 +302,6 @@ git_commit_build(revision_t *revisions, const cvs_commit *leader, const int nrev
     cvs_commit *c;
     while((c = revdir_iter_next(i)))
 	debugmsg("   file name: %s\n", c->master->name);
-
 #endif /* ORDERDEBUG */
 
     return commit;
@@ -310,7 +309,7 @@ git_commit_build(revision_t *revisions, const cvs_commit *leader, const int nrev
 
 static git_commit *
 git_commit_locate_date(const rev_ref *branch, const cvstime_t date)
-/* on branch, locate a commit within fuzz-time distance of date */
+/* on a gitspace branch, locate a commit within fuzz-time distance of date */
 {
     git_commit	*commit;
 
@@ -628,6 +627,7 @@ collate_branches(rev_ref **branches, int nbranch,
     {
 	int	present;
 
+	/* This walks the branch's commits from tip to root */
 	for (present = 0; present < nbranch; present++) {
 	    if (!DEAD(present)) {
 		/*
@@ -787,7 +787,7 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
 {
     /*
      * The cvs_commit->gitspace pointer gives the first git commit a
-     * cvs commit appears in. (first in DAG pre-order) If we find the
+     * cvs commit appears in (first in DAG pre-order). If we find the
      * newest revision C in the tag and then follow the backlink to G,
      * there is a good chance this will be the tag point.
      *
