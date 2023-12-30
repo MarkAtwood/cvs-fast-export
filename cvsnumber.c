@@ -167,7 +167,7 @@ cvs_number_string(const cvs_number *n, char *str, size_t maxlen)
 
     str[0] = '\0';
     for (i = 0; i < n->c; i++) {
-	snprintf(r, 10, "%d", n->n[i]);
+	snprintf(r, CVS_MAX_DIGITS, "%d", n->n[i]);
 	if (i > 0)
 	    strcat(str, ".");
 	if (strlen(str) + strlen(r) < maxlen -1)
