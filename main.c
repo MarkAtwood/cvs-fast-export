@@ -257,6 +257,8 @@ main(int argc, char **argv)
 		   "Example: find | cvs-fast-export\n");
 	    return 0;
 	case 'g':
+	    if (exec_mode == ExecuteGraph)
+	      difffiles = true;		/* Undocumented */
 	    exec_mode = ExecuteGraph;
 	    break;
 	case 'P':

@@ -737,6 +737,7 @@ extern bool nowarn, noignores;
 extern int commit_time_window;
 extern bool trust_commitids;
 extern FILE *LOGFILE;
+extern bool difffiles;
 
 extern bool progress;
 #define STATUS stderr
