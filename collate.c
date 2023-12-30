@@ -133,7 +133,23 @@ cvs_commit_date_compare(const void *av, const void *bv)
     int			t;
 
     /*
+     * (ESR) If you are reading this code, and you think you
+     * understand it, please file an MR adding an explanatory
+     * comment!
+     *
+     * One relevant fact is that the commit arrays this is sorting are
+     * in the order they were read out of CVS masters - which is *not*
+     * consistently most-recent-first!  See the generated master from the
+     * twobranch test for an example; the sequence is 1.3, 1.2, 1.1,
+     * 1.1.2.1, 1.1.2.2 with ome branch ordered forward and the other
+     * backward. 
+     */
+    
+    /*
      * NULL entries sort last
+     *
+     * (ESR) I get this part. These are being sorted to the end of the
+     * array so they can be easily trimmed off.
      */
     if (!a && !b)
 	return 0;
@@ -142,20 +158,29 @@ cvs_commit_date_compare(const void *av, const void *bv)
     else if (!b)
 	return -1;
     /*
-     * tailed entries sort next
+     * tailed entries sort next to last
+     *
+     * (ESR) I don't get this part. It appears tailed entries are
+     * branch roots of other branches. This would make more sense if
+     * it were the tail bit.
      */
     if (a->tailed != b->tailed)
 	return(int)a->tailed - (int)b->tailed;
     /*
-     * Newest entries sort first
+     * Newest entries sort first.
+     *
+     * (ESR) This is where we force commits on this branch into a
+     * consistent order. Cold we replace this with a sort on CVS
+     * numbers?
      */
     t = -time_compare(a->date, b->date);
     if (t)
 	return t;
     /*
-     * Ensure total order by ordering based on original commit address.
-     * This stabilizes the sort, ensuring that it can't damage parent-child
-     * order even when adjacent CVS commits have the same timestamp.
+     * (ESR) Ensure total order by ordering commits with same timestamps
+     * based on original commit address. This stabilizes the sort,
+     * ensuring that it can't damage parent-child order even when
+     * adjacent CVS commits have the same timestamp.
      */
     if ((uintptr_t) a > (uintptr_t) b)
 	return -1;
@@ -616,13 +641,18 @@ collate_branches(rev_ref **branches, int nbranch,
     }
 
     /*
+     * Commits on this branch are still in the order they were picked
+     * up from the master.  Sort them and toss out deaders.
+     */
+    nbranch = cvs_commit_date_sort(revisions, nbranch);
+
+    /*
      * Gitspace branch construction is done. Now connect it to its
      * parent branch.  The CVS commits now referenced in the revisions
      * array are for the oldest commit on the branch (the last clique
      * to be collected in the previous phase).  This is not the branch's
      * root commit, but the child of that root.
      */
-    nbranch = cvs_commit_date_sort(revisions, nbranch);
     if (nbranch && branch->parent )
     {
 	int	present;
