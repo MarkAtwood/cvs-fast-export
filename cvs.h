@@ -194,7 +194,7 @@ typedef struct _editbuffer {
 #define Ginbuf(eb) (&eb->in_buffer_store)
 
 typedef struct _generator {
-    /* isolare parts of a CVS file context required for snapshot generation */
+    /* isolate parts of a CVS file context required for snapshot generation */
     const char		*master_name;
     enum expand_mode    expand;
     cvs_version		*versions;

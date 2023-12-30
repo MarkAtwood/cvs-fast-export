@@ -26,13 +26,14 @@
  * "child commit emitted before parent exists" error that can't be
  * resolved with the -t 0 option.
  *
- * The problem is the shuffle done to put the generated gitspace
- * commits in time order is only correctness-preserving if time order
- * is never the reverse of topological (parent-child) order; otherwise
- * a commit could be shipped before its parent.  This can happen
- * sporadically in multithreaded mode due to a race condition in
- * accumulating CVS changes with identical timestamps.  One of the
- * test cases, t9601, exhibits this behavior if -t 0 is not forced.
+ * The problem is the shuffle done in collate.c to put the generated
+ * gitspace commits in time order is only correctness-preserving if
+ * time order is never the reverse of topological (parent-child)
+ * order; otherwise a commit could be shipped before its parent.  This
+ * can happen sporadically in multithreaded mode due to a race
+ * condition in accumulating CVS changes with identical timestamps.
+ * One of the test cases, t9601, exhibits this behavior if -t 0 is not
+ * forced.
  *
  * No case of order inversion has been observed in the wild with
  * cliques having *different* timestamps.  Unfortunately, CVS
@@ -54,9 +55,11 @@
  * wild, notably in the histories of GCC and Emacs.
  *
  * If you see this error with -t 0, report it as a bug.  It might mean
- * we have to bite the bullet and implement a real toposort here, or it 
- * might just mean some timestamps in your masters need to be patched
- * by a few seconds.
+ * we have to bite the bullet and implement a real toposort in
+ * collate.c. The sort we do here to massage the commits into canonical
+ * git-export order by date is written (somewhat expensively) in a 
+ * way that is garanteed to preserve topo order if the collation sort
+ * didn't screw it up.
  */
 
 #define _XOPEN_SOURCE 700
