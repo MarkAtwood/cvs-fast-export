@@ -144,7 +144,7 @@ clean:
 # check by Looking for "MirDebian" in the output of cvs --version.
 check: cvs-fast-export
 	-$(MAKE) EXTRA=-q cppcheck pylint
-	-shellcheck -f gcc buildprep tests/visualize tests/gitwash tests/incremental.sh
+	-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
 	$(MAKE) -C tests -s -f $(srcdir)tests/Makefile
 
 # Like check, but forces rebuild of the generated test repositories first
