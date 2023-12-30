@@ -553,9 +553,7 @@ internal error - lost tag::
      an internal error in cvs-fast-export: please file a bug report.
 
 internal error - child commit emitted before parent exists::
-     This should never happen.  If it does, cvs-fast-export's
-     algorithm for reordering commits into canonical Git form has failed.
-     This is a bug and should be reported to the maintainers.
+     This should never happen; please file a bug report.
 
 == REPORTING BUGS ==
 Report bugs to Eric S. Raymond <esr@thyrsus.com>. Please read

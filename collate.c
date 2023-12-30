@@ -153,7 +153,9 @@ cvs_commit_date_compare(const void *av, const void *bv)
     if (t)
 	return t;
     /*
-     * Ensure total order by ordering based on commit address
+     * Ensure total order by ordering based on original commit address.
+     * This stabilizes the sort, ensuring that it can't damage parent-child
+     * order even when adjacent CVS commits have the same timestamp.
      */
     if ((uintptr_t) a > (uintptr_t) b)
 	return -1;
@@ -176,7 +178,7 @@ cvs_commit_latest(cvs_commit **commits, int ncommit)
 
 static int
 cvs_commit_date_sort(revision_t *commits, int ncommit)
-/* sort CVS commits by date */
+/* stable-sort CVS commits by date */
 {
     qsort(commits, ncommit, sizeof(revision_t), cvs_commit_date_compare);
     /*
