@@ -317,13 +317,9 @@ revdir_pack_files(const cvs_commit **files, const size_t nfiles, revdir *revdir)
 {
     size_t i;
 #ifdef ORDERDEBUG
-    fputs("Packing:\n", stderr);
-    {
-	const cvs_commit **s;
-
-	for (s = files; s < files + nfiles; s++)
-	    fprintf(stderr, "cvs_commit: %s\n", (*s)->master->name);
-    }
+    debugmsg("Packing:\n");
+    for (const cvs_commit **s = files; s < files + nfiles; s++)
+        debugmsg("cvs_commit: %s\n", (*s)->master->name);
 #endif /* ORDERDEBUG */
 
     /*

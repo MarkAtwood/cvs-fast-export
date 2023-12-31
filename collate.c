@@ -126,11 +126,10 @@ rev_ref_tsort(rev_ref *git_branches, cvs_master *masters, size_t nmasters)
 }
 
 static int
-cvs_commit_date_compare(const void *av, const void *bv)
+cvs_commit_canicalize_compare(const void *av, const void *bv)
 {
     const cvs_commit	*a = REVISION_T_COMMIT(*(revision_t *) av);
     const cvs_commit	*b = REVISION_T_COMMIT(*(revision_t *) bv);
-    int			t;
 
     /*
      * (ESR) If you are reading this code, and you think you
@@ -139,12 +138,12 @@ cvs_commit_date_compare(const void *av, const void *bv)
      *
      * One relevant fact is that the commit arrays this is sorting are
      * in the order they were read out of CVS masters - which is *not*
-     * consistently most-recent-first!  See the generated master from the
-     * twobranch test for an example; the sequence is 1.3, 1.2, 1.1,
-     * 1.1.2.1, 1.1.2.2 with ome branch ordered forward and the other
-     * backward. 
+     * consistently most-recent-first!  See the generated master from
+     * the twobranch test for an example; the sequence is 1.3, 1.2,
+     * 1.1, 1.1.2.1, 1.1.2.2 with one branch time-ordered forward and
+     * the other backward. 
      */
-    
+
     /*
      * NULL entries sort last
      *
@@ -157,6 +156,7 @@ cvs_commit_date_compare(const void *av, const void *bv)
 	return 1;
     else if (!b)
 	return -1;
+
     /*
      * tailed entries sort next to last
      *
@@ -166,6 +166,7 @@ cvs_commit_date_compare(const void *av, const void *bv)
      */
     if (a->tailed != b->tailed)
 	return(int)a->tailed - (int)b->tailed;
+
     /*
      * Newest entries sort first.
      *
@@ -173,7 +174,7 @@ cvs_commit_date_compare(const void *av, const void *bv)
      * consistent order. Cold we replace this with a sort on CVS
      * numbers?
      */
-    t = -time_compare(a->date, b->date);
+    int t = -time_compare(a->date, b->date);
     if (t)
 	return t;
     /*
@@ -201,17 +202,36 @@ cvs_commit_latest(cvs_commit **commits, int ncommit)
     return max;
 }
 
+#ifdef ORDERDEBUG3
+static void
+dump_revision_order(char *legend, revision_t *revisions, int ncommit, FILE *fp)
+{
+    debugmsg("Revision order %s: ", legend);
+    for (revision_t *r = revisions; r < revisions + ncommit; r++)
+    {
+	const cvs_commit *c = REVISION_T_COMMIT(*r);
+	if (c != NULL)
+	{
+	    char nbuf[32];
+	    cvs_number_string(c->number, nbuf, sizeof(nbuf));
+	    debugmsg(" %s", nbuf);
+	}
+    }
+    debugmsg("\n");
+}
+#endif
+
 static int
-cvs_commit_date_sort(revision_t *commits, int ncommit)
+cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions)
 /* stable-sort CVS commits by date */
 {
-    qsort(commits, ncommit, sizeof(revision_t), cvs_commit_date_compare);
+    qsort(revisions, nrevisions, sizeof(revision_t), cvs_commit_canicalize_compare);
     /*
      * Trim off NULL entries
      */
-    while (ncommit && !REVISION_T_COMMIT(commits[ncommit-1]))
-	ncommit--;
-    return ncommit;
+    while (nrevisions && !REVISION_T_COMMIT(revisions[nrevisions-1]))
+	nrevisions--;
+    return nrevisions;
 }
 
 static bool
@@ -318,11 +338,11 @@ git_commit_build(revision_t *revisions, const cvs_commit *leader, const int nrev
     debugmsg("commit_build: %p\n", commit);
 
 #if !defined STREAMDIR
-    for (n = 0; n < nfile; n++)
+    for (n = 0; n < nrevisions; n++)
 	if (REVISIONS(n))
 	    debugmsg("%s\n", REVISIONS(n)->master->name);
 #endif
-    fputs("After packing:\n", LOGFILE);
+    fputs("After packing:\n", logfile);
     revdir_iter *i = revdir_iter_alloc(&commit->revdir);
     cvs_commit *c;
     while((c = revdir_iter_next(i)))
@@ -573,7 +593,7 @@ collate_branches(rev_ref **branches, int nbranch,
 #ifdef GITSPACEDEBUG
 	    if (c->gitspace) {
 		warn("CVS commit allocated to multiple git commits: ");
-		dump_number_file(LOGFILE, c->master->name, c->number);
+		dump_number_file(logfile, c->master->name, c->number);
 		warn("\n");
 	    } else
 #endif /* GITSPACEDEBUG */
@@ -644,7 +664,13 @@ collate_branches(rev_ref **branches, int nbranch,
      * Commits on this branch are still in the order they were picked
      * up from the master.  Sort them and toss out deaders.
      */
-    nbranch = cvs_commit_date_sort(revisions, nbranch);
+#ifdef ORDERDEBUG3
+    dump_revision_order("before sort", revisions, nbranch, logfile);
+#endif
+    nbranch = cvs_commit_canonicalize_sort(revisions, nbranch);
+#ifdef ORDERDEBUG3
+    dump_revision_order("after sort", revisions, nbranch, logfile);
+#endif
 
     /*
      * Gitspace branch construction is done. Now connect it to its
@@ -692,10 +718,10 @@ collate_branches(rev_ref **branches, int nbranch,
 		     cvstime2rfc3339(REVISIONS(present)->date),
 		     DEAD(present) ? "D" : " " );
 		if (!DEAD(present))
-		    dump_number_file(LOGFILE,
+		    dump_number_file(logfile,
 				     REVISIONS(present)->master->name,
 				     REVISIONS(present)->number);
-		fprintf(LOGFILE, "\n");
+		fprintf(logfile, "\n");
 		/*
 		 * The file part of the error message could be spurious for
 		 * a multi-file commit, alas.  It wasn't any better back when
@@ -709,10 +735,10 @@ collate_branches(rev_ref **branches, int nbranch,
 		revdir_iter *ri = revdir_iter_alloc(&prev->revdir);
 		first = revdir_iter_next(ri);
 		free(ri);
-		dump_number_file(LOGFILE,
+		dump_number_file(logfile,
 				  first->master->name,
 				  first->number);
-		fprintf(LOGFILE, "\n");
+		fprintf(logfile, "\n");
 	    }
 	} else if ((*tail = git_commit_locate_date(branch->parent,
 						   REVISIONS(present)->date)))
@@ -725,7 +751,7 @@ collate_branches(rev_ref **branches, int nbranch,
 
 	    if ((lost = git_branch_of_commit(gl, REVISIONS(present))))
 		warn(" Possible match on %s.", lost->ref_name);
-	    fprintf(LOGFILE, "\n");
+	    fprintf(logfile, "\n");
 	}
 	if (*tail) {
 	    if (prev)
@@ -737,7 +763,7 @@ collate_branches(rev_ref **branches, int nbranch,
 #ifdef GITSPACEDEBUG
 		    if (REVISIONS(n)->gitspace) {
 			warn("CVS commit allocated to multiple git commits: ");
-			dump_number_file(LOGFILE,
+			dump_number_file(logfile,
 					 REVISIONS(n)->master->name,
 					 REVISIONS(n)->number);
 			warn("\n");
@@ -795,7 +821,7 @@ git_commit_contains_revs(git_commit *g, cvs_commit **revs, size_t nrev)
 }
 
 static int
-compare_cvs_commit(const void *a, const void *b)
+compare_cvs_commit_path(const void *a, const void *b)
 {
     cvs_commit **ap = (cvs_commit **)a;
     cvs_commit **bp = (cvs_commit **)b;
@@ -803,7 +829,7 @@ compare_cvs_commit(const void *a, const void *b)
     const char *bf = (*bp)->master->name;
 
 #ifdef ORDERDEBUG
-    warn("Comparing %s with %s\n", af, bf);
+    debugmsg("Comparing %s with %s\n", af, bf);
 #endif /* ORDERDEBUG */
 
     return path_deep_compare(af, bf);
@@ -853,7 +879,7 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
 	return;
     }
 
-    qsort(revisions, tag->count, sizeof(cvs_commit *), compare_cvs_commit);
+    qsort(revisions, tag->count, sizeof(cvs_commit *), compare_cvs_commit_path);
     if (git_commit_contains_revs(c->gitspace, revisions, tag->count)) {
 	/* we've seen this set of revisions before, just link tag to it */
 	tag->commit = c->gitspace;
@@ -1039,14 +1065,14 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
     progress_end(NULL);
 
 #ifdef ORDERDEBUG
-    fputs("collate_to_changesets: before common branch collate:\n", stderr);
+    debugmsg("collate_to_changesets: before common branch collate:\n");
     for (cm = masters; cm < masters + nmasters; cm++) {
 	for (lh = cm->heads; lh; lh = lh->next) {
 	    cvs_commit *commit = lh->commit;
-	    fputs("rev_ref: ", stderr);
-	    dump_number_file(stderr, lh->ref_name, lh->number);
-	    fputc('\n', stderr);
-	    fprintf(stderr, "commit first file: %s\n", commit->master->name);
+	    fputs("rev_ref: ", logfile);
+	    dump_number_file(logfile, lh->ref_name, lh->number);
+	    fputc('\n', logfile);
+	    debugmsg("commit first file: %s\n", commit->master->name);
 	}
     }
 #endif /* ORDERDEBUG */
@@ -1092,14 +1118,14 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
 	    for (; c; c = c->parent) {
 		if (!c->gitspace) {
 		    if (!c->dead) {
-			fprintf(LOGFILE, "No gitspace: ");
-			dump_number_file(LOGFILE, c->master->name, c->number);
-			fprintf(LOGFILE, "\n");
+			fprintf(logfile, "No gitspace: ");
+			dump_number_file(logfile, c->master->name, c->number);
+			fprintf(logfile, "\n");
 		    }
 		} else if (!cvs_commit_match(c, (cvs_commit *)c->gitspace)) {
-		    fprintf(LOGFILE, "Gitspace doesn't match cvs: ");
-		    dump_number_file(LOGFILE, c->master->name, c->number);
-		    fprintf(LOGFILE, "\n");
+		    fprintf(logfile, "Gitspace doesn't match cvs: ");
+		    dump_number_file(logfile, c->master->name, c->number);
+		    fprintf(logfile, "\n");
 		}
 	    }
 	}

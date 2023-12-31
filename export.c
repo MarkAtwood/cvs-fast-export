@@ -620,7 +620,7 @@ static struct commit_seq *canonicalize(git_repo *rl)
 					   sizeof(struct commit_seq),
 					   "export");
 #ifdef ORDERDEBUG
-    fputs("Export phase 1:\n", stderr);
+    debugmsg("Export phase 1:\n");
 #endif /* ORDERDEBUG */
     branchbase = 0;
     for (h = rl->heads; h; h = h->next) {
@@ -637,8 +637,8 @@ static struct commit_seq *canonicalize(git_repo *rl)
 		history[n].head = h;
 		i++;
 #ifdef ORDERDEBUG
-		fprintf(stderr, "At n = %d, i = %d\n", n, i);
-		dump_commit(c, stderr);
+		debugmsg("At n = %d, i = %d\n", n, i);
+		dump_commit(c, logfile);
 #endif /* ORDERDEBUG */
 	    }
 	    history[branchbase].isbase = true;
@@ -753,13 +753,13 @@ void export_commits(forest_t *forest,
     history = canonicalize(rl);
 
 #ifdef ORDERDEBUG2
-    fputs("Export phase 2:\n", stderr);
+    debugmsg("Export phase 2:\n");
     for (hp = history; hp < history + export_stats.export_total_commits; hp++)
-	dump_commit(hp->commit, stderr);
+	dump_commit(hp->commit, logfile);
 #endif /* ORDERDEBUG2 */
 
 #ifdef ORDERDEBUG2
-    fputs("Export phase 3:\n", stderr);
+    debugmsg("Export phase 3:\n");
 #endif /* ORDERDEBUG2 */
     for (hp = history; hp < history + export_stats.export_total_commits; hp++) {
 	bool report = true;

@@ -240,10 +240,10 @@ cvs_master_branch_build(cvs_file *cvs, rev_master *master, const cvs_number *bra
 	    }
 	    if (!nowarn) {
 		warn("warning - %s:", cvs->gen.master_name);
-		dump_number_file(LOGFILE, " ", p->number);
-		dump_number_file(LOGFILE, " is newer than", c->number);
-		if (atom_n) dump_number_file(LOGFILE, ", adjusting", atom_n);
-		fprintf(LOGFILE, "\n");
+		dump_number_file(logfile, " ", p->number);
+		dump_number_file(logfile, " is newer than", c->number);
+		if (atom_n) dump_number_file(logfile, ", adjusting", atom_n);
+		fprintf(logfile, "\n");
 	    }
 	}
     }
@@ -448,11 +448,11 @@ cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs)
 			    if (v_c)
 			    {
 				warn("%s: rewrite branch", cvs->name);
-				dump_number_file(LOGFILE, " branch point",
+				dump_number_file(logfile, " branch point",
 						  v_c->number);
-				dump_number_file(LOGFILE, " branch version",
+				dump_number_file(logfile, " branch version",
 						  c->number);
-				fprintf(LOGFILE, "\n");
+				fprintf(logfile, "\n");
 				c->parent = v_c;
 			    }
 			}
@@ -784,7 +784,7 @@ cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs)
 	for (e = cm->heads; e;) {
 	    debugmsg("\t");
 	    //cvs_master_dump_ref_parents(stderr, e->parent);
-	    dump_number_file(LOGFILE, e->ref_name, e->number);
+	    dump_number_file(logfile, e->ref_name, e->number);
 	    debugmsg("\n");
 	    e = e->next;
 	}

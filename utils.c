@@ -260,11 +260,11 @@ void warn(char const *format,...)
     if (nowarn)
 	return;
 
-    if (LOGFILE == stderr)
+    if (logfile == stderr)
 	progress_interrupt();
-    fprintf(LOGFILE, "cvs-fast-export: ");
+    fprintf(logfile, "cvs-fast-export: ");
     va_start(args, format);
-    vfprintf(LOGFILE, format, args);
+    vfprintf(logfile, format, args);
     va_end(args);
 
     warncount++;
@@ -276,7 +276,7 @@ void debugmsg(char const *format,...)
 
     progress_interrupt();
     va_start(args, format);
-    vfprintf(LOGFILE, format, args);
+    vfprintf(logfile, format, args);
     va_end(args);
 }
 

@@ -19,7 +19,7 @@
 int commit_time_window = 300;
 bool trust_commitids = true;
 bool progress = false;
-FILE *LOGFILE;
+FILE *logfile;
 #ifdef THREADS
 int threads = NO_MAX;
 #endif /* THREADS */
@@ -198,7 +198,7 @@ main(int argc, char **argv)
     /* force times using mktime to be interpreted in UTC */
     setenv("TZ", "UTC", 1);
 
-    LOGFILE = stderr;
+    logfile = stderr;
 
     while (1) {
 	static const struct option options[] = {
@@ -286,7 +286,7 @@ main(int argc, char **argv)
 	    break;
 	case 'l':
 	    assert(optarg);
-	    LOGFILE = fopen(optarg, "w");
+	    logfile = fopen(optarg, "w");
 	    break;
 	case 'a':
 	    exec_mode = ExecuteAuthors;
@@ -419,10 +419,10 @@ main(int argc, char **argv)
 		(int)(export_stats.export_total_commits / elapsed));
     }
 
-    if (LOGFILE != stderr) {
+    if (logfile != stderr) {
 	if (warncount > 0)
 	    fprintf(STATUS, "cvs-fast-export: %u warning(s).\n", warncount);
-	fclose(LOGFILE);
+	fclose(logfile);
     }
 
     discard_atoms();
