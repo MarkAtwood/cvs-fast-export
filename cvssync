@@ -17,6 +17,7 @@ actual path to the repository from the host, path and module arguments.
 
 # Hosting-site rules live inside the following function.
 
+
 def computesource(sourcehost, sourcepath, sourcemodule):
     "Compute an rsync source given a CVS sourcehost, sourcepath, and sourcemodule"
     if "sourceforge" in sourcehost:
@@ -36,7 +37,7 @@ def computesource(sourcehost, sourcepath, sourcemodule):
         return "cvs.berlios.de::%s_cvs" % sourcemodule
     elif "sourceware" in sourcehost:
         # The pattern is rsync -av sourceware.org::<projectname>-cvs/<module>/
-        return "%s::%s-cvs/%s/" % (sourcehost, sourcepath.split('/')[2], sourcemodule)
+        return "%s::%s-cvs/%s/" % (sourcehost, sourcepath.split("/")[2], sourcemodule)
     elif "savannah" in sourcehost:
         # Supply the  /sources path head if not given.
         if not sourcepath.startswith("/sources"):
@@ -47,6 +48,7 @@ def computesource(sourcehost, sourcepath, sourcemodule):
     else:
         return "%s:%s/%s/" % (sourcehost, sourcepath, sourcemodule)
 
+
 # You should not need to modify anything below this line
 
 # pylint: disable=multiple-imports,wrong-import-position
@@ -54,6 +56,7 @@ import os, sys, getopt, subprocess
 
 verbose = False
 execute = True
+
 
 def do_or_die(dcmd):
     "Either execute a command or raise a fatal exception."
@@ -63,7 +66,9 @@ def do_or_die(dcmd):
         try:
             retcode = subprocess.call(dcmd, shell=True)
             if retcode < 0:
-                sys.stderr.write("cvssync: child was terminated by signal %d.\n" % -retcode)
+                sys.stderr.write(
+                    "cvssync: child was terminated by signal %d.\n" % -retcode
+                )
                 sys.exit(1)
             elif retcode != 0:
                 sys.stderr.write("cvssync: child returned %d.\n" % retcode)
@@ -72,25 +77,26 @@ def do_or_die(dcmd):
             sys.stderr.write("cvssync: execution of %s failed: %s\n" % (dcmd, e))
             sys.exit(1)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
 
     (opts, arguments) = getopt.getopt(sys.argv[1:], "cno:v")
     oopt = None
     checkoutable = False
     for (opt, arg) in opts:
-        if opt == '-c':
+        if opt == "-c":
             checkoutable = True
-        if opt == '-n':
+        if opt == "-n":
             execute = False
-        if opt == '-o':
+        if opt == "-o":
             oopt = arg
-        if opt == '-v':
+        if opt == "-v":
             verbose += 1
 
     if len(arguments) == 1 and arguments[0].startswith("cvs://"):
         try:
             (host, module) = arguments[0][6:].split("#")
-            i = host.find('/')
+            i = host.find("/")
             (host, path) = (host[:i], host[i:])
             if "@" in host:
                 host = host.split("@")[1]
