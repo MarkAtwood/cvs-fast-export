@@ -316,11 +316,14 @@ void
 revdir_pack_files(const cvs_commit **files, const size_t nfiles, revdir *revdir)
 {
     size_t i;
-#ifdef ORDERDEBUG
-    debugmsg("Packing:\n");
-    for (const cvs_commit **s = files; s < files + nfiles; s++)
-        debugmsg("cvs_commit: %s\n", (*s)->master->name);
-#endif /* ORDERDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER1))
+    {
+	debugmsg("Packing:\n");
+	    for (const cvs_commit **s = files; s < files + nfiles; s++)
+	debugmsg("cvs_commit: %s\n", (*s)->master->name);
+    }
+#endif /* DEBUG */
 
     /*
      * We want the files in directory-path order so we get the longest

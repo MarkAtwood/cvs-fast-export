@@ -270,6 +270,11 @@ void warn(char const *format,...)
     warncount++;
 }
 
+bool enable_debug(char cap)
+{
+    return strchr(debugopts, cap) != NULL;
+}
+
 void debugmsg(char const *format,...)
 {
     va_list args;

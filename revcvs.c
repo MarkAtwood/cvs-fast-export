@@ -310,11 +310,14 @@ cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs)
 	{
 	    /* found a vendor branch by its numbering scheme (1.1.{odd}.n) */
 	    found_vendor = true;
-#ifdef CVSDEBUG
-	    char	vrev[CVS_MAX_REV_LEN];
-	    cvs_number_string(vendor->commit->number, vrev, sizeof(vrev));
-	    fprintf(stderr, "Vendor branch ending in %s\n", vrev);
-#endif /* CVSDEBUG */
+#ifdef DEBUG
+	    if (enable_debug(DEBUG_CVSDEBUG))
+	    {
+		char	vrev[CVS_MAX_REV_LEN];
+		cvs_number_string(vendor->commit->number, vrev, sizeof(vrev));
+		debugmsg("Vendor branch ending in %s\n", vrev);
+	    }
+#endif /* DEBUG */
 
 	    /* stash pointer to newest vendor branch, will need it later */
 	    nvendor = vendor;
@@ -777,8 +780,8 @@ cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs)
     }
 
     cm->heads = l;
-#ifdef CVSDEBUG
-    if (cvs->verbose > 0)
+#ifdef DEBUG
+    if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0)
     {
 	debugmsg("Sorted heads for %s\n", cvs->gen.master_name);
 	for (e = cm->heads; e;) {
@@ -789,7 +792,7 @@ cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs)
 	    e = e->next;
 	}
     }
-#endif /* CVSDEBUG */
+#endif /* DEBUG */
 }
 
 cvs_commit *
@@ -843,21 +846,22 @@ cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 	warn("warning - no master branch generated\n");
 	return NULL;		/* cannot proceed with this master file */
     }
-#ifdef CVSDEBUG
+#ifdef DEBUG
     /*
      * Search for other branches
      */
-    if (cvs->verbose > 0)
+    if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0)
 	debugmsg("Building non-trunk branches for %s:\n", cvs->gen.master_name);
-#endif /* CVSDEBUG */
+#endif /* DEBUG */
 
     for (cv = cvs->gen.versions; cv; cv = cv->next) {
 	for (cb = cv->branches; cb; cb = cb->next)
 	{
 	    branch = cvs_master_branch_build(cvs, master, cb->number);
-#ifdef CVSDEBUG
-	    if (cvs->verbose > 0)
+#ifdef DEBUG
+	    if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0)
 	    {
+	        char buf[CVS_MAX_REV_LEN];
 	        char buf2[CVS_MAX_REV_LEN];
 	        char buf3[CVS_MAX_REV_LEN];
 		debugmsg("\t%s\t->\t%s\t->\t%s\n",
@@ -865,7 +869,7 @@ cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 			 cvs_number_string(cb->number, buf2, CVS_MAX_REV_LEN),
 			 cvs_number_string(branch->number, buf3, CVS_MAX_REV_LEN));
 	    }
-#endif /* CVSDEBUG */
+#endif /* DEBUG */
 	    rev_list_add_head(cm, branch, NULL, 0);
 	}
     }
@@ -876,8 +880,8 @@ cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
     cvs_master_sort_heads(cm, cvs);
     rev_list_set_tail(cm);
 
-#ifdef CVSDEBUG
-    if (cvs->verbose > 0) {
+#ifdef DEBUG
+    if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0) {
 	rev_ref	*lh;
 
 	debugmsg("Named heads in %s:\n", cvs->gen.master_name);
@@ -888,7 +892,7 @@ cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 		     cvs_number_string(lh->number, buf, CVS_MAX_REV_LEN));
 	}
     }
-#endif /* CVSDEBUG */
+#endif /* DEBUG */
 
     //rev_list_validate(cm);
     return trunk;		/* to allow testing for an error in calling function */

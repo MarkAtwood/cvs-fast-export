@@ -202,7 +202,7 @@ cvs_commit_latest(cvs_commit **commits, int ncommit)
     return max;
 }
 
-#ifdef ORDERDEBUG3
+#ifdef DEBUG
 static void
 dump_revision_order(char *legend, revision_t *revisions, int ncommit, FILE *fp)
 {
@@ -219,7 +219,7 @@ dump_revision_order(char *legend, revision_t *revisions, int ncommit, FILE *fp)
     }
     debugmsg("\n");
 }
-#endif
+#endif /* DEBUG */
 
 static int
 cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions)
@@ -334,20 +334,17 @@ git_commit_build(revision_t *revisions, const cvs_commit *leader, const int nrev
     }
     revdir_pack_end(&commit->revdir);
 
-#ifdef ORDERDEBUG
-    debugmsg("commit_build: %p\n", commit);
-
-#if !defined STREAMDIR
-    for (n = 0; n < nrevisions; n++)
-	if (REVISIONS(n))
-	    debugmsg("%s\n", REVISIONS(n)->master->name);
-#endif
-    fputs("After packing:\n", logfile);
-    revdir_iter *i = revdir_iter_alloc(&commit->revdir);
-    cvs_commit *c;
-    while((c = revdir_iter_next(i)))
-	debugmsg("   file name: %s\n", c->master->name);
-#endif /* ORDERDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER1))
+    {
+	debugmsg("After packing:\n");
+	debugmsg("commit_build: %p\n", commit);
+	revdir_iter *i = revdir_iter_alloc(&commit->revdir);
+	cvs_commit *c;
+	while((c = revdir_iter_next(i)))
+	    debugmsg("   file name: %s\n", c->master->name);
+    }
+#endif /* DEBUG */
 
     return commit;
 }
@@ -590,14 +587,14 @@ collate_branches(rev_ref **branches, int nbranch,
 		    nlive++;
 		continue;
 	    }
-#ifdef GITSPACEDEBUG
-	    if (c->gitspace) {
+#ifdef DEBUG
+	    if (enable_debug(DEBUG_GITSPACE) && c->gitspace) {
 		warn("CVS commit allocated to multiple git commits: ");
 		dump_number_file(logfile, c->master->name, c->number);
 		warn("\n");
-	    } else
-#endif /* GITSPACEDEBUG */
-		c->gitspace = commit;
+	    }
+#endif /* DEBUG */
+	    c->gitspace = commit;
 
 	    to = c->parent;
 	    /*
@@ -664,13 +661,11 @@ collate_branches(rev_ref **branches, int nbranch,
      * Commits on this branch are still in the order they were picked
      * up from the master.  Sort them and toss out deaders.
      */
-#ifdef ORDERDEBUG3
-    dump_revision_order("before sort", revisions, nbranch, logfile);
-#endif
+    if (enable_debug(DEBUG_SORT))
+	dump_revision_order("before sort", revisions, nbranch, logfile);
     nbranch = cvs_commit_canonicalize_sort(revisions, nbranch);
-#ifdef ORDERDEBUG3
-    dump_revision_order("after sort", revisions, nbranch, logfile);
-#endif
+    if (enable_debug(DEBUG_SORT))
+        dump_revision_order("after sort", revisions, nbranch, logfile);
 
     /*
      * Gitspace branch construction is done. Now connect it to its
@@ -760,16 +755,16 @@ collate_branches(rev_ref **branches, int nbranch,
 	    *tail = git_commit_build(revisions, REVISIONS(0), nbranch);
 	    for (n = 0; n < nbranch; n++)
 		if (REVISIONS(n)) {
-#ifdef GITSPACEDEBUG
-		    if (REVISIONS(n)->gitspace) {
+#ifdef DEBUG
+		    if (enable_debug(DEBUG_GITSPACE) && REVISIONS(n)->gitspace) {
 			warn("CVS commit allocated to multiple git commits: ");
 			dump_number_file(logfile,
 					 REVISIONS(n)->master->name,
 					 REVISIONS(n)->number);
 			warn("\n");
-		    } else
-#endif /* GITSPACEDEBUG */
-			REVISIONS(n)->gitspace = *tail;
+		    }
+#endif /* DEBUG */
+		    REVISIONS(n)->gitspace = *tail;
 		}
 	}
     }
@@ -828,9 +823,10 @@ compare_cvs_commit_path(const void *a, const void *b)
     const char *af = (*ap)->master->name;
     const char *bf = (*bp)->master->name;
 
-#ifdef ORDERDEBUG
-    debugmsg("Comparing %s with %s\n", af, bf);
-#endif /* ORDERDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER1))
+	debugmsg("Comparing %s with %s\n", af, bf);
+#endif /* DEBUG */
 
     return path_deep_compare(af, bf);
 }
@@ -1064,18 +1060,21 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
     }
     progress_end(NULL);
 
-#ifdef ORDERDEBUG
-    debugmsg("collate_to_changesets: before common branch collate:\n");
-    for (cm = masters; cm < masters + nmasters; cm++) {
-	for (lh = cm->heads; lh; lh = lh->next) {
-	    cvs_commit *commit = lh->commit;
-	    fputs("rev_ref: ", logfile);
-	    dump_number_file(logfile, lh->ref_name, lh->number);
-	    fputc('\n', logfile);
-	    debugmsg("commit first file: %s\n", commit->master->name);
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER1))
+    {
+	debugmsg("collate_to_changesets: before common branch collate:\n");
+	for (cm = masters; cm < masters + nmasters; cm++) {
+	    for (lh = cm->heads; lh; lh = lh->next) {
+		cvs_commit *commit = lh->commit;
+		fputs("rev_ref: ", logfile);
+		dump_number_file(logfile, lh->ref_name, lh->number);
+		fputc('\n', logfile);
+		debugmsg("commit first file: %s\n", commit->master->name);
+	    }
 	}
     }
-#endif /* ORDERDEBUG */
+#endif /* DEBUG */
 
     /*
      * Collate common branches
@@ -1105,32 +1104,34 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
     }
     progress_end(NULL);
 
-
-#ifdef GITSPACEDEBUG
-    /* Check every non-dead cvs commit has a backlink
-     * and that every pair of linked commits match
-     * according to cvs_commit_match.
-     * (note this will check common parents multiple times)
-     */
-    for (cm = masters; cm < masters + nmasters; cm++) {
-	for (lh = cm->heads; lh; lh = lh->next) {
-	    cvs_commit *c = lh->commit;
-	    for (; c; c = c->parent) {
-		if (!c->gitspace) {
-		    if (!c->dead) {
-			fprintf(logfile, "No gitspace: ");
-			dump_number_file(logfile, c->master->name, c->number);
-			fprintf(logfile, "\n");
-		    }
-		} else if (!cvs_commit_match(c, (cvs_commit *)c->gitspace)) {
-		    fprintf(logfile, "Gitspace doesn't match cvs: ");
-		    dump_number_file(logfile, c->master->name, c->number);
-		    fprintf(logfile, "\n");
-		}
-	    }
-	}
+#ifdef DEBUG
+    if (enable_debug(DEBUG_GITSPACE))
+    {
+       /* Check every non-dead cvs commit has a backlink
+	* and that every pair of linked commits match
+	* according to cvs_commit_match.
+	* (note this will check common parents multiple times)
+	*/
+       for (cm = masters; cm < masters + nmasters; cm++) {
+	   for (lh = cm->heads; lh; lh = lh->next) {
+	       cvs_commit *c = lh->commit;
+	       for (; c; c = c->parent) {
+		   if (!c->gitspace) {
+		       if (!c->dead) {
+			   fprintf(logfile, "No gitspace: ");
+			   dump_number_file(logfile, c->master->name, c->number);
+			   fprintf(logfile, "\n");
+		       }
+		   } else if (!cvs_commit_match(c, (cvs_commit *)c->gitspace)) {
+		       fprintf(logfile, "Gitspace doesn't match cvs: ");
+		       dump_number_file(logfile, c->master->name, c->number);
+		       fprintf(logfile, "\n");
+		   }
+	       }
+	   }
+       }
     }
-#endif /* GITSPACEDEBUG */
+#endif /* DEBUG */
 
     /*
      * Find tag locations.  The goal is to associate each tag object

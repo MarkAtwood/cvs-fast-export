@@ -72,9 +72,10 @@ static char *blobfile(const char *basename,
 {
     int m;
 
-#ifdef FDEBUG
-    (void)fprintf(stderr, "-> blobfile(%d, %d)...\n", serial, create);
-#endif /* FDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_FILES))
+	debugmsg("-> blobfile(%d, %d)...\n", serial, create);
+#endif /* DEBUG */
     (void)snprintf(path, PATH_MAX, "%s", blobdir);
     /*
      * FANOUT should be chosen to be the largest directory size that does not
@@ -88,9 +89,10 @@ static char *blobfile(const char *basename,
 	if ((m = (m - digit) / FANOUT) == 0) {
 	    (void)snprintf(path + strlen(path), PATH_MAX - strlen(path),
 			   "/=%x", digit);
-#ifdef FDEBUG
-	    (void)fprintf(stderr, "path: %s\n", path);
-#endif /* FDEBUG */
+#ifdef DEBUG
+	    if (enable_debug(DEBUG_FILES))
+		debugmsg("path: %s\n", path);
+#endif /* DEBUG */
 	    break;
 	}
 	else
@@ -98,13 +100,15 @@ static char *blobfile(const char *basename,
 	    (void)snprintf(path + strlen(path), PATH_MAX - strlen(path),
 			   "/%x", digit);
 	    /* coverity[toctou] */
-#ifdef FDEBUG
-	    (void)fprintf(stderr, "directory: %s\n", path);
-#endif /* FDEBUG */
+#ifdef DEBUG
+	    if (enable_debug(DEBUG_FILES))
+		debugmsg("directory: %s\n", path);
+#endif /* DEBUG */
 	    if (create && access(path, R_OK) != 0) {
-#ifdef FDEBUG
-		(void)fprintf(stderr, "directory: %s\n", path);
-#endif /* FDEBUG */
+#ifdef DEBUG
+		if (enable_debug(DEBUG_FILES))
+		    debugmsg("directory: %s\n", path);
+#endif /* DEBUG */
 		errno = 0;
 		if (mkdir(path,S_IRWXU | S_IRWXG) != 0 && errno != EEXIST)
 		    fatal_error("blob subdir creation of %s failed: %s (%d)\n", path, strerror(errno), errno);
@@ -112,10 +116,11 @@ static char *blobfile(const char *basename,
 	}
     }
 #undef FANOUT
-#ifdef FDEBUG
-    (void)fprintf(stderr, "<- ...returned path for %s %d = %s\n",
-		  basename, serial, path);
-#endif /* FDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_FILES))
+      debugmsg("<- ...returned path for %s %d = %s\n",
+	       basename, serial, path);
+#endif /* DEBUG */
     return path;
 }
 
@@ -265,7 +270,7 @@ struct fileop {
  */
 #define display_date(c, m, f)	(f ? (100000 + (m) * commit_time_window * 2) : ((c)->date + RCS_EPOCH))
 
-#ifdef ORDERDEBUG
+#ifdef DEBUG
 static void dump_file(const cvs_commit *cvs_commit, FILE *fp)
 {
     char buf[CVS_MAX_REV_LEN + 1];
@@ -283,7 +288,7 @@ static void dump_commit(const git_commit *commit, FILE *fp)
     while ((c = revdir_iter_next(it)))
 	dump_file(c, fp);
 }
-#endif /* ORDERDEBUG */
+#endif /* DEBUG */
 
 
 static struct fileop *
@@ -487,10 +492,11 @@ export_commit(git_commit *commit, const char *branch,
 	printf("commit %s%s\n", opts->branch_prefix, visualize_branch_name(branch));
     commit->serial = ++seqno;
     here = markmap[commit->serial] = ++mark;
-#ifdef ORDERDEBUG2
+#ifdef DEBUG
     /* can't move before mark is updated */
-    dump_commit(commit, stderr);
-#endif /* ORDERDEBUG2 */
+    if (enable_debug(DEBUG_ORDER2))
+	dump_commit(commit, logfile);
+#endif /* DEBUG */
     if (report) {
 	static bool need_ignores = true;
 	if (noignores)
@@ -619,9 +625,10 @@ static struct commit_seq *canonicalize(git_repo *rl)
     history = (struct commit_seq *)xcalloc(export_stats.export_total_commits, 
 					   sizeof(struct commit_seq),
 					   "export");
-#ifdef ORDERDEBUG
-    debugmsg("Export phase 1:\n");
-#endif /* ORDERDEBUG */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER1))
+	debugmsg("Export phase 1:\n");
+#endif /* DEBUG */
     branchbase = 0;
     for (h = rl->heads; h; h = h->next) {
 	if (!h->tail) {
@@ -636,10 +643,13 @@ static struct commit_seq *canonicalize(git_repo *rl)
 		history[n].commit = c;
 		history[n].head = h;
 		i++;
-#ifdef ORDERDEBUG
-		debugmsg("At n = %d, i = %d\n", n, i);
-		dump_commit(c, logfile);
-#endif /* ORDERDEBUG */
+#ifdef DEBUG
+		if (enable_debug(DEBUG_ORDER1))
+		{
+		    debugmsg("At n = %d, i = %d\n", n, i);
+		    dump_commit(c, logfile);
+		}
+#endif /* DEBUG */
 	    }
 	    history[branchbase].isbase = true;
 	    branchbase += branchlength;
@@ -752,15 +762,19 @@ void export_commits(forest_t *forest,
 
     history = canonicalize(rl);
 
-#ifdef ORDERDEBUG2
-    debugmsg("Export phase 2:\n");
-    for (hp = history; hp < history + export_stats.export_total_commits; hp++)
-	dump_commit(hp->commit, logfile);
-#endif /* ORDERDEBUG2 */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER2))
+    {
+	debugmsg("Export phase 2:\n");
+	for (hp = history; hp < history + export_stats.export_total_commits; hp++)
+	    dump_commit(hp->commit, logfile);
+    }
+#endif /* DEBUG */
 
-#ifdef ORDERDEBUG2
-    debugmsg("Export phase 3:\n");
-#endif /* ORDERDEBUG2 */
+#ifdef DEBUG
+    if (enable_debug(DEBUG_ORDER2))
+	debugmsg("Export phase 3:\n");
+#endif /* DEBUG */
     for (hp = history; hp < history + export_stats.export_total_commits; hp++) {
 	bool report = true;
 	if (opts->fromtime > 0) {

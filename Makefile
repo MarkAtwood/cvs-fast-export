@@ -65,10 +65,11 @@ CPPFLAGS += -DYYDEBUG=1
 # don't want to turn any of these off; the condition symbols are
 # present more as documentation of the program structure than
 # anything else
-CPPFLAGS += -DREDBLACK # Use red-black trees for faster symbol lookup
-CPPFLAGS += -DUSE_MMAP # Use mmap for reading CVS masters
+CPPFLAGS += -DREDBLACK  # Use red-black trees for faster symbol lookup
+CPPFLAGS += -DUSE_MMAP  # Use mmap for reading CVS masters
 CPPFLAGS += -DLINESTATS # Keep track of which lines have @ string delimiters
-CPPFLAGS += -DTREEPACK # Reduce memory usage, particularly on large repos
+CPPFLAGS += -DTREEPACK  # Reduce memory usage, particularly on large repos
+CPPFLAGS += -DDEBUG     # Compile in debugging code
 
 # First line works for GNU C.  
 # Replace with the next if your compiler doesn't support C99 restrict qualifier

@@ -693,6 +693,9 @@ warn(char const *format,...) _printflike(1, 2);
 void
 debugmsg(char const *format,...) _printflike(1, 2);
 
+bool
+enable_debug(char);
+
 void
 progress_interrupt(void);
 
@@ -724,6 +727,19 @@ void progress_end(const char * /*format*/, ...) _printflike(1, 2);
 	(YYSTYPE * yylval_param , yyscan_t yyscanner, cvs_file *cvs)
 
 /*
+ * Debug enables
+ */
+#define DEBUG_ORDER1	'o'	/* order debugging - phase 1 */
+#define DEBUG_EXPORT	'e'	/* export debugging */
+#define DEBUG_SORT	's'	/* instrument commit sorting */
+#define DEBUG_GITSPACE	'g'	/* instrument gitspace side of commit-buildimg */
+#define DEBUG_FILES	'f'	/* debug file and blob operations */
+#define DEBUG_ORDER2	'p'	/* order debugging in export */
+#define DEBUG_CVSDEBUG	'c'	/* CVS analysis */
+
+#define MAXDOPTS	16
+
+/*
  * Statistics gathering.
  */
 extern unsigned int warncount;
@@ -738,6 +754,7 @@ extern int commit_time_window;
 extern bool trust_commitids;
 extern FILE *logfile;
 extern bool difffiles;
+extern char debugopts[MAXDOPTS];
 
 extern bool progress;
 #define STATUS stderr

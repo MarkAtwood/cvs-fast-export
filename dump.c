@@ -10,9 +10,9 @@
 
 #include "cvs.h"
 #include <unistd.h>
-#ifdef ORDERDEBUG
+#ifdef DEBUG
 #include "revdir.h"
-#endif /*ORDERDEBUG */
+#endif /* DEBUG */
 
 void
 dump_number_file(FILE *f, const char *name, const cvs_number *number)
@@ -30,7 +30,7 @@ dump_number(const char *name, const cvs_number *number)
     dump_number_file(stdout, name, number);
 }
 
-#ifdef ORDERDEBUG
+#ifdef DEBUG
 void
 dump_git_commit(const git_commit *c, FILE *fp)
 /* dump all delta/revision pairs associated with a gitspace commit */
@@ -43,6 +43,6 @@ dump_git_commit(const git_commit *c, FILE *fp)
     }
     fputs("\n", fp);
 }
-#endif /* ORDERDEBUG */
+#endif /* DEBUG */
 
 /* end */

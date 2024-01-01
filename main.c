@@ -20,6 +20,7 @@ int commit_time_window = 300;
 bool trust_commitids = true;
 bool progress = false;
 FILE *logfile;
+char debugopts[MAXDOPTS];
 #ifdef THREADS
 int threads = NO_MAX;
 #endif /* THREADS */
@@ -223,9 +224,10 @@ main(int argc, char **argv)
             { "embed-id",           0, 0, 'E' },
 	    { "sizes",              0, 0, 'S' },	/* undocumented */
 	    { "noignores",          0, 0, 'N' },	/* undocumented */
+	    { "debug",              1, 0, 'd' },	/* undocumented */
 	    { NULL,                 0, 0, '\0'}, 
 	};
-	int c = getopt_long(argc, argv, "+hVw:cl:grvqaA:R:Tk:e:s:pPi:t:SEN", options, NULL);
+	int c = getopt_long(argc, argv, "+hVw:cl:grvqaA:R:Tk:e:s:pPi:t:SENd:", options, NULL);
 	if (c < 0)
 	    break;
 	switch(c) {
@@ -343,6 +345,9 @@ main(int argc, char **argv)
 	    return 0;
 	case 'N':
 	    noignores = true;
+	    break;
+	case 'd':
+	    strncpy(debugopts, optarg, sizeof(debugopts));
 	    break;
 	default: /* error message already emitted */
 	    announce("try `%s --help' for more information.\n", argv[0]);
