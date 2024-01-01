@@ -1,6 +1,6 @@
 /*
- * Copyright © 2006 Sean Estabrooks <seanlkml@sympatico.ca>
- * Copyright © 2006 Keith Packard <keithp@keithp.com>
+ * SPDX-FileCopyrightText: Copyright © 2006 Sean Estabrooks <seanlkml@sympatico.ca>
+ * SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>
  *
  *  SPDX-License-Identifier: GPL-2.0+
  *
@@ -8,8 +8,8 @@
  * the original RCS application under GPLv2 or later license, it retains
  * the copyright of the original authors listed below:
  *
- * Copyright 1982, 1988, 1989 Walter Tichy
- *   Copyright 1990, 1991, 1992, 1993, 1994, 1995 Paul Eggert
+ * SPDX-FileCopyrightText: Copyright 1982, 1988, 1989 Walter Tichy
+ *   SPDX-FileCopyrightText: Copyright 1990, 1991, 1992, 1993, 1994, 1995 Paul Eggert
  *      Distributed under license by the Free Software Foundation, Inc.
  */
 

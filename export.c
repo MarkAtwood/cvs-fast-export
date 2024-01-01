@@ -1,5 +1,5 @@
 /*
- *  Copyright © 2006 Keith Packard <keithp@keithp.com>
+ *  SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>
  *
  *  SPDX-License-Identifier: GPL-2.0+
  *
@@ -324,15 +324,18 @@ append_revpair(cvs_commit *c, const export_options_t *opts,
 /* append file information if requested */
 {
     if (opts->revision_map || opts->reposurgeon || opts->embed_ids) {
+	const char *cvs_leader = "CVS-ID: ";
 	char fr[BUFSIZ];
-	int xtr = opts->embed_ids ? 10 : 2;
+	int xtr = 2;
+	if (opts->embed_ids)
+	  xtr += strlen(cvs_leader);
 	stringify_revision(c->master->name, " ", c->number, fr, sizeof fr);
 	if (strlen(*revpairs) + strlen(fr) + xtr > *revpairsize) {
 	    *revpairsize *= 2;
 	    *revpairs = xrealloc(*revpairs, *revpairsize, "revpair allocation");
 	}
 	if (opts->embed_ids)
-	    strcat(*revpairs, "CVS-ID: ");
+	    strcat(*revpairs, cvs_leader);
 	strcat(*revpairs, fr);
 	strcat(*revpairs, "\n");
     }

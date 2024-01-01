@@ -6,6 +6,9 @@
 # without actually doing it
 #
 # This script swiped from NTPsec.
+#
+# SPDX-FileCopyrightText: Copyright Eric S. Raymond <esr@thyrsus.com>
+# SPDX-License-Identifier: BSD 2-Clause
 
 # Set the defaults
 DRYRUN="no"

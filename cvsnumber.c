@@ -1,5 +1,5 @@
 /*
- *  Copyright © 2006 Keith Packard <keithp@keithp.com>
+ *  SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>
  *
  *  SPDX-License-Identifier: GPL-2.0+
  */
