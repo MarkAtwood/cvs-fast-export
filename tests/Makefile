@@ -164,7 +164,7 @@ sporadic:
 TEST_TARGETS += $(SPORADIC)
 
 clean:
-	rm -fr neutralize.map *.checkout *.repo *.pyc *.dot *.git *.git.fi
+	rm -fr neutralize.map *.checkout *.repo *.pyc *.dot *.git *.git.fi __pycache__
 
 # Use this to scope out problems with test counting. 
 detailcount:
