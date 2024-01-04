@@ -315,4 +315,15 @@ dump_rev_graph(git_repo *rl, const char *title)
     dot_rev_graph_end();
 }
 
+void
+dump_cvs_graph(forest_t *forest)
+/* Dump a DOT graph of the tree before collation */ 
+{
+    dot_rev_graph_begin();
+    dot_rev_graph_end();
+}
+
+
+
+
 /* end */

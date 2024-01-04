@@ -613,6 +613,9 @@ dump_rev_head(rev_ref *h, FILE *);
 void
 dump_rev_graph(git_repo *rl, const char *title);
 
+void
+dump_cvs_graph(forest_t *);
+
 const char *
 atom(const char *string);
 

@@ -376,6 +376,12 @@ main(int argc, char **argv)
     /* build CVS structures by parsing masters; may read stdin */
     analyze_masters(argc, (const char**)argv, &import_options, &forest);
 
+    if (exec_mode == ExecuteGraph && export_options.reposurgeon)
+    {	
+        dump_cvs_graph(&forest);
+        exit(0);
+    }
+    
     gather_stats("after parsing");
 
     /* commit set coalescence happens here */
