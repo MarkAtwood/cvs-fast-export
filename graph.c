@@ -268,10 +268,6 @@ static void dot_rev_graph_nodes(git_repo *rl, const char *title)
     git_commit	*c, *p;
     bool	tail;
 
-    printf("nodesep=0.1;\n");
-    printf("ranksep=0.1;\n");
-    printf("edge [dir=none];\n");
-    printf("node [shape=box,fontsize=6];\n");
     dot_refs(rl, rl->heads, title, "ellipse");
     dot_tags(rl, title, "diamond");
     for (h = rl->heads; h; h = h->next) {
@@ -299,6 +295,10 @@ static void dot_rev_graph_nodes(git_repo *rl, const char *title)
 static void dot_rev_graph_begin(void)
 {
     printf("digraph G {\n");
+    printf("nodesep=0.1;\n");
+    printf("ranksep=0.1;\n");
+    printf("edge [dir=none];\n");
+    printf("node [shape=box,fontsize=6];\n");
 }
 
 static void dot_rev_graph_end(void)
@@ -320,6 +320,7 @@ dump_cvs_graph(forest_t *forest)
 /* Dump a DOT graph of the tree before collation */ 
 {
     dot_rev_graph_begin();
+
     dot_rev_graph_end();
 }
 
