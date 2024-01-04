@@ -484,8 +484,8 @@ typedef struct _tag {
 
 /*
  * Be careful when modifying this structure.
- * It has been obseved thar moving vendor_warming
- * too the end breaks regression tests, somehow
+ * It has been observed that moving vendor_warming
+ * to the end breaks regression tests, somehow
  * interfering with the setting of is_cvs.
  */
 typedef struct _forest {

@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: Copyright © 2006 Sean Estabrooks <seanlkml@sympatico.ca>
  * SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>
  *
- *  SPDX-License-Identifier: GPL-2.0+
+ * SPDX-License-Identifier: GPL-2.0+
  *
  * Large portions of code contained in this file were obtained from
  * the original RCS application under GPLv2 or later license, it retains
