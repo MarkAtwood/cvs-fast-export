@@ -272,14 +272,14 @@ excise_branch(cvs_master *cm, rev_ref *branchtokill)
 #endif /* __UNUSED__ */
 
 /*
- * "Vendor branches" (1.1.x) are created by importing sources from
- * an external source. In X.org, this was from XFree86 and DRI. When
- * these trees are imported, cvs sets the 'default' branch in each ,v file
- * to point along this branch. This means that tags made between
- * the time the vendor branch is imported and when a new revision
- * is committed to the head branch are placed on the vendor branch
- * In addition, any files without such a commit appear to adopt
- * the vendor branch as 'head'. 
+ * "Vendor branches" (1.1.x, with odd x) are created by importing
+ * sources from an external source. In X.org, this was from XFree86
+ * and DRI. When these trees are imported, cvs sets the 'default'
+ * branch in each ,v file to point along this branch. This means that
+ * tags made between the time the vendor branch is imported and when a
+ * new revision is committed to the head branch are placed on the
+ * vendor branch In addition, any files without such a commit appear
+ * to adopt the vendor branch as 'head'.
  *
  * The original behavior of this code was to fix this by merging the
  * vendor branch into the master branch, as if they were the same.
