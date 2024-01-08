@@ -4,7 +4,7 @@ Test framework for cvs-fast-export.
 # This code runs correctly under both Python 2 and Python 3.
 # Preserve this property!
 
-# Ugh. This is needed because puyylint removed the no-self-use check in 2.14.
+# Ugh. This is needed because pylint removed the no-self-use check in 2.14.
 # This is the only way to prevent spurious pylint failures on earlier versions.
 # pylint: disable=useless-option-value
 
