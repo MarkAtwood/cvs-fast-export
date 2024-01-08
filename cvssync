@@ -13,6 +13,10 @@ The magic (when there is any) is in knowing how to construct the
 actual path to the repository from the host, path and module arguments.
 """
 
+# Ugh. This is needed because pylint removed the unnecessary-lambda-assignmen check in 2.14.
+# This is the only way to prevent spurious pylint failures on earlier versions.
+# pylint: disable=useless-option-value
+
 # pylint: disable=invalid-name.no-else-return,consider-using-f-string
 
 # Hosting-site rules live inside the following function.
