@@ -5,16 +5,16 @@
 cvsconvert - perform a Git conversion and test against the CVS original
 
 == SYNOPSIS ==
-*cvsconvert* [-n] [-p] [-q] [-t] [-v] [-w] [-A 'authormap'] [repo | repo/module]
+*cvsconvert* [-n] [-p] [-q] [-t] [-v] [-w] [-A 'authormap'] {repo | repo/module}+
 
 == DESCRIPTION ==
-cvsconvert performs a conversion of a CVS repository to Git and
-checks the tree contents at all branch tips and tags to verify that
+cvsconvert performs a conversion of one or more CVS repositories to Git and
+checks the tree contents at all branch tips and tags in each to verify that
 the histories are the same.
 
 Barring the known limitations in in the underlying cvs-fast-export(1)
-engine, the conversion will be correct but not optimal.  You will
-probably want to edit the resulting Git repository with reposurgeon(1)
+engine, the conversion(s) will be correct but not optimal.  You will
+probably want to edit the resulting Git repositories with reposurgeon(1)
 to remove junk tags, lift references, Gitify change comments, and
 perform various other cleanup tasks as described in
 http://www.catb.org/~esr/reposurgeon/repository-editing.html[Repository
@@ -24,15 +24,16 @@ Editing and Conversion With Reposurgeon].
 created to collect homeless CVS commits are not checked. You will
 see a warning when one of these is skipped.)
 
-The single argument must be a path to a directory containing a CVS
+Each argument must be a path to a directory containing a CVS
 repository or module. If it is a CVS top-level directory and there is 
-only one module beneath the module need not be specified. 
+only one module beneath, the module need not be specified. 
 
-The Git conversion is left in a directory named after the repo
+Ech Git conversion is left in a directory named after the repo
 argument, with a suffix of "-git".
 
-Normal behavior is for the program to report on each branch and tag,
-saying "trees match as expected". There are two kinds of problem report:
+Normal behavior is for the program to check on each branch and tag,
+reporting any content differences between the CVS and the Git
+conversion. There are two kinds of problem report:
 
 *"file manifests don't match"*: Indicates that the CVS and Git
 versions of this revision in the history contain some filenames that
@@ -115,12 +116,6 @@ more likely.
     Pass cvs-fast-export an author map; see its man page for the format.
 
 == LIMITATIONS ==
-
-Warning: As of September 2016, stock CVS is known buggy in ways which
-may affect checking the correctness of conversions. For best results,
-use a CVS version with the MirOS patches.  These are carried by Debian
-Linux and derivatives; you can check by Looking for "MirDebian" in the
-output of cvs --version.
 
 This program does not cope gracefully if CVS tagnames that are not
 legal for Git had to be sanitized during conversion.

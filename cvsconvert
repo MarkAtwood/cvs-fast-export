@@ -566,66 +566,72 @@ if __name__ == "__main__":
             engine_opts += " -A " + arg
 
     if not arguments:
-        sys.stderr.write("cvsconvert: requires a repo/module argument.\n")
+        sys.stderr.write("cvsconvert: requires one or nore repo/module arguments.\n")
         sys.exit(1)
-    elif "/" in arguments[0]:
-        (repo, module) = arguments[0].split("/", 1)
-    elif whole_repo or (not os.path.isdir(arguments[0] + os.sep + "CVSROOT")):
-        (repo, module) = (arguments[0], None)
-    else:
-        candidates = [
-            sub
-            for sub in os.listdir(arguments[0])
-            if sub != "CVSROOT" and os.path.isdir(os.path.join(arguments[0], sub))
-        ]
-        if not candidates:
+    for directory in arguments:
+        if "/" in directory:
+            (repo, module) = directory.split("/", 1)
+        elif whole_repo or (not os.path.isdir(directory + os.sep + "CVSROOT")):
+            (repo, module) = (directory, None)
+        else:
+            candidates = [
+                sub
+                for sub in os.listdir(directory)
+                if sub != "CVSROOT" and os.path.isdir(os.path.join(directory, sub))
+            ]
+            if not candidates:
+                sys.stderr.write(
+                    err_leader + "cvsconvert: no modules under %s.\n" % directory
+                )
+                sys.exit(1)
+            elif len(candidates) > 1:
+                sys.stderr.write(
+                    err_leader + "cvsconvert: choose one of %s\n" % candidates
+                )
+                sys.exit(1)
+            else:
+                (repo, module) = (directory, candidates[0])
+                if "-q" not in engine_opts:
+                    sys.stderr.write(
+                        err_leader + "cvsconvert: processing %s/%s\n" % (repo, module)
+                    )
+        if repo == module:
             sys.stderr.write(
-                err_leader + "cvsconvert: no modules under %s.\n" % arguments[0]
+                err_leader
+                + "cvsconvert: repo directory and module name cannot be the same.\n"
             )
             sys.exit(1)
-        elif len(candidates) > 1:
-            sys.stderr.write(err_leader + "cvsconvert: choose one of %s\n" % candidates)
+        if not os.path.exists(repo):
+            sys.stderr.write(
+                err_leader + "cvsconvert: repo %s does not exist.\n" % repo
+            )
             sys.exit(1)
+        if os.path.realpath(os.path.abspath(".")) == os.path.realpath(
+            os.path.abspath(repo)
+        ):
+            sys.stderr.write(
+                err_leader
+                + "cvsconvert: repo directory cannot be the current directory.\n"
+            )
+            sys.exit(1)
+        cc = ConvertComparison(
+            srepo=repo,
+            smodule=module,
+            checkout=None,
+            options=engine_opts,
+            showdiffs=True,
+            tapify=tap_output,
+        )
+        if verbose == 0 and "-p" in engine_opts:
+            verbose = DEBUG_STEPS
+        cc.repo.retain = retain
+        cc.checkall()
+        cc.checkout.cleanup()
+        if retain:
+            sys.stderr.write(
+                err_leader + "cvsconvert: conversion is in %s\n" % (cc.gitRepoName)
+            )
         else:
-            (repo, module) = (arguments[0], candidates[0])
-            if "-q" not in engine_opts:
-                sys.stderr.write(
-                    err_leader + "cvsconvert: processing %s/%s\n" % (repo, module)
-                )
-    if repo == module:
-        sys.stderr.write(
-            err_leader
-            + "cvsconvert: repo directory and module name cannot be the same.\n"
-        )
-        sys.exit(1)
-    if not os.path.exists(repo):
-        sys.stderr.write(err_leader + "cvsconvert: repo %s does not exist.\n" % repo)
-        sys.exit(1)
-    if os.path.realpath(os.path.abspath(".")) == os.path.realpath(
-        os.path.abspath(repo)
-    ):
-        sys.stderr.write(
-            err_leader + "cvsconvert: repo directory cannot be the current directory.\n"
-        )
-        sys.exit(1)
-    cc = ConvertComparison(
-        srepo=repo,
-        smodule=module,
-        checkout=None,
-        options=engine_opts,
-        showdiffs=True,
-        tapify=tap_output,
-    )
-    if verbose == 0 and "-p" in engine_opts:
-        verbose = DEBUG_STEPS
-    cc.repo.retain = retain
-    cc.checkall()
-    cc.checkout.cleanup()
-    if retain:
-        sys.stderr.write(
-            err_leader + "cvsconvert: conversion is in %s\n" % (cc.gitRepoName)
-        )
-    else:
-        cc.cleanup()
+            cc.cleanup()
 
 # end
