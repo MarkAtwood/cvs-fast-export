@@ -5,7 +5,7 @@
 cvsconvert - perform a Git conversion and test against the CVS original
 
 == SYNOPSIS ==
-*cvsconvert* [-n] [-p] [-q] [-t] [-v] [-A 'authormap'] [repo | repo/module]
+*cvsconvert* [-n] [-p] [-q] [-t] [-v] [-w] [-A 'authormap'] [repo | repo/module]
 
 == DESCRIPTION ==
 cvsconvert performs a conversion of a CVS repository to Git and
@@ -24,7 +24,7 @@ Editing and Conversion With Reposurgeon].
 created to collect homeless CVS commits are not checked. You will
 see a warning when one of these is skipped.)
 
-The single argument must be a path to a directory containing a a CVS
+The single argument must be a path to a directory containing a CVS
 repository or module. If it is a CVS top-level directory and there is 
 only one module beneath the module need not be specified. 
 
@@ -104,6 +104,12 @@ more likely.
 -v::
     Verbose.  Show subcommands as they are being executed, and various
     debugging messages.
+
+-w::
+    Whole-repo. Ignore the presence of CVSROOT and convert every
+    module under the repo directory into a subdirectory in the git
+    directory. Warning: this may cause surprising if the
+    modules do not share the same set of branches.
 
 -A 'authormap'::
     Pass cvs-fast-export an author map; see its man page for the format.

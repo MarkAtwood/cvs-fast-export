@@ -7,6 +7,7 @@
    Spaces in .cvsignore files are translated correctly.
    git fast-export no longer ships branch-tip resets; track this.
    Two -g options expose more detail in the output graph.
+   Asdd -w (whole-repo) option to cvsconvert. 
 
 1.62: 2023-11-26::
    Cope with old-style tagging sometimes found in RCS files.
