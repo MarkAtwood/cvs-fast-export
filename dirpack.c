@@ -27,9 +27,9 @@ hash_files(const cvs_commit *const * const files, const int nfiles)
     hash_t h = 0;
     size_t i;
     /* Combine existing hashes rather than computing new ones */
-    for (i = 0; i < nfiles; i++)
+    for (i = 0; i < nfiles; i++) {
 	h = HASH_COMBINE(h, files[i]->hash);
-
+    }
     return h;
 }
 
@@ -44,8 +44,7 @@ pack_file_list(const cvs_commit * const * const files, const int nfiles)
     /* avoid packing a file list if we've done it before */ 
     for (h = *bucket; h; h = h->next) {
 	if (h->hash == hash && h->fl.nfiles == nfiles &&
-	    !memcmp(files, h->fl.files, nfiles * sizeof(cvs_commit *)))
-	{
+	    !memcmp(files, h->fl.files, nfiles * sizeof(cvs_commit *))) {
 	    return &h->fl;
 	}
     }
@@ -113,14 +112,17 @@ struct _revdir_iter {
 /* Iterator interface */
 cvs_commit *
 revdir_iter_next(revdir_iter *it) {
-    if (it->dir == it->dirmax)
-        return NULL;
+    if (it->dir == it->dirmax) {
+	  return NULL;
+    }
 again:
-    if (it->file != it->filemax)
+    if (it->file != it->filemax) {
 	return *it->file++;
+    }
     ++it->dir;
-    if (it->dir == it->dirmax)
+    if (it->dir == it->dirmax) {
         return NULL;
+    }
     it->file = (*it->dir)->files;
     it->filemax = it->file + (*it->dir)->nfiles;
     goto again;
@@ -130,12 +132,14 @@ cvs_commit *
 revdir_iter_next_dir(revdir_iter *it) {
  again:
     ++it->dir;
-    if (it->dir >= it->dirmax)
+    if (it->dir >= it->dirmax) {
 	return NULL;
+    }
     it->file = (*it->dir)->files;
     it->filemax = it->file + (*it->dir)->nfiles;
-    if (it->file != it->filemax)
+    if (it->file != it->filemax) {
 	return *it->file++;
+    }
     goto again;
 }
 
@@ -169,8 +173,9 @@ serial_t
 revdir_nfiles(const revdir *revdir)
 {
     serial_t c = 0, i;
-    for (i = 0; i < revdir->ndirs; i++)
+    for (i = 0; i < revdir->ndirs; i++) {
 	c += revdir->dirs[i]->nfiles;
+    }
     return c;
 }
 
@@ -249,8 +254,7 @@ revdir_pack_files(const cvs_commit ** files,
     file_list        *fl;
     unsigned short   countdirs = 0;
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER1))
-    {
+    if (enable_debug(DEBUG_ORDER1)) {
         debugmsg("Packing:\n");
         for (cvs_commit **s = files; s < files + nfiles; s++)
     	    debugmsg("cvs_commit: %s\n", (*s)->master->name);
@@ -291,3 +295,9 @@ revdir_pack_files(const cvs_commit ** files,
     revdir->ndirs = countdirs;
     memcpy(revdir->dirs, dirs, countdirs * sizeof(file_list *));
 }
+
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

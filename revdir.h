@@ -66,3 +66,10 @@ revdir_free(void);
 	revdir_iter_start((iter), (revdir))
 
 #endif /* _REVDIR_H_ */
+
+
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

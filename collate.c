@@ -49,9 +49,11 @@ rev_find_head(head_list *rl, const char *name)
 {
     rev_ref	*h;
 
-    for (h = rl->heads; h; h = h->next)
-	if (h->ref_name == name)
+    for (h = rl->heads; h; h = h->next) {
+	if (h->ref_name == name) {
 	    return h;
+	}
+    }
     return NULL;
 }
 
@@ -59,9 +61,11 @@ static rev_ref *
 rev_ref_find_name(rev_ref *h, const char *name)
 /* find a revision reference by name */
 {
-    for (; h; h = h->next)
-	if (h->ref_name == name)
-	    return h;
+    for (; h; h = h->next) {
+	if (h->ref_name == name) {
+		return h;
+	}
+    }
     return NULL;
 }
 
@@ -150,12 +154,13 @@ cvs_commit_canicalize_compare(const void *av, const void *bv)
      * (ESR) I get this part. These are being sorted to the end of the
      * array so they can be easily trimmed off.
      */
-    if (!a && !b)
+    if (!a && !b) {
 	return 0;
-    else if (!a)
+    } else if (!a) {
 	return 1;
-    else if (!b)
+    } else if (!b) {
 	return -1;
+    }
 
     /*
      * tailed entries sort next to last
@@ -164,9 +169,9 @@ cvs_commit_canicalize_compare(const void *av, const void *bv)
      * branch roots of other branches. This would make more sense if
      * it were the tail bit.
      */
-    if (a->tailed != b->tailed)
+    if (a->tailed != b->tailed) {
 	return(int)a->tailed - (int)b->tailed;
-
+    }
     /*
      * Newest entries sort first.
      *
@@ -175,18 +180,20 @@ cvs_commit_canicalize_compare(const void *av, const void *bv)
      * numbers?
      */
     int t = -time_compare(a->date, b->date);
-    if (t)
+    if (t) {
 	return t;
+    }
     /*
      * (ESR) Ensure total order by ordering commits with same timestamps
      * based on original commit address. This stabilizes the sort,
      * ensuring that it can't damage parent-child order even when
      * adjacent CVS commits have the same timestamp.
      */
-    if ((uintptr_t) a > (uintptr_t) b)
+    if ((uintptr_t) a > (uintptr_t) b) {
 	return -1;
-    if ((uintptr_t) a < (uintptr_t) b)
+    } else if ((uintptr_t) a < (uintptr_t) b) {
 	return 1;
+    }
     return 0;
 }
 
@@ -229,8 +236,9 @@ cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions)
     /*
      * Trim off NULL entries
      */
-    while (nrevisions && !REVISION_T_COMMIT(revisions[nrevisions-1]))
+    while (nrevisions && !REVISION_T_COMMIT(revisions[nrevisions-1])) {
 	nrevisions--;
+    }
     return nrevisions;
 }
 
@@ -239,9 +247,12 @@ cvs_commit_time_close(const cvstime_t a, const cvstime_t b)
 /* are two timestamps within the commit-coalescence window of each other? */
 {
     long	diff = (long)a - (long)b;
-    if (diff < 0) diff = -diff;
-    if (diff < commit_time_window)
+    if (diff < 0) {
+      diff = -diff;
+    }
+    if (diff < commit_time_window) {
 	return true;
+    }
     return false;
 }
 
@@ -256,10 +267,12 @@ cvs_commitid_match(const cvs_commit *a, const cvs_commit *b)
 	 * Versions of GNU CVS after 1.12 (2004) place a commitid in
 	 * each commit to track patch sets. Use it if present
 	 */
-	if (a->commitid && b->commitid)
-	    return (a->commitid == b->commitid ? yes : no);
-	if (a->commitid || b->commitid)
+	if (a->commitid && b->commitid) {
+	      return (a->commitid == b->commitid ? yes : no);
+	}
+	if (a->commitid || b->commitid) {
 	    return no;
+	}
     }
 
     return maybe;
@@ -335,14 +348,14 @@ git_commit_build(revision_t *revisions, const cvs_commit *leader, const int nrev
     revdir_pack_end(&commit->revdir);
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER1))
-    {
+    if (enable_debug(DEBUG_ORDER1)) {
 	debugmsg("After packing:\n");
 	debugmsg("commit_build: %p\n", commit);
 	revdir_iter *i = revdir_iter_alloc(&commit->revdir);
 	cvs_commit *c;
-	while((c = revdir_iter_next(i)))
+	while((c = revdir_iter_next(i))) {
 	    debugmsg("   file name: %s\n", c->master->name);
+	}
     }
 #endif /* DEBUG */
 
@@ -356,10 +369,10 @@ git_commit_locate_date(const rev_ref *branch, const cvstime_t date)
     git_commit	*commit;
 
     /* PUNNING: see the big comment in cvs.h */
-    for (commit = (git_commit *)branch->commit; commit; commit = commit->parent)
-    {
-	if (time_compare(commit->date, date) <= 0)
-	    return commit;
+    for (commit = (git_commit *)branch->commit; commit; commit = commit->parent) {
+	if (time_compare(commit->date, date) <= 0) {
+	      return commit;
+	}
     }
     return NULL;
 }
@@ -370,17 +383,19 @@ git_commit_locate_one(const rev_ref *branch, const cvs_commit *part)
 {
     git_commit	*commit;
 
-    if (!branch)
+    if (!branch) {
 	return NULL;
-
+    }
+	
     /* PUNNING: see the big comment in cvs.h */
     for (commit = (git_commit *)branch->commit;
 	 commit;
 	 commit = commit->parent)
     {
 	/* PUNNING: see the big comment in cvs.h */
-	if (cvs_commit_match((cvs_commit *)commit, part))
-	    return commit;
+	if (cvs_commit_match((cvs_commit *)commit, part)) {
+	      return commit;
+	}
     }
     return NULL;
 }
@@ -391,8 +406,9 @@ git_commit_locate_any(const rev_ref *branch, const cvs_commit *part)
 {
     git_commit	*commit;
 
-    if (!branch)
+    if (!branch) {
 	return NULL;
+    }
     commit = git_commit_locate_any(branch->next, part);
     if (commit)
 	return commit;
@@ -408,13 +424,15 @@ git_commit_locate(const rev_ref *branch, const cvs_commit *cm)
      * Check the presumed trunk first
      */
     commit = git_commit_locate_one(branch, cm);
-    if (commit)
+    if (commit) {
 	return commit;
+    }
     /*
      * Now look through all branches
      */
-    while (branch->parent)
+    while (branch->parent) {
 	branch = branch->parent;
+    }
     return git_commit_locate_any(branch, cm);
 }
 
@@ -425,15 +443,17 @@ git_branch_of_commit(const git_repo *gl, const cvs_commit *commit)
     rev_ref	*h;
     cvs_commit	*c;
 
-    for (h = gl->heads; h; h = h->next)
-    {
-	if (h->tail)
-	    continue;
+    for (h = gl->heads; h; h = h->next) {
+	if (h->tail) {
+	      continue;
+	}
 	for (c = h->commit; c; c = c->parent) {
-	    if (cvs_commit_match(c, commit))
-		return h;
-	    if (c->tail)
+	    if (cvs_commit_match(c, commit)) {
+		  return h;
+	    }
+	    if (c->tail) {
 		break;
+	    }
 	}
     }
     return NULL;
@@ -443,8 +463,9 @@ static cvstime_t
 cvs_commit_first_date(cvs_commit *commit)
 /* return time of first commit along entire history */
 {
-    while (commit->parent)
-	commit = commit->parent;
+    while (commit->parent) {
+	  commit = commit->parent;
+    }
     return commit->date;
 }
 
@@ -485,8 +506,9 @@ collate_branches(rev_ref **branches, int nbranch,
 	 * reference but we're past their branch point from a parent with
 	 * a different name (also in our set of heads).
 	 */
-	if (!c)
+	if (!c) {
 	    continue;
+	}
 	if (branches[n]->tail) {
 	    c->tailed = true;
 	    continue;
@@ -500,8 +522,9 @@ collate_branches(rev_ref **branches, int nbranch,
 	 * branches, 'start' should hold that oldest commit date.
 	 */
 	while (c && !c->tail) {
-	    if (!birth || time_compare(c->date, birth) < 0)
-		birth = c->date;
+	    if (!birth || time_compare(c->date, birth) < 0) {
+		  birth = c->date;
+	    }
 	    c = c->parent;
 	}
 	if (c && (!c->dead || c->date != c->parent->date)) {
@@ -521,10 +544,12 @@ collate_branches(rev_ref **branches, int nbranch,
      */
     for (n = 0; n < nbranch; n++) {
 	cvs_commit *c = REVISIONS(n);
-	if (!c->tailed)
+	if (!c->tailed) {
 	    continue;
-	if (!birth || time_compare(birth, c->date) >= 0)
+	}
+	if (!birth || time_compare(birth, c->date) >= 0) {
 	    continue;
+	}
 	if (!c->dead) {
 	    warn("warning - %s branch %s: tip commit older than imputed branch join\n",
 		     c->master->name, branch->ref_name);
@@ -550,13 +575,16 @@ collate_branches(rev_ref **branches, int nbranch,
 	     * Squeeze null commit pointers out of the current set.
 	     */
 	    cvs_commit *rev = REVISIONS(n);
-	    if (!rev)
+	    if (!rev) {
 		continue;
+	    }
 	    *p++ = revisions[n];
-	    if (rev->tailed)
+	    if (rev->tailed) {
 		continue;
-	    if (!latest || time_compare(latest->date, rev->date) < 0)
+	    }
+	    if (!latest || time_compare(latest->date, rev->date) < 0) {
 		latest = rev;
+	    }
 	}
 	assert(latest != NULL);
 	nbranch = p - revisions;
@@ -583,8 +611,9 @@ collate_branches(rev_ref **branches, int nbranch,
 		continue;
 	    /* not affected? */
 	    if (c != latest && !cvs_commit_match(c, latest)) {
-		if (c->parent || !c->dead)
-		    nlive++;
+		if (c->parent || !c->dead) {
+		      nlive++;
+		}
 		continue;
 	    }
 #ifdef DEBUG
@@ -601,24 +630,27 @@ collate_branches(rev_ref **branches, int nbranch,
 	     * CVS branch starts here?  If so, drop it out of
 	     * the revision set and keep going.
 	     */
-	    if (!to)
+	    if (!to) {
 		goto Kill;
+	    }
 
 	    if (c->tail) {
 		/*
 		 * Adding file independently added on another
 		 * non-trunk branch.
 		 */
-		if (!to->parent && to->dead)
-		    goto Kill;
+		if (!to->parent && to->dead) {
+		      goto Kill;
+		}
 		/*
 		 * If the parent is at the beginning of trunk
 		 * and it is younger than some events on our
 		 * branch, we have old CVS adding file
 		 * independently added on another branch.
 		 */
-		if (birth && time_compare(birth, to->date) < 0)
+		if (birth && time_compare(birth, to->date) < 0) {
 		    goto Kill;
+		}
 		/*
 		 * XXX: we still can't be sure that it's
 		 * not a file added on trunk after parent
@@ -633,10 +665,12 @@ collate_branches(rev_ref **branches, int nbranch,
 		 * See if it's recent CVS adding a file
 		 * independently added on another branch.
 		 */
-		if (!to->parent)
-		    goto Kill;
-		if (to->tail && to->date == to->parent->date)
-		    goto Kill;
+		if (!to->parent) {
+		      goto Kill;
+		}
+		if (to->tail && to->date == to->parent->date) {
+		      goto Kill;
+		}
 		nlive++;
 	    }
 
@@ -661,11 +695,13 @@ collate_branches(rev_ref **branches, int nbranch,
      * Commits on this branch are still in the order they were picked
      * up from the master.  Sort them and toss out deaders.
      */
-    if (enable_debug(DEBUG_SORT))
+    if (enable_debug(DEBUG_SORT)) {
 	dump_revision_order("before sort", revisions, nbranch, logfile);
+    }
     nbranch = cvs_commit_canonicalize_sort(revisions, nbranch);
-    if (enable_debug(DEBUG_SORT))
+    if (enable_debug(DEBUG_SORT)) {
         dump_revision_order("after sort", revisions, nbranch, logfile);
+    }
 
     /*
      * Gitspace branch construction is done. Now connect it to its
@@ -712,10 +748,11 @@ collate_branches(rev_ref **branches, int nbranch,
 		warn("\ttrunk(%3d):  %s %s", n,
 		     cvstime2rfc3339(REVISIONS(present)->date),
 		     DEAD(present) ? "D" : " " );
-		if (!DEAD(present))
+		if (!DEAD(present)) {
 		    dump_number_file(logfile,
 				     REVISIONS(present)->master->name,
 				     REVISIONS(present)->number);
+		}
 		fprintf(logfile, "\n");
 		/*
 		 * The file part of the error message could be spurious for
@@ -744,8 +781,9 @@ collate_branches(rev_ref **branches, int nbranch,
 	    warn("error - branch point %s -> %s not found.",
 		branch->ref_name, branch->parent->ref_name);
 
-	    if ((lost = git_branch_of_commit(gl, REVISIONS(present))))
+	    if ((lost = git_branch_of_commit(gl, REVISIONS(present)))) {
 		warn(" Possible match on %s.", lost->ref_name);
+	    }
 	    fprintf(logfile, "\n");
 	}
 	if (*tail) {
@@ -753,7 +791,7 @@ collate_branches(rev_ref **branches, int nbranch,
 		prev->tail = true;
 	} else {
 	    *tail = git_commit_build(revisions, REVISIONS(0), nbranch);
-	    for (n = 0; n < nbranch; n++)
+	    for (n = 0; n < nbranch; n++) {
 		if (REVISIONS(n)) {
 #ifdef DEBUG
 		    if (enable_debug(DEBUG_GITSPACE) && REVISIONS(n)->gitspace) {
@@ -766,12 +804,14 @@ collate_branches(rev_ref **branches, int nbranch,
 #endif /* DEBUG */
 		    REVISIONS(n)->gitspace = *tail;
 		}
+	    }
 	}
     }
 
     for (n = 0; n < nbranch; n++)
-	if (REVISIONS(n))
-	    REVISIONS(n)->tailed = false;
+	if (REVISIONS(n)) {
+	      REVISIONS(n)->tailed = false;
+	}
 
     free(revisions);
     /* PUNNING: see the big comment in cvs.h */
@@ -824,8 +864,9 @@ compare_cvs_commit_path(const void *a, const void *b)
     const char *bf = (*bp)->master->name;
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER1))
+    if (enable_debug(DEBUG_ORDER1)) {
 	debugmsg("Comparing %s with %s\n", af, bf);
+    }
 #endif /* DEBUG */
 
     return path_deep_compare(af, bf);
@@ -864,8 +905,9 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
      * don't get backlinks to git commits. This may get revisited later.
      */
     cvs_commit *c = cvs_commit_latest(revisions, tag->count);
-    if (!c)	/* only dead revisions in the tag */
+    if (!c) {	/* only dead revisions in the tag */
 	return;
+    }
     if (c->gitspace == NULL) {
 	char buf[CVS_MAX_REV_LEN + 1];
 	warn("%s %s: %s points at commit with no gitspace link.\n",
@@ -904,10 +946,12 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
 		continue;
 	    /* PUNNING: See large comment in cvs.h */
 	    for (g = (git_commit *)h->commit; g; g = g->parent) {
-		if (g == c->gitspace)
+		if (g == c->gitspace) {
+		      break;
+		}
+		if (time_compare(g->date, c->gitspace->date) < 0) {
 		    break;
-		if (time_compare(g->date, c->gitspace->date) < 0)
-		    break;
+		}
 		if (git_commit_contains_revs(g, revisions, tag->count)) {
 		    tag->commit = g;
 		    return;
@@ -928,8 +972,9 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
      */
     revision_t *revs = xmalloc(sizeof(revision_t) * tag->count, __func__);
     size_t i;
-    for (i = 0; i < tag->count; i++)
+    for (i = 0; i < tag->count; i++) {
 	REVISION_T_PACK_INIT(revs[i], revisions[i]);
+    }
     git_commit *g = git_commit_build(revs, c, tag->count);
     free(revs);
     g->parent = c->gitspace;
@@ -942,8 +987,9 @@ rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl)
     tag_branch->depth = parent_branch->depth + 1;
     rev_ref *r;
     /* Add tag branch to end of list to maintain toposort */
-    for (r = gl->heads; r->next; r = r->next)
+    for (r = gl->heads; r->next; r = r->next) {
 	continue;
+    }
     r->next = tag_branch;
     g->author = atom("cvs-fast-export");
     size_t len = strlen(tag->name) + 42;
@@ -967,21 +1013,25 @@ rev_ref_set_parent(git_repo *gl, rev_ref *dest, cvs_master *source, size_t nmast
     for (s = source; s < source + nmasters; s++) {
 	rev_ref	*sh;
 	sh = rev_find_head(s, dest->ref_name);
-	if (!sh)
+	if (!sh) {
 	    continue;
-	if (!sh->parent)
+	}
+	if (!sh->parent) {
 	    continue;
+	}
 	p = rev_find_head((head_list*)gl, sh->parent->ref_name);
 	assert(p);
 	rev_ref_set_parent(gl, p, source, nmasters);
-	if (!max || p->depth > max->depth)
+	if (!max || p->depth > max->depth) {
 	    max = p;
+	}
     }
     dest->parent = max;	/* where the magic happens */
-    if (max)
+    if (max) {
 	dest->depth = max->depth + 1;
-    else
+    } else {
 	dest->depth = 1;
+    }
 }
 
 git_repo *
@@ -1021,8 +1071,9 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
 	    } else if (lh->degree > h->degree)
 		h->degree = lh->degree;
 	}
-	if (++n % 100 == 0)
+	if (++n % 100 == 0) {
 	    progress_jump(n);
+	}
     }
     progress_jump(n);
     progress_end(NULL);
@@ -1047,8 +1098,9 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
 	 * of the list.
 	 */
 	debugmsg("Sorted branches are:\n");
-	for (h = gl->heads; h; h = h->next)
+	for (h = gl->heads; h; h = h->next) {
 	    debugmsg("head %s(%d)\n", h->ref_name, h->degree);
+	}
     }
     /*
      * Compute branch parent relationships.
@@ -1061,8 +1113,7 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
     progress_end(NULL);
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER1))
-    {
+    if (enable_debug(DEBUG_ORDER1)) {
 	debugmsg("collate_to_changesets: before common branch collate:\n");
 	for (cm = masters; cm < masters + nmasters; cm++) {
 	    for (lh = cm->heads; lh; lh = lh->next) {
@@ -1094,19 +1145,19 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
 		refs[nref++] = lh;
 	    }
 	}
-	if (nref)
+	if (nref) {
 	    /*
 	     * Collate those branches into a single gitspace branch
 	     * and add that to the output revlist on gl.
 	     */
 	    collate_branches(refs, nref, h, gl);
+	}
 	progress_step();
     }
     progress_end(NULL);
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_GITSPACE))
-    {
+    if (enable_debug(DEBUG_GITSPACE)) {
        /* Check every non-dead cvs commit has a backlink
 	* and that every pair of linked commits match
 	* according to cvs_commit_match.
@@ -1141,10 +1192,11 @@ collate_to_changesets(cvs_master *masters, size_t nmasters, int verbose)
     progress_begin("Find tag locations...", tag_count);
     for (t = all_tags; t; t = t->next) {
 	cvs_commit **commits = tagged(t);
-	if (commits)
+	if (commits) {
 	    rev_tag_search(t, commits, gl);
-	else
+	} else {
 	    announce("internal error - lost tag %s\n", t->name);
+        }
 	free(commits);
 	progress_step();
     }
@@ -1182,8 +1234,9 @@ rev_uniq_file(git_commit *uniq, git_commit const *common, int *nuniqp)
     cvs_commit_list   *head = NULL, **tail = &head, *fl;
     cvs_commit *c;
 
-    if (!uniq)
+    if (!uniq) {
 	return NULL;
+    }
     revdir_iter *ri = revdir_iter_alloc(&uniq->revdir);
     while ((c = revdir_iter_next(ri))) {
 	if (c->gitspace != common) {
@@ -1232,4 +1285,8 @@ rev_diff_free(rev_diff *d)
     free(d);
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

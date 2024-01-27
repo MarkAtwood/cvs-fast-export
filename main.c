@@ -28,10 +28,12 @@ int threads = NO_MAX;
 static int get_int_substr(const char * str, const regmatch_t * p)
 {
     char buff[256];
-    if (p->rm_so == -1)
+    if (p->rm_so == -1) {
 	    return 0;
-    if (p->rm_eo - p->rm_so >= sizeof(buff))
+    }
+    if (p->rm_eo - p->rm_so >= sizeof(buff)) {
 	    return 0;
+    }
     memcpy(buff, str + p->rm_so, p->rm_eo - p->rm_so);
     buff[p->rm_eo - p->rm_so] = 0;
     return atoi(buff);
@@ -49,10 +51,11 @@ static time_t mktime_utc(const struct tm * tm, const char* tzbuf)
 
     ret = mktime((struct tm *)tm);
 
-    if (old_tz)
+    if (old_tz) {
 	setenv("TZ", old_tz, 1);
-    else
+    } else {
 	unsetenv("TZ");
+    }
 
     tzset();
 
@@ -69,10 +72,10 @@ static time_t convert_date(const char *dte)
     size_t nmatch = MAX_MATCH;
     regmatch_t match[MAX_MATCH];
 
-    if (!init_re)
-    {
-	if (regcomp(&date_re, "([0-9]{4})[-/]([0-9]{2})[-/]([0-9]{2})[ T]([0-9]{2}):([0-9]{2}):([0-9]{2})( [-+][0-9]{4})?", REG_EXTENDED)) 
-	    fatal_error("date regex compilation error\n");
+    if (!init_re) {
+	if (regcomp(&date_re, "([0-9]{4})[-/]([0-9]{2})[-/]([0-9]{2})[ T]([0-9]{2}):([0-9]{2}):([0-9]{2})( [-+][0-9]{4})?", REG_EXTENDED)) {
+	      fatal_error("date regex compilation error\n");
+	}
 	init_re = true;
     }
 
@@ -95,8 +98,9 @@ static time_t convert_date(const char *dte)
 	offseth    = -get_int_substr(dte, pm++);
 
 	offsetm = offseth % 100;
-	if (offsetm < 0)
+	if (offsetm < 0) {
 	    offsetm *= -1;
+	}
 	offseth /= 100;
 	snprintf(tzbuf, sizeof(tzbuf), "UTC%+d:%d", offseth, offsetm);
 
@@ -104,9 +108,7 @@ static time_t convert_date(const char *dte)
 	tm.tm_mon--;
 
 	return mktime_utc(&tm, tzbuf);
-    }
-    else
-    {
+    } else {
 	return atoi(dte);
     }
 }
@@ -228,8 +230,9 @@ main(int argc, char **argv)
 	    { NULL,                 0, 0, '\0'}, 
 	};
 	int c = getopt_long(argc, argv, "+hVw:cl:grvqaA:R:Tk:e:s:pPi:t:SENd:", options, NULL);
-	if (c < 0)
+	if (c < 0) {
 	    break;
+	}
 	switch(c) {
 	case 'h':
 	    printf("Usage: cvs-fast-export [OPTIONS] [FILE]...\n"
@@ -259,8 +262,9 @@ main(int argc, char **argv)
 		   "Example: find | cvs-fast-export\n");
 	    return 0;
 	case 'g':
-	    if (exec_mode == ExecuteGraph)
-	      difffiles = true;		/* Undocumented */
+	    if (exec_mode == ExecuteGraph) {
+		difffiles = true;		/* Undocumented */
+	    }
 	    exec_mode = ExecuteGraph;
 	    break;
 	case 'P':
@@ -320,8 +324,9 @@ main(int argc, char **argv)
 	case 's':
 	    assert(optarg);
 	    import_options.striplen = strlen(optarg);
-	    if (import_options.striplen != 0)
+	    if (import_options.striplen != 0) {
 		import_options.striplen++;
+	    }
 	    break;
 	case 'p':
 	    progress = true;
@@ -376,8 +381,7 @@ main(int argc, char **argv)
     /* build CVS structures by parsing masters; may read stdin */
     analyze_masters(argc, (const char**)argv, &import_options, &forest);
 
-    if (exec_mode == ExecuteGraph && export_options.reposurgeon)
-    {	
+    if (exec_mode == ExecuteGraph && export_options.reposurgeon) {	
         dump_cvs_graph(&forest);
         exit(0);
     }
@@ -415,11 +419,12 @@ main(int argc, char **argv)
 	float elapsed;
 	struct checkpoint *chp;
 
-	for (chp = checkpoints+1; chp < checkpoints + ncheckpoints; chp++)
+	for (chp = checkpoints+1; chp < checkpoints + ncheckpoints; chp++) {
 	    fprintf(STATUS, "%20s:\t%.3f\t%ldKB\n",
 		   chp->legend,
 		   seconds_diff(&chp->timespec, &checkpoints[0].timespec),
 		   chp->rusage.ru_maxrss - checkpoints[0].rusage.ru_maxrss);
+	}
 
 	elapsed = seconds_diff(&checkpoints[ncheckpoints-1].timespec, 
 			       &checkpoints[0].timespec);
@@ -431,8 +436,9 @@ main(int argc, char **argv)
     }
 
     if (logfile != stderr) {
-	if (warncount > 0)
-	    fprintf(STATUS, "cvs-fast-export: %u warning(s).\n", warncount);
+	if (warncount > 0) {
+	      fprintf(STATUS, "cvs-fast-export: %u warning(s).\n", warncount);
+	}
 	fclose(logfile);
     }
 
@@ -443,4 +449,8 @@ main(int argc, char **argv)
     return forest.errcount > 0;
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

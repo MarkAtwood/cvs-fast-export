@@ -51,8 +51,9 @@ static int seqno_next(void)
 {
     ++seqno;
 
-    if (seqno >= MAX_SERIAL_T)
+    if (seqno >= MAX_SERIAL_T) {
 	fatal_error("snapshot sequence number too large, widen serial_t");
+    }
 
     return seqno;
 }
@@ -73,8 +74,9 @@ static char *blobfile(const char *basename,
     int m;
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_FILES))
+    if (enable_debug(DEBUG_FILES)) {
 	debugmsg("-> blobfile(%d, %d)...\n", serial, create);
+    }
 #endif /* DEBUG */
     (void)snprintf(path, PATH_MAX, "%s", blobdir);
     /*
@@ -83,15 +85,15 @@ static char *blobfile(const char *basename,
      * (we think...)
      */
 #define FANOUT	256
-    for (m = serial;;)
-    {
+    for (m = serial;;) {
 	int digit = m % FANOUT;
 	if ((m = (m - digit) / FANOUT) == 0) {
 	    (void)snprintf(path + strlen(path), PATH_MAX - strlen(path),
 			   "/=%x", digit);
 #ifdef DEBUG
-	    if (enable_debug(DEBUG_FILES))
+	    if (enable_debug(DEBUG_FILES)) {
 		debugmsg("path: %s\n", path);
+	    }
 #endif /* DEBUG */
 	    break;
 	}
@@ -101,25 +103,29 @@ static char *blobfile(const char *basename,
 			   "/%x", digit);
 	    /* coverity[toctou] */
 #ifdef DEBUG
-	    if (enable_debug(DEBUG_FILES))
+	    if (enable_debug(DEBUG_FILES)) {
 		debugmsg("directory: %s\n", path);
+	    }
 #endif /* DEBUG */
 	    if (create && access(path, R_OK) != 0) {
 #ifdef DEBUG
-		if (enable_debug(DEBUG_FILES))
-		    debugmsg("directory: %s\n", path);
+		if (enable_debug(DEBUG_FILES)) {
+		      debugmsg("directory: %s\n", path);
+		}
 #endif /* DEBUG */
 		errno = 0;
-		if (mkdir(path,S_IRWXU | S_IRWXG) != 0 && errno != EEXIST)
+		if (mkdir(path,S_IRWXU | S_IRWXG) != 0 && errno != EEXIST) {
 		    fatal_error("blob subdir creation of %s failed: %s (%d)\n", path, strerror(errno), errno);
+		}
 	    }
 	}
     }
 #undef FANOUT
 #ifdef DEBUG
-    if (enable_debug(DEBUG_FILES))
+    if (enable_debug(DEBUG_FILES)) {
       debugmsg("<- ...returned path for %s %d = %s\n",
 	       basename, serial, path);
+    }
 #endif /* DEBUG */
     return path;
 }
@@ -190,18 +196,20 @@ static void export_blob(node_t *node,
     blobfile(node->commit->master->name, node->commit->serial, true, path);
     wfp = fopen(path, "w");
 
-    if (wfp == NULL)
+    if (wfp == NULL) {
 	fatal_error("blobfile open of %s: %s (%d)", 
 		    path, strerror(errno), errno);
-    else {
+    } else {
 	fprintf(wfp, "data %lu\n", (unsigned long)(len + extralen));
-	if (extralen > 0)
+	if (extralen > 0) {
 	    fwrite(CVS_IGNORES, extralen, sizeof(char), wfp);
+	}
 	for (char *cp = cbuf; cp < cbuf + len; cp++) {
 	    // CVS .cvsignores don't have hash-led comments. so if we
 	    // see one it needs to be escaped.
-	    if (is_ignore && cp[0] == '#' && (cp == cbuf || cp[-1] == '\n'))
-	        fputc('\\', wfp);
+	    if (is_ignore && cp[0] == '#' && (cp == cbuf || cp[-1] == '\n')) {
+		  fputc('\\', wfp);
+	    }
 	    fputc(*cp, wfp);
 	}
 	fputc('\n', wfp);
@@ -214,8 +222,9 @@ static int unlink_cb(const char *fpath,
 {
     int rv = remove(fpath);
 
-    if (rv)
+    if (rv) {
         perror(fpath);
+    }
 
     return rv;
 }
@@ -234,8 +243,9 @@ static const char *utc_offset_timestamp(const time_t *timep, const char *tz)
     char *oldtz = getenv("TZ");
 
     // make a copy in case original is clobbered
-    if (oldtz != NULL)
+    if (oldtz != NULL) {
 	strncpy(tzbuf, oldtz, sizeof(tzbuf)-1);
+    }
 
     setenv("TZ", tz, 1);
     tzset();  // just in case ...
@@ -248,10 +258,11 @@ static const char *utc_offset_timestamp(const time_t *timep, const char *tz)
     int x = sprintf(outbuf, "%li", *timep);
     strftime(outbuf + x, sizeof(outbuf) - x, " %z", tm);
 #endif
-    if (oldtz != NULL)
+    if (oldtz != NULL) {
 	setenv("TZ", tzbuf, 1);
-    else
+    } else {
 	unsetenv("TZ");
+    }
     tzset();
 
     return outbuf;
@@ -285,8 +296,9 @@ static void dump_commit(const git_commit *commit, FILE *fp)
     fprintf(fp, "commit %p seq %d mark %d nfiles: %d\n",
 	    commit, commit->serial, markmap[commit->serial],
 	    revdir_nfiles(&commit->revdir));
-    while ((c = revdir_iter_next(it)))
+    while ((c = revdir_iter_next(it))) {
 	dump_file(c, fp);
+    }
 }
 #endif /* DEBUG */
 
@@ -312,10 +324,11 @@ build_modify_op(cvs_commit *c, struct fileop *op)
     op->rev = c;
     op->path = c->master->fileop_name;
     op->op = 'M';
-    if (c->master->mode & 0100)
+    if (c->master->mode & 0100) {
 	op->mode = 0755;
-    else
+    } else {
 	op->mode = 0644;
+    }
 }
 
 static void
@@ -334,8 +347,9 @@ append_revpair(cvs_commit *c, const export_options_t *opts,
 	    *revpairsize *= 2;
 	    *revpairs = xrealloc(*revpairs, *revpairsize, "revpair allocation");
 	}
-	if (opts->embed_ids)
+	if (opts->embed_ids) {
 	    strcat(*revpairs, cvs_leader);
+	}
 	strcat(*revpairs, fr);
 	strcat(*revpairs, "\n");
     }
@@ -357,8 +371,9 @@ visualize_branch_name(const char *name)
     if (name == NULL) {
 	warn("null branch name, probably from a damaged Attic file\n");
 	return "null";
-    } else
+    } else {
 	return name;
+    }
 }
 
 static void
@@ -497,51 +512,55 @@ export_commit(git_commit *commit, const char *branch,
     here = markmap[commit->serial] = ++mark;
 #ifdef DEBUG
     /* can't move before mark is updated */
-    if (enable_debug(DEBUG_ORDER2))
+    if (enable_debug(DEBUG_ORDER2)) {
 	dump_commit(commit, logfile);
+    }
 #endif /* DEBUG */
     if (report) {
 	static bool need_ignores = true;
-	if (noignores)
+	if (noignores) {
 	    need_ignores = false;
+	}
 	const char *ts;
 	printf("mark :%d\n", (int)mark);
 	ct = display_date(commit, mark, opts->force_dates);
 	ts = utc_offset_timestamp(&ct, timezone);
 	//printf("author %s <%s> %s\n", full, email, ts);
 	printf("committer %s <%s> %s\n", full, email, ts);
-	if (!opts->embed_ids)
+	if (!opts->embed_ids) {
 	    printf("data %zd\n%s", (ssize_t)strlen(commit->log), commit->log);
-	else
+	} else {
 	    printf("data %zd\n%s\n%s", strlen(commit->log) + strlen(revpairs) + 1,
 		commit->log, revpairs);
+	}
 	if (commit->parent) {
-	    if (markmap[commit->parent->serial] == 0)
-	    {
+	    if (markmap[commit->parent->serial] == 0) {
 		cleanup(opts);
 		/* should never happen */
 		fatal_error("internal error: child commit emitted before parent exists");
 	    }
-	    else if (opts->fromtime < commit->parent->date)
+	    else if (opts->fromtime < commit->parent->date) {
 		printf("from :%d\n", (int)markmap[commit->parent->serial]);
+	    }
 	}
 
-	for (op2 = operations; op2 < op; op2++)
-	{
+	for (op2 = operations; op2 < op; op2++) {
 	    assert(op2->op == 'M' || op2->op == 'D');
 	    if (op2->op == 'M')
 		printf("M 100%o :%d %s\n", 
 		       op2->mode, 
 		       (int)markmap[op2->rev->serial], 
 		       op2->path);
-	    if (op2->op == 'D')
+	    if (op2->op == 'D') {
 		printf("D %s\n", op2->path);
+	    }
 	    /*
 	     * If there's a .gitignore in the first commit, don't generate one.
 	     * export_blob() will already have prepended them.
 	     */
-	    if (need_ignores && op2->path == s_gitignore)
+	    if (need_ignores && op2->path == s_gitignore) {
 		need_ignores = false;
+	    }
 	}
 	if (need_ignores) {
 	    need_ignores = false;
@@ -553,8 +572,9 @@ export_commit(git_commit *commit, const char *branch,
 	    if (opts->revision_map) {
 		char *cp;
 		for (cp = revpairs; *cp; cp++) {
-		    if (*cp == '\n')
-			fprintf(opts->revision_map, " :%d", (int)here);
+		    if (*cp == '\n') {
+			  fprintf(opts->revision_map, " :%d", (int)here);
+		    }
 		    fputc(*cp, opts->revision_map);
 		}
 	    }
@@ -566,8 +586,9 @@ export_commit(git_commit *commit, const char *branch,
     free(revpairs);
     free(operations);
 
-    if (report)
+    if (report) {
 	printf("\n");
+    }
 #undef OP_CHUNK
 }
 
@@ -579,8 +600,9 @@ static int export_ncommit(const git_repo *rl)
     int		n = 0;
     
     for (h = rl->heads; h; h = h->next) {
-	if (h->tail)
-	    continue;
+	if (h->tail) {
+	      continue;
+	}
 	/* PUNNING: see the big comment in cvs.h */ 
 	for (c = (git_commit *)h->commit; c; c = c->parent) {
 	    n++;
@@ -647,8 +669,7 @@ static struct commit_seq *canonicalize(git_repo *rl)
 		history[n].head = h;
 		i++;
 #ifdef DEBUG
-		if (enable_debug(DEBUG_ORDER1))
-		{
+		if (enable_debug(DEBUG_ORDER1)) {
 		    debugmsg("At n = %d, i = %d\n", n, i);
 		    dump_commit(c, logfile);
 		}
@@ -674,8 +695,9 @@ static struct commit_seq *canonicalize(git_repo *rl)
 #define is_branchroot_of(x, y) ((x)->head == (y)->head && (x)->isbase)
 #define is_older_than(x, y) (((struct commit_seq *)x)->commit->date < ((struct commit_seq *)y)->commit->date)
 	/* back up as far as we can */
-	while (!is_parent_of(bp-1, hp) && !is_branchroot_of(bp-1, hp) && !is_older_than(bp-1, hp))
+	while (!is_parent_of(bp-1, hp) && !is_branchroot_of(bp-1, hp) && !is_older_than(bp-1, hp)) {
 	    bp--;
+	}
 	if (bp < hp) {
 	    /* shift commits up and put *hp where *bp was */
 	    sc = *hp;
@@ -703,8 +725,9 @@ void export_authors(forest_t *forest, export_options_t *opts)
     progress_begin("Finding authors...", NO_MAX);
     for (hp = history; hp < history + export_stats.export_total_commits; hp++) {
 	for (i = 0; i < nauthors; i++) {
-	    if (authors[i] == hp->commit->author)
-		goto duplicate;
+	    if (authors[i] == hp->commit->author) {
+		  goto duplicate;
+	    }
 	}
 	if (nauthors >= alloc) {
 	    alloc += 1024;
@@ -715,8 +738,9 @@ void export_authors(forest_t *forest, export_options_t *opts)
     }
     progress_end("done");
 
-    for (i = 0; i < nauthors; i++)
+    for (i = 0; i < nauthors; i++) {
 	printf("%s\n", authors[i]);
+    }
 
     free(authors);
     free(history);
@@ -736,8 +760,9 @@ void export_commits(forest_t *forest,
 	tmp = "/tmp";
     seqno = mark = 0;
     snprintf(blobdir, sizeof(blobdir), "%s/cvs-fast-export-XXXXXX", tmp);
-    if (mkdtemp(blobdir) == NULL)
+    if (mkdtemp(blobdir) == NULL) {
 	fatal_error("temp dir creation failed\n");
+    }
 
     /* an attempt to optimize output throughput */
     setvbuf(stdout, NULL, _IOFBF, BUFSIZ);
@@ -758,16 +783,16 @@ void export_commits(forest_t *forest,
     }
     progress_end("done");
 
-    if (opts->reposurgeon)
+    if (opts->reposurgeon) {
         printf("#reposurgeon sourcetype %s\n",  forest->is_cvs ? "cvs" : "rcs");
+    }
 
     struct commit_seq *history, *hp;
 
     history = canonicalize(rl);
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER2))
-    {
+    if (enable_debug(DEBUG_ORDER2)) {
 	debugmsg("Export phase 2:\n");
 	for (hp = history; hp < history + export_stats.export_total_commits; hp++)
 	    dump_commit(hp->commit, logfile);
@@ -775,8 +800,9 @@ void export_commits(forest_t *forest,
 #endif /* DEBUG */
 
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER2))
+    if (enable_debug(DEBUG_ORDER2)) {
 	debugmsg("Export phase 3:\n");
+    }
 #endif /* DEBUG */
     for (hp = history; hp < history + export_stats.export_total_commits; hp++) {
 	bool report = true;
@@ -785,8 +811,9 @@ void export_commits(forest_t *forest,
 		report = false;
 	    } else if (!hp->realized) {
 		struct commit_seq *lp;
-		if (hp->commit->parent != NULL && display_date(hp->commit->parent, markmap[hp->commit->parent->serial], opts->force_dates) < opts->fromtime)
+		if (hp->commit->parent != NULL && display_date(hp->commit->parent, markmap[hp->commit->parent->serial], opts->force_dates) < opts->fromtime) {
 		    (void)printf("from %s%s^0\n\n", opts->branch_prefix, hp->head->ref_name);
+		}
 		for (lp = hp; lp < history + export_stats.export_total_commits; lp++) {
 		    if (lp->head == hp->head) {
 			lp->realized = true;
@@ -806,11 +833,12 @@ void export_commits(forest_t *forest,
 #ifdef __UNUSED__
     // git fast-export no longer emits branch-tip resets.
     for (rev_ref *h = rl->heads; h; h = h->next) {
-	if (display_date(h->commit, markmap[h->commit->serial], opts->force_dates) > opts->fromtime)
-	    printf("reset %s%s\nfrom :%d\n\n",
-		   opts->branch_prefix,
-		   visualize_branch_name(h->ref_name),
-		   (int)markmap[h->commit->serial]);
+	if (display_date(h->commit, markmap[h->commit->serial], opts->force_dates) > opts->fromtime) {
+	      printf("reset %s%s\nfrom :%d\n\n",
+		     opts->branch_prefix,
+		     visualize_branch_name(h->ref_name),
+		     (int)markmap[h->commit->serial]);
+	}
     }
 #endif /* __UNUSED__ */
     free(markmap);
@@ -821,8 +849,9 @@ void export_commits(forest_t *forest,
 
     cleanup(opts);
 
-    if (forest->vendor_warning)
+    if (forest->vendor_warning) {
         warn("vendor branch detected.\n");
+    }
     
     if (forest->skew_vulnerable > 0 && forest->filecount > 1 && !opts->force_dates) {
 	time_t udate = forest->skew_vulnerable;
@@ -833,4 +862,8 @@ void export_commits(forest_t *forest,
 
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

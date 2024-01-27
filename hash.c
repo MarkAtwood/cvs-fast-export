@@ -27,8 +27,9 @@ static hash_t
 fnv1a_hash_mix_string(hash_t seed, const char *val) 
 {
     uint8_t c;
-    while ((c = (uint8_t)*val++))
+    while ((c = (uint8_t)*val++)) {
 	HASH_MIX_FNV1A(seed, c);
+    }
     return seed;
 }
 
@@ -42,8 +43,9 @@ static hash_t
 fnv1a_hash_mix(hash_t seed, const char *val, size_t len)
 {
     size_t i;
-    for (i = 0; i < len; i++)
+    for (i = 0; i < len; i++) {
 	HASH_MIX_FNV1A(seed, val[i]);
+    }
     return seed;
 }
 
@@ -65,8 +67,9 @@ generate_crc32_table(void)
     p = 0xedb88320;
     for (n = 0; n < 256; n++) {
 	hash_t c = n;
-	for (m = 0; m < 8; m++)
+	for (m = 0; m < 8; m++) {
 	    c = (c >> 1) ^ ((c & 1) ? p : 0);
+	}
 	crc32_table[n] = c;
     }
 }
@@ -77,9 +80,12 @@ crc32(const char *string)
     hash_t		crc32 = ~0;
     unsigned char	c;
 
-    if (crc32_table[1] == 0) generate_crc32_table();
-    while ((c = (unsigned char) *string++))
+    if (crc32_table[1] == 0) {
+        generate_crc32_table();
+    }
+    while ((c = (unsigned char) *string++)) {
 	crc32 = (crc32 >> 8) ^ crc32_table[(crc32 ^ c) & 0xff];
+    }
     return ~crc32;
 }
 
@@ -113,5 +119,8 @@ hash_mix_string(hash_t seed, const char *val)
     return fnv1a_hash_mix_string(seed, val);
 }
 
-//end
-
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

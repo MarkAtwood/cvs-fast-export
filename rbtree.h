@@ -18,4 +18,8 @@ void *rbtree_value(struct rbtree_node *n);
 void
 rbtree_free(struct rbtree_node *root);
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

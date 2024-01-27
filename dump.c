@@ -45,4 +45,8 @@ dump_git_commit(const git_commit *c, FILE *fp)
 }
 #endif /* DEBUG */
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

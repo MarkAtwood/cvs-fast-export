@@ -34,8 +34,9 @@ static bool
 rbtree_is_left_child(const struct rbtree_node *node, const struct rbtree_node *parent)
 {
     assert(rbtree_parent(node) == parent);
-    if (parent && parent->left == node)
+    if (parent && parent->left == node) {
 	return true;
+    }
     return false;
 }
 
@@ -43,8 +44,9 @@ static bool
 rbtree_is_right_child(const struct rbtree_node *node, const struct rbtree_node *parent)
 {
     assert(rbtree_parent(node) == parent);
-    if (parent && parent->right == node)
+    if (parent && parent->right == node) {
 	return true;
+    }
     return false;
 }
 
@@ -53,18 +55,20 @@ rbtree_sibling(const struct rbtree_node *node)
 {
     struct rbtree_node *parent;
     parent = rbtree_parent(node);
-    if (rbtree_is_left_child(node, parent))
+    if (rbtree_is_left_child(node, parent)) {
 	return parent->right;
-    else
+    } else {
 	return parent->left;
+    }
 }
 
 static rbtree_color
 rbtree_node_color(const struct rbtree_node *node)
 /* we use NULL as sentinel */
 {
-    if (node)
+  if (node) {
 	return node->color;
+  }
     return BLACK;
 }
 
@@ -75,10 +79,12 @@ rbtree_assert_links(const struct rbtree_node *node)
  * correct at all times */
 {
     if (node) {
-	if (node->left)
-	    assert(rbtree_is_left_child(node->left, node));
-	if (node->right)
-	    assert(rbtree_is_right_child(node->right, node));
+	if (node->left) {
+	      assert(rbtree_is_left_child(node->left, node));
+	}
+	if (node->right) {
+	      assert(rbtree_is_right_child(node->right, node));
+	}
 	rbtree_assert_links(node->left);
 	rbtree_assert_links(node->right);
     }
@@ -110,18 +116,20 @@ rbtree_assert_property_5_helper(const struct rbtree_node *node,
 			     const int current_count,
 			     int *first_leaf_count)
 {
-    if (struct rbtree_node_color(node) == BLACK)
-	++current_count;
+    if (struct rbtree_node_color(node) == BLACK) {
+	  ++current_count;
+    }
 
     if (node) {
 	rbtree_assert_property_5_helper(node->left, current_count, first_leaf_count);
 	rbtree_assert_property_5_helper(node->right, current_count, first_leaf_count);
     }
     else {
-	if (*first_leaf_count != -1)
-	    assert(current_count == *first_leaf_count);
-	else
-	    *first_leaf_count = current_count;
+	if (*first_leaf_count != -1) {
+	      assert(current_count == *first_leaf_count);
+	} else {
+	      *first_leaf_count = current_count;
+	}
     }
 }
 
@@ -163,18 +171,18 @@ rbtree_rotate_helper(struct rbtree_node *x, struct rbtree_node *y)
 	b = y->right;
 	x->left = b;
 	y->right = x;
-    }
-    else {
+    } else {
 	b = y->left;
 	x->right = b;
 	y->left = x;
     }
 
     if (p) {
-	if (rbtree_is_left_child(x, p))
-	    p->left = y;
-	else
-	    p->right = y;
+	if (rbtree_is_left_child(x, p)) {
+	      p->left = y;
+	} else {
+	      p->right = y;
+	}
     }
 
     x->parent = y;
@@ -240,8 +248,9 @@ rbtree_insert_fixup(struct rbtree_node **root, struct rbtree_node *z)
 	   the place where it is stored */
 	struct rbtree_node *r;
 	r = *root;
-	while (r->parent)
+	while (r->parent) {
 	    r = r->parent;
+	}
 	*root = r;
     }
     (*root)->color = BLACK;
@@ -257,12 +266,14 @@ rbtree_insert(struct rbtree_node **root, const void *key, void *value,
     nodep = root;
     while ((node = *nodep)) {
 	parent = node;
-	if (compare(node->key, key) < 0)
+	if (compare(node->key, key) < 0) {
 	    nodep = (struct rbtree_node **)&node->left;
-	else if (compare(node->key, key) > 0)
+	}
+	else if (compare(node->key, key) > 0) {
 	    nodep = (struct rbtree_node **)&node->right;
-	else
+	} else {
 	    fatal_error("internal error - duplicate key in red black tree");
+	}
     }
     node = xcalloc(1, sizeof(struct rbtree_node), "red black tree insertion");
     node->key = key;
@@ -286,10 +297,11 @@ rbtree_lookup(struct rbtree_node *root, const void *key,
     struct rbtree_node *node;
     node = root;
     while (node && compare(node->key, key) != 0) {
-	if (compare(node->key, key) < 0)
-	    node = node->left;
-	else
-	    node = node->right;
+	if (compare(node->key, key) < 0) {
+	      node = node->left;
+	} else {
+	      node = node->right;
+	}
     }
     return node;
 }

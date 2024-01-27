@@ -55,8 +55,9 @@ rev_list_set_tail(head_list *rl)
 		c->tail = true;
 		tail = false;
 	    }
-	    if (c->refcount++ >= MAX_BRANCHCOUNT_T)
+	    if (c->refcount++ >= MAX_BRANCHCOUNT_T) {
 		fatal_error("too many branches, widen branchcount_t");
+	    }
 	}
     }
 }
@@ -69,13 +70,16 @@ rev_list_validate(head_list *rl)
     rev_ref	*h;
     cvs_commit	*c;
     for (h = rl->heads; h; h = h->next) {
-	if (h->tail)
-	    continue;
+	if (h->tail) {
+	      continue;
+	}
 	for (c = h->commit; c && c->parent; c = c->parent) {
-	    if (c->tail)
-		break;
-	    if (time_compare(c->date, c->parent->date) < 0)
-		return false;
+	    if (c->tail) {
+		  break;
+	    }
+	    if (time_compare(c->date, c->parent->date) < 0) {
+		  return false;
+	    }
 	}
     }
 
@@ -83,4 +87,8 @@ rev_list_validate(head_list *rl)
 }
 #endif
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

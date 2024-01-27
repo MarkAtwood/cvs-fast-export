@@ -58,8 +58,9 @@ enum stringwork {ENTER, EDIT};
 static int in_buffer_ungetc(editbuffer_t *eb)
 {
     int c;
-    if (Ginbuf(eb)->read_count == 0)
+    if (Ginbuf(eb)->read_count == 0) {
 	return EOF;
+    }
     --Ginbuf(eb)->read_count;
     --Ginbuf(eb)->ptr;
     c = *Ginbuf(eb)->ptr;
@@ -83,7 +84,7 @@ static int in_buffer_getc(editbuffer_t *eb)
 	    return EOF;
 #ifdef LINESTATS
 	} else {
-	eb->has_stringdelim = true;
+	    eb->has_stringdelim = true;
 #endif
 	}
     }
@@ -98,10 +99,12 @@ static uchar *in_get_line(editbuffer_t *eb)
     eb->has_stringdelim = false;
 #endif
     c=in_buffer_getc(eb);
-    if (c == EOF)
+    if (c == EOF) {
 	return NULL;
-    while (c != EOF && c != '\n')
+    }
+    while (c != EOF && c != '\n') {
 	c = in_buffer_getc(eb);
+    }
 #ifdef LINESTATS
     eb->line_len = Ginbuf(eb)->ptr - ptr;
 #endif
@@ -119,8 +122,9 @@ static void in_buffer_init(editbuffer_t *eb,
 {
     Ginbuf(eb)->ptr = Ginbuf(eb)->buffer = (uchar *)text;
     Ginbuf(eb)->read_count=0;
-    if (bypass_initial && *Ginbuf(eb)->ptr++ != SDELIM)
+    if (bypass_initial && *Ginbuf(eb)->ptr++ != SDELIM) {
 	fatal_error("Illegal buffer, missing @ %s", text);
+    }
 }
 
 static void out_buffer_init(editbuffer_t *eb)
@@ -167,8 +171,9 @@ inline static void out_putc(editbuffer_t *eb, const int c)
      */
     register struct out_buffer_type *ob = eb->Goutbuf;
     *ob->ptr++ = c;
-    if (ob->ptr >= ob->end_of_text)
+    if (ob->ptr >= ob->end_of_text) {
 	out_buffer_enlarge(eb);
+    }
 }
 
 static void out_printf(editbuffer_t *eb, const char *fmt, ...)
@@ -190,14 +195,16 @@ static void out_printf(editbuffer_t *eb, const char *fmt, ...)
 
 static void out_fputs(editbuffer_t *eb, const char *s)
 {
-    while (*s)
-	out_putc(eb, *s++);
+    while (*s) {
+	  out_putc(eb, *s++);
+    }
 }
 
 static void out_awrite(editbuffer_t *eb, const char *s, size_t len)
 {
-    while (len--)
-	out_putc(eb, *s++);
+    while (len--) {
+	  out_putc(eb, *s++);
+    }
 }
 
 static bool latin1_alpha(const int c)
@@ -219,9 +226,11 @@ enum expand_mode expand_override(char const *s)
         /* Don't modify this without syncing the EXPAND constants in cvs.h */
 	char *const expand_names[] = {"kv", "kvl", "k", "v", "o", "b"};
 	int i;
-	for (i=0; i < 6; ++i)
-	    if (strcmp(s,expand_names[i]) == 0)
-		return(enum expand_mode) i;
+	for (i=0; i < 6; ++i) {
+	    if (strcmp(s,expand_names[i]) == 0) {
+		  return(enum expand_mode) i;
+	    }
+	}
     }
     return EXPANDKB;
 }
@@ -247,34 +256,40 @@ static char const * getfullRCSname(editbuffer_t *eb)
     char const *r;
     char* d;
 
-    if (eb->Gfilename[0] == '/')
+    if (eb->Gfilename[0] == '/') {
 	return eb->Gfilename;
+    }
 
     /* If we've already calculated the absolute path, return it */
-    if (eb->Gabspath)
+    if (eb->Gabspath) {
 	return eb->Gabspath;
+    }
 
     /* Get working directory and strip any trailing slashes */
     wdbuflen = _POSIX_PATH_MAX + 1;
     wdbuf = xmalloc(wdbuflen, "getcwd");
     while (!getcwd(wdbuf, wdbuflen)) {
-	if (errno == ERANGE)
-	    /* coverity[leaked_storage] */
-	    xrealloc(wdbuf, wdbuflen<<1, "getcwd");
-	else 
-	    fatal_system_error("getcwd");
+	if (errno == ERANGE) {
+	      /* coverity[leaked_storage] */
+	      xrealloc(wdbuf, wdbuflen<<1, "getcwd");
+	} else {
+	      fatal_system_error("getcwd");
+	}
     }
 
     /* Trim off trailing slashes */
     dlen = strlen(wdbuf);
-    while (dlen && wdbuf[dlen-1] == '/')
+    while (dlen && wdbuf[dlen-1] == '/') {
 	--dlen;
+    }
     wdbuf[dlen] = 0;
 
     /* Ignore leading `./'s in Gfilename. */
-    for (r = eb->Gfilename;  r[0]=='.' && r[1] == '/';  r += 2)
-	while (r[2] == '/')
-	    r++;
+    for (r = eb->Gfilename;  r[0]=='.' && r[1] == '/';  r += 2) {
+	while (r[2] == '/') {
+	      r++;
+	}
+    }
 
     /* Build full pathname.  */
     eb->Gabspath = d = xmalloc(dlen + strlen(r) + 2, "pathname building");
@@ -313,8 +328,9 @@ static enum markers trymatch(char const *const string)
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar * l)
 /* Before line N, insert line L.  N is 0-origin.  */
 {
-    if (n > Glinemax(eb) - Ggapsize(eb))
+  if (n > Glinemax(eb) - Ggapsize(eb)) {
 	fatal_error("edit script tried to insert beyond eof");
+  }
     if (!Ggapsize(eb)) {
 	if (Glinemax(eb)) {
 	    Ggap(eb) = Ggapsize(eb) = Glinemax(eb); Glinemax(eb) <<= 1;
@@ -324,10 +340,11 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar * l)
 	    Gline(eb) = xmalloc(sizeof(editline_t) *  Glinemax(eb), "insertline");
 	}
     }
-    if (n < Ggap(eb))
+    if (n < Ggap(eb)) {
 	memmove(Gline(eb)+n+Ggapsize(eb), Gline(eb)+n, (Ggap(eb)-n) * sizeof(editline_t));
-    else if (Ggap(eb) < n)
+    } else if (Ggap(eb) < n) {
 	memmove(Gline(eb)+Ggap(eb), Gline(eb)+Ggap(eb)+Ggapsize(eb), (n-Ggap(eb)) * sizeof(editline_t));
+    }
     Gline(eb)[n].ptr = l;
     Gline(eb)[n].has_stringdelim = eb->has_stringdelim;
     Gline(eb)[n].length = eb->line_len;
@@ -341,12 +358,14 @@ static void deletelines(editbuffer_t *eb,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 {
     unsigned long l = n + nlines;
-    if (Glinemax(eb)-Ggapsize(eb) < l  ||  l < n)
+    if (Glinemax(eb)-Ggapsize(eb) < l  ||  l < n) {
 	fatal_error("edit script tried to delete beyond eof");
-    if (l < Ggap(eb))
+    }
+    if (l < Ggap(eb)) {
 	memmove(Gline(eb)+l+Ggapsize(eb), Gline(eb)+l, (Ggap(eb)-l) * sizeof(editline_t));
-    else if (Ggap(eb) < n)
+    } else if (Ggap(eb) < n) {
 	memmove(Gline(eb)+Ggap(eb), Gline(eb)+Ggap(eb)+Ggapsize(eb), (n-Ggap(eb)) * sizeof(editline_t));
+    }
     Ggap(eb) = n;
     Ggapsize(eb) += nlines;
 }
@@ -355,8 +374,9 @@ static void deletelines(editbuffer_t *eb,
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar * l)
 /* Before line N, insert line L.  N is 0-origin.  */
 {
-    if (n > Glinemax(eb) - Ggapsize(eb))
-	fatal_error("edit script tried to insert beyond eof");
+    if (n > Glinemax(eb) - Ggapsize(eb)) {
+	  fatal_error("edit script tried to insert beyond eof");
+    }
     if (!Ggapsize(eb)) {
 	if (Glinemax(eb)) {
 	    Ggap(eb) = Ggapsize(eb) = Glinemax(eb); Glinemax(eb) <<= 1;
@@ -366,10 +386,11 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar * l)
 	    Gline(eb) = xmalloc(sizeof(uchar *) *  Glinemax(eb), "insertline");
 	}
     }
-    if (n < Ggap(eb))
+    if (n < Ggap(eb)) {
 	memmove(Gline(eb)+n+Ggapsize(eb), Gline(eb)+n, (Ggap(eb)-n) * sizeof(uchar *));
-    else if (Ggap(eb) < n)
+    } else if (Ggap(eb) < n) {
 	memmove(Gline(eb)+Ggap(eb), Gline(eb)+Ggap(eb)+Ggapsize(eb), (n-Ggap(eb)) * sizeof(uchar *));
+    }
     Gline(eb)[n] = l;
     Ggap(eb) = n + 1;
     Ggapsize(eb)--;
@@ -380,12 +401,14 @@ static void deletelines(editbuffer_t *eb,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 {
     unsigned long l = n + nlines;
-    if (Glinemax(eb)-Ggapsize(eb) < l  ||  l < n)
+    if (Glinemax(eb)-Ggapsize(eb) < l  ||  l < n) {
 	fatal_error("edit script tried to delete beyond eof");
-    if (l < Ggap(eb))
+    }
+    if (l < Ggap(eb)) {
 	memmove(Gline(eb)+l+Ggapsize(eb), Gline(eb)+l, (Ggap(eb)-l) * sizeof(uchar *));
-    else if (Ggap(eb) < n)
+    } else if (Ggap(eb) < n) {
 	memmove(Gline(eb)+Ggap(eb), Gline(eb)+Ggap(eb)+Ggapsize(eb), (n-Ggap(eb)) * sizeof(uchar *));
+    }
     Ggap(eb) = n;
     Ggapsize(eb) += nlines;
 }
@@ -410,8 +433,9 @@ static enum edit_op parse_next_delta_command(editbuffer_t *eb,
     long line1, nlines;
 
     cmd = in_buffer_getc(eb);
-    if (cmd==EOF)
+    if (cmd==EOF) {
 	return eof;
+    }
 
     /*
      * 1.11 sometines issues replacement text without ops at the front. Example:
@@ -426,31 +450,36 @@ static enum edit_op parse_next_delta_command(editbuffer_t *eb,
      * build.number=41316
      * @
      */
-    if (cmd != 'a' && cmd != 'd')
+    if (cmd != 'a' && cmd != 'd') {
 	return replace;
+    }
     
     line1 = parsenum(eb);
 
-    while (in_buffer_getc(eb) == ' ')
-	;
+    while (in_buffer_getc(eb) == ' ') {
+	continue;
+    }
     in_buffer_ungetc(eb);
 
     nlines = parsenum(eb);
 
-    while (in_buffer_getc(eb) != '\n')
-	;
+    while (in_buffer_getc(eb) != '\n') {
+	continue;
+    }
 
     // cppcheck-suppress invalidTestForOverflow
-    if (!nlines || line1+nlines < line1)
+    if (!nlines || line1+nlines < line1) {
 	fatal_error("corrupt delta in %s", eb->Gfilename);
+    }
 
     if (cmd == 'a') {
 	if (line1 < dc->adprev)
 	    fatal_error("backward insertion in delta");
 	dc->adprev = line1 + 1;
     } else if (cmd == 'd') {
-	if (line1 < dc->adprev  ||  line1 < dc->dafter)
-	    fatal_error("backward deletion in delta");
+	if (line1 < dc->adprev  ||  line1 < dc->dafter) {
+	      fatal_error("backward deletion in delta");
+	}
 	dc->adprev = line1;
 	dc->dafter = line1 + nlines;
     }
@@ -497,8 +526,9 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 	const char *target_lockedby = NULL;
 #endif /* __UNUSED__ */
 
-	if (exp != EXPANDKV)
+	if (exp != EXPANDKV) {
 	    out_printf(eb, "%c%c", VDELIM, ' ');
+	}
 
 	switch(marker) {
 	case Author:
@@ -509,22 +539,25 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 	    break;
 	case Id:
 	case Header:
-	    if (marker == Id )
-		escape_string(eb, basefilename(eb->Gfilename));
-	    else
-		escape_string(eb, getfullRCSname(eb));
+	    if (marker == Id ) {
+		  escape_string(eb, basefilename(eb->Gfilename));
+	    } else {
+		  escape_string(eb, getfullRCSname(eb));
+	    }
 	    out_printf(eb, " %s %s %s %s",
 		       eb->Gversion_number, date_string,
 		       eb->Gversion->author, eb->Gversion->state);
 #ifdef __UNUSED__
-	    if (target_lockedby && exp == EXPANDKKVL)
+	    if (target_lockedby && exp == EXPANDKKVL) {
 		out_printf(eb, " %s", target_lockedby);
+	    }
 #endif /* __UNUSED__ */
 	    break;
 	case Locker:
 #ifdef __UNUSED__
-	    if (target_lockedby && exp == EXPANDKKVL)
+	  if (target_lockedby && exp == EXPANDKKVL) {
 		out_fputs(eb, target_lockedby);
+	  }
 #endif /* __UNUSED__ */
 	    break;
 	case Log:
@@ -550,8 +583,9 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 
 #if 0
 /* Closing delimiter is processed again in expandline */
-    if (exp != EXPANDKV)
+    if (exp != EXPANDKV) {
 	out_putc(eb, KDELIM);
+    }
 #endif
 
     if (marker == Log) {
@@ -563,20 +597,23 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 	 * "Closing delimiter is processed again in expandline"
 	 * does not apply here, since we consume the input.
 	 */
-	if (exp != EXPANDKV)
+	if (exp != EXPANDKV) {
 	    out_putc(eb, KDELIM);
+	}
 
 	kw = eb->Glog;
 	ls = strlen(eb->Glog);
-	if (sizeof(ciklog)-1<=ls && !memcmp(kw,ciklog,sizeof(ciklog)-1))
+	if (sizeof(ciklog)-1<=ls && !memcmp(kw,ciklog,sizeof(ciklog)-1)) {
 	    return;
+	}
 
 	/* Back up to the start of the current input line */
 	int num_kdelims = 0;
 	for (;;) {
 	    c = in_buffer_ungetc(eb);
-	    if (c == EOF)
+	    if (c == EOF) {
 		break;
+	    }
 	    if (c == '\n') {
 		in_buffer_getc(eb);
 		break;
@@ -598,15 +635,17 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 	xxp = leader = xmalloc(kdelim_ptr - in_buffer_loc(eb), "keyword expansion");
 	for (cs = 0; ;  cs++) {
 	    c = in_buffer_getc(eb);
-	    if (c == KDELIM)
+	    if (c == KDELIM) {
 		break;
+	    }
 	    leader[cs] = c;
 	}
 
 	/* Convert traditional C or Pascal leader to ` *'.  */
 	for (cw = 0;  cw < cs;  cw++)
-	    if (!latin1_whitespace(xxp[cw]))
-		break;
+	    if (!latin1_whitespace(xxp[cw])) {
+		  break;
+	    }
 	if (cw+1 < cs &&  xxp[cw+1] == '*' &&
 	    (xxp[cw] == '/'  ||  xxp[cw] == '(')) {
 	    size_t i = cw+1;
@@ -614,8 +653,9 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 		if (++i == cs) {
 		    leader[cw] = ' ';
 		    break;
-		} else if (!latin1_whitespace(xxp[i]))
+		} else if (!latin1_whitespace(xxp[i])) {
 		    break;
+		}
 	    }
 	}
 
@@ -638,8 +678,9 @@ static void keyreplace(editbuffer_t *eb, enum markers marker)
 	for (;;) {
 	    out_putc(eb, '\n');
 	    out_awrite(eb, xxp, cw);
-	    if (!ls)
+	    if (!ls) {
 		break;
+	    }
 	    --ls;
 	    c = *kw++;
 	    if (c != '\n') {
@@ -691,10 +732,11 @@ static int expandline(editbuffer_t *eb)
 		*tp++ = KDELIM;
 		for (;;) {
 		    c = in_buffer_getc(eb);
-		    if (tp <= &eb->Gkeyval[KEYLENGTH] && latin1_alpha(c))
+		    if (tp <= &eb->Gkeyval[KEYLENGTH] && latin1_alpha(c)) {
 			*tp++ = c;
-		    else
+		    } else {
 			break;
+		    }
 		}
 		*tp++ = c; *tp = '\0';
 		matchresult = trymatch(eb->Gkeyval+1);
@@ -710,8 +752,9 @@ static int expandline(editbuffer_t *eb)
 		    tlim = eb->Gkeyval + eb->Gkvlen;
 		    for (;;) {
 			c = in_buffer_getc(eb);
-			if (c=='\n' || c==KDELIM)
+			if (c=='\n' || c==KDELIM) {
 			    break;
+			}
 			*tp++ =c;
 			if (tlim <= tp) {
 			    orig_size = eb->Gkvlen;
@@ -721,8 +764,9 @@ static int expandline(editbuffer_t *eb)
 			    tp = eb->Gkeyval + orig_size;
 
 			}
-			if (c==EOF)
+			if (c==EOF) {
 			    goto keystring_eof;
+			}
 		    }
 		    if (c!=KDELIM) {
 			/* couldn't find closing KDELIM -- give up */
@@ -740,8 +784,9 @@ static int expandline(editbuffer_t *eb)
 			 * loop will resume processing starting with
 			 * it.
 			 */
-			if (c == KDELIM)
-				in_buffer_ungetc(eb);
+		    if (c == KDELIM) {
+		        in_buffer_ungetc(eb);
+		    }
 		}
 		/* now put out the new keyword value */
 		keyreplace(eb, matchresult);
@@ -785,19 +830,23 @@ load_text(editbuffer_t *eb, const cvs_text *text)
 	return base + offset;
     }
 
-    if ((fd = open(text->filename, O_RDONLY)) == -1)
+    if ((fd = open(text->filename, O_RDONLY)) == -1) {
         fatal_system_error("open: %s", text->filename);
-    if (fstat(fd, &st) == -1)
+    }
+    if (fstat(fd, &st) == -1) {
         fatal_system_error("fstat: %s", text->filename);
+    }
 #if SIZE_MAX < LONG_MAX
     /* check will always succed if sizeof(size_t) == sizeof(off_t)  */
-    if (st.st_size > SIZE_MAX)
+    if (st.st_size > SIZE_MAX) {
         fatal_error("%s: too big", text->filename);
+    }
 #endif
     size = st.st_size;
     base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-    if (base == MAP_FAILED)
+    if (base == MAP_FAILED) {
         fatal_system_error("mmap: %s %zu", text->filename, size);
+    }
     close(fd);
 
     munmap(eb->text_map.base, eb->text_map.size);
@@ -827,17 +876,22 @@ load_text(editbuffer_t *eb, const cvs_text *text)
 {
     FILE *f = fopen(text->filename, "rb");
 
-    if (!f)
+    if (!f) {
 	fatal_error("Cannot open %s", text->filename);
-    else {
+    } else {
 	uchar *data;
 	if (fseek(f, text->offset, SEEK_SET) == -1)
 	    fatal_system_error("fseek %s", text->filename);
 	data = xmalloc(text->length + 2, __func__);
-	if (fread(data, 1, text->length, f) != text->length)
+	if (fread(data, 1, text->length, f) != text->length) {
 	    fatal_system_error("short read %s", text->filename);
-	if (data[0] != '@') fatal_error("doesn't start with '@'");
-	if (data[text->length - 1] != '@') fatal_error("doesn't end with '@'");
+	}
+	if (data[0] != '@') {
+	    fatal_error("doesn't start with '@'");
+	}
+	if (data[text->length - 1] != '@') {
+	    fatal_error("doesn't end with '@'");
+	}
 	data[text->length] = ' ';
 	data[text->length + 1] = '\0';
 	fclose(f);
@@ -873,8 +927,9 @@ static void process_delta(editbuffer_t *eb,
 
     switch(func) {
     case ENTER:
-	while ( (ptr=in_get_line(eb)) )
-	    insertline(eb, editline++, ptr);
+	while ((ptr=in_get_line(eb))) {
+	      insertline(eb, editline++, ptr);
+	}
 	/* coverity[fallthrough] */
     case EDIT:
 	dc.dafter = dc.adprev = 0;
@@ -884,8 +939,9 @@ static void process_delta(editbuffer_t *eb,
 	    case append:
 		editline = dc.line1 + adjust;
 		linecnt = dc.nlines;
-		while (linecnt--)
+		while (linecnt--) {
 		    insertline(eb, editline++, in_get_line(eb));
+		}
 		adjust += dc.nlines;
 		break;
 	    case delete:
@@ -950,8 +1006,9 @@ static void snapshotline(editbuffer_t *eb, register uchar * l)
 #endif
     do {
 #ifndef FASTOUT
-	if ((c = *l++) == SDELIM  &&  *l++ != SDELIM)
-	    return;
+	if ((c = *l++) == SDELIM  &&  *l++ != SDELIM) {
+	      return;
+	}
 	out_putc(eb, c);
 #else
 	if ((c = *l++) == SDELIM  &&  *l++ != SDELIM) {
@@ -1004,25 +1061,30 @@ static void snapshotedit(editbuffer_t *eb)
     editline_t *p, *lim, *l = Gline(eb);
 
     for (p=l, lim=l+Ggap(eb);  p<lim;  )
-	if (p->has_stringdelim)
-	    snapshotline(eb, (*p++).ptr);
-	else
-	    snapshotline_nodelim(eb, p++);
+	if (p->has_stringdelim) {
+	      snapshotline(eb, (*p++).ptr);
+	} else {
+	      snapshotline_nodelim(eb, p++);
+	}
 
-    for (p+=Ggapsize(eb), lim=l+Glinemax(eb);  p<lim;  )
-	if (p->has_stringdelim)
-	    snapshotline(eb, (*p++).ptr);
-	else
-	    snapshotline_nodelim(eb, p++);
+    for (p+=Ggapsize(eb), lim=l+Glinemax(eb);  p<lim;  ) {
+	if (p->has_stringdelim) {
+	      snapshotline(eb, (*p++).ptr);
+	} else {
+	      snapshotline_nodelim(eb, p++);
+	}
+    }
 }
 #else
 static void snapshotedit(editbuffer_t *eb)
 {
     uchar **p, **lim, **l=Gline(eb);
-    for (p=l, lim=l+Ggap(eb);  p<lim;  )
+    for (p=l, lim=l+Ggap(eb);  p<lim;  ) {
 	snapshotline(eb, *p++);
-    for (p+=Ggapsize(eb), lim=l+Glinemax(eb);  p<lim;  )
+    }
+    for (p+=Ggapsize(eb), lim=l+Glinemax(eb);  p<lim;  ) {
 	snapshotline(eb, *p++);
+    }
 }
 #endif
 
@@ -1092,10 +1154,11 @@ void generate_files(generator_t *gen,
     for (;;) {
 	if (node->commit != NULL && !node->commit->dead) {
 	    out_buffer_init(eb);
-	    if (eb->Gexpand != EXPANDKB && eb->Gexpand != EXPANDKO)
+	    if (eb->Gexpand != EXPANDKB && eb->Gexpand != EXPANDKO) {
 		expandedit(eb);
-	    else
+	    } else {
 		snapshotedit(eb);
+	    }
 	    hook(node, out_buffer_text(eb), out_buffer_count(eb), opts);
 	    out_buffer_cleanup(eb);
 	}
@@ -1108,8 +1171,9 @@ void generate_files(generator_t *gen,
 	    unload_text(eb, &eb->current->node->patch->text,
 	                eb->current->node_text);
 	    free(eb->current->line);
-	    if (eb->current == eb->stack)
+	    if (eb->current == eb->stack) {
 		goto Done;
+	    }
 	    node = (node_t *)eb->current->next_branch;
 	    --eb->current;
 	    if (node) {
@@ -1126,4 +1190,8 @@ Done:
     generate_wrap(gen);
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

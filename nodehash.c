@@ -25,9 +25,11 @@ node_for_cvs_number(nodehash_t *context, const cvs_number *const n)
     const cvs_number *k = n;
     node_t *p;
     hash_t hash = hash_cvs_number(k) % NODE_HASH_SIZE;
-    for (p = context->table[hash]; p; p = p->hash_next)
-	if (p->number == k)
-	    return p;
+    for (p = context->table[hash]; p; p = p->hash_next) {
+	if (p->number == k) {
+	      return p;
+	}
+    }
 
     /*
      * While it looks like a good idea, an attempt at slab allocation
@@ -56,9 +58,11 @@ static node_t *find_parent(nodehash_t *context,
     key.c -= depth;
     k = atom_cvs_number(key);
     hash = hash_cvs_number(k) % NODE_HASH_SIZE;
-    for (p = context->table[hash]; p; p = p->hash_next)
-	if (p->number == k)
-	    return p;
+    for (p = context->table[hash]; p; p = p->hash_next) {
+	if (p->number == k) {
+	      return p;
+	}
+    }
 
     return NULL;
 }
@@ -128,15 +132,19 @@ static int compare(const void *a, const void *b)
     node_t *x = *(node_t * const *)a, *y = *(node_t * const *)b;
     int n, i;
     n = x->number->c;
-    if (n < y->number->c)
+    if (n < y->number->c) {
 	return -1;
-    if (n > y->number->c)
+    }
+    if (n > y->number->c) {
 	return 1;
+    }
     for (i = 0; i < n; i++) {
-	if (x->number->n[i] < y->number->n[i])
-	    return -1;
-	if (x->number->n[i] > y->number->n[i])
-	    return 1;
+	if (x->number->n[i] < y->number->n[i]) {
+	      return -1;
+	}
+	if (x->number->n[i] > y->number->n[i]) {
+	      return 1;
+	}
     }
     return 0;
 }
@@ -153,8 +161,9 @@ static void try_pair(nodehash_t *context, node_t *a, node_t *b)
 	    return;
 	}
 	for (i = n - 2; i >= 0; i--)
-	    if (a->number->n[i] != b->number->n[i])
+	  if (a->number->n[i] != b->number->n[i]) {
 		break;
+	  }
 	if (i < 0) {
 	    a->next = b;
 	    a->to = b;
@@ -170,8 +179,9 @@ static void try_pair(nodehash_t *context, node_t *a, node_t *b)
          * but no parent is ever found.
 	 */
 	node_t *p = find_parent(context, b->number, 1);
-	if (p)
+	if (p) {
 	    p->next = b;
+	}
     }
 }
 
@@ -187,8 +197,9 @@ cvs_find_version(const cvs_file *cvs, const cvs_number *number)
     for (cv = cvs->gen.versions; cv; cv = cv->next) {
 	if (cvs_same_branch(number, cv->number) &&
 	    cvs_number_compare(cv->number, number) > 0 &&
-	    (!nv || cvs_number_compare(nv->number, cv->number) > 0))
+	    (!nv || cvs_number_compare(nv->number, cv->number) > 0)) {
 	    nv = cv;
+	}
     }
     return nv ? nv->node : NULL;
 }
@@ -196,16 +207,18 @@ cvs_find_version(const cvs_file *cvs, const cvs_number *number)
 void build_branches(nodehash_t *context)
 /* build branch links in the node list */ 
 {
-    if (context->nentries == 0)
-	return;
+    if (context->nentries == 0) {
+	  return;
+    }
 
     node_t **v = xmalloc(sizeof(node_t *) * context->nentries, __func__), **p = v;
     int i;
 
     for (i = 0; i < NODE_HASH_SIZE; i++) {
 	node_t *q;
-	for (q = context->table[i]; q; q = q->hash_next)
+	for (q = context->table[i]; q; q = q->hash_next) {
 	    *p++ = q;
+	}
     }
     qsort(v, context->nentries, sizeof(node_t *), compare);
     /* only trunk? */
@@ -215,8 +228,9 @@ void build_branches(nodehash_t *context)
 	try_pair(context, p[0], p[1]);
     for (p = v + context->nentries - 1 ; p >= v; p--) {
 	node_t *a = *p, *b = NULL;
-	if (!a->starts)
+	if (!a->starts) {
 	    continue;
+	}
 	b = find_parent(context, a->number, 2);
 	if (!b) {
 	    char name[CVS_MAX_REV_LEN];
@@ -229,4 +243,8 @@ void build_branches(nodehash_t *context)
     free(v);
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

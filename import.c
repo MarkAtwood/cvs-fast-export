@@ -91,14 +91,17 @@ rectify_name(const char *raw, char *rectified, size_t rectlen)
 	        len -= 2;
 	} else { /* s[len-1] == '/' */
 	    /* drop some path components */
-	    if (len == sizeof "Attic" && memcmp(s, "Attic/", len) == 0)
-	        goto skip;
-	    if (len == sizeof "RCS" && memcmp(s, "RCS/", len) == 0)
-		goto skip;
+	    if (len == sizeof "Attic" && memcmp(s, "Attic/", len) == 0) {
+		  goto skip;
+	    }
+	    if (len == sizeof "RCS" && memcmp(s, "RCS/", len) == 0) {
+		  goto skip;
+	    }
 	}
 	/* copy the path component */
-	if (p + len >= rectified + rectlen)
+	if (p + len >= rectified + rectlen) {
 	    fatal_error("File name %s\n too long\n", raw);
+	}
 	memcpy(p, s, len);
 	p += len;
     skip:
@@ -183,9 +186,8 @@ strcommonendingwith(const char *a, const char *b, char endc)
 static void *worker(void *arg)
 /* consume masters off the queue */
 {
-  analysis_t out = {0, 0, 0};
-    for (;;)
-    {
+    analysis_t out = {0, 0, 0};
+    for (;;) {
 	/* pop a master off the queue, terminating if none left */
 #ifdef THREADS
 	if (threads > 1)
@@ -193,11 +195,13 @@ static void *worker(void *arg)
 #endif /* THREADS */
 	size_t i = fn_i++;
 #ifdef THREADS
-	if (threads > 1)
+	if (threads > 1) {
 	    pthread_mutex_unlock(&enqueue_mutex);
+	}
 #endif /* THREADS */
-	if (i >= fn_n)
+	if (i >= fn_n) {
 	    return(NULL);
+	}
 
 	/* process it */
 	rev_list_file(&sorted_files[i], &out, &cvs_masters[i], &rev_masters[i]);
@@ -210,14 +214,17 @@ static void *worker(void *arg)
 	if ((generators[i] = out.generator).master_name != NULL) {
 	    progress_jump(++load_current_file);
 	    total_revisions += out.total_revisions;
-	    if (out.skew_vulnerable > skew_vulnerable)
+	    if (out.skew_vulnerable > skew_vulnerable) {
 		skew_vulnerable = out.skew_vulnerable;
-	    if (out.vendor_warning)
+	    }
+	    if (out.vendor_warning) {
 		vendor_warning = true;
+	    }
 	}
 #ifdef THREADS
-	if (threads > 1)
+	if (threads > 1) {
 	    pthread_mutex_unlock(&revlist_mutex);
+	}
 #endif /* THREADS */
     }
 }
@@ -243,8 +250,9 @@ path_deep_compare(const void *a, const void *b)
     int compar;
 
     /* short circuit */
-    if (af == bf)
+    if (af == bf) {
         return 0;
+    }
 
     compar = strcmp(af, bf);
 
@@ -258,14 +266,16 @@ path_deep_compare(const void *a, const void *b)
      *  ?? is a string that may contain slashes
      */
 
-    if (compar == 0)
+    if (compar == 0) {
         return 0;		/* ?? = ?? */
+    }
 
     aslash = strrchr(af, '/');
     bslash = strrchr(bf, '/');
 
-    if (!aslash && !bslash)
+    if (!aslash && !bslash) {
 	return compar;		/*    ? ~ ?    */
+    }
     if (!aslash) return +1;	/*    ? > ??/? */
     if (!bslash) return -1;     /* ??/? < ?    */
 
@@ -276,9 +286,9 @@ path_deep_compare(const void *a, const void *b)
      * are totally different paths. Both cases are satisfied by
      * normal lexicographic sorting:
      */
-    if (aslash - af == bslash - bf)
+    if (aslash - af == bslash - bf) {
 	return compar;		/* ??/? ~ ??/? */
-
+    }
 
     /*
      * Must find the case where the two paths share a common
@@ -354,23 +364,28 @@ void analyze_masters(int argc, const char *argv[],
 		name[l-1] = '\0';
 	    file = name;
 	} else {
-	  file = (char *)argv[j++];
-	    if (!file)
+ 	    file = (char *)argv[j++];
+	    if (!file) {
 		break;
+	    }
 	}
 
-	if (stat(file, &stb) != 0)
+	if (stat(file, &stb) != 0) {
 	    continue;
+	}
 	else if (S_ISDIR(stb.st_mode) != 0) {
-	    if (strstr(file, "CVSROOT") != NULL)
-	        forest->is_cvs = true;
+	    if (strstr(file, "CVSROOT") != NULL) {
+		  forest->is_cvs = true;
+	    }
 	    continue;
 	} else if (!analyzer->promiscuous) {
 	    char *end = file + strlen(file);
-	    if (end - file < 2 || end[-1] != 'v' || end[-2] != ',')
+	    if (end - file < 2 || end[-1] != 'v' || end[-2] != ',') {
 		continue;
-	    if (strstr(file, "CVSROOT") != NULL)
+	    }
+	    if (strstr(file, "CVSROOT") != NULL) {
 		continue;
+	    }
 	}
 	forest->textsize += stb.st_size;
 
@@ -383,15 +398,18 @@ void analyze_masters(int argc, const char *argv[],
 		striplen = c;
 	} else if (striplen < 0) {
 	    striplen = 0;
-	    for (i = 0; i < strlen(file); i++)
-		if (file[i] == '/')
+	    for (i = 0; i < strlen(file); i++) {
+	      if (file[i] == '/') {
 		    striplen = i + 1;
+	      }
+	    }
 	}
 	fn->file = atom(file);
 	last = fn->file;
 	total_files++;
-	if (progress && total_files % 100 == 0)
+	if (progress && total_files % 100 == 0) {
 	    progress_jump(total_files);
+	}
     }
     forest->filecount = total_files;
 
@@ -408,8 +426,9 @@ void analyze_masters(int argc, const char *argv[],
 	// mode?  Unclear. I don't think CVS allows unsuffixed
 	// masters, and it's enough of a weird corner case that I
 	// can't be arsed to dive into the CVS source code to check.
-	if (has_suffix(fn->file, ".cvsignore,v"))
+	if (has_suffix(fn->file, ".cvsignore,v")) {
 	    forest->is_cvs = true;
+	}
 	sorted_files[i].name = fn->file;
 	sorted_files[i++].rectified = atom_rectify_name(fn->file);
 	free(fn);
@@ -440,30 +459,30 @@ void analyze_masters(int argc, const char *argv[],
      * of CVS commit structures (cvs_commit).
      */
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	snprintf(name, sizeof(name), 
 		 "Analyzing masters with %d threads...", threads);
-    else
+    } else
 #endif /* THREADS */
 	strcpy(name, "Analyzing masters...");
     progress_begin(name, total_files);
 #ifdef THREADS
-    if (threads > 1)
-    {
+    if (threads > 1) {
 	int i;
 
 	workers = (pthread_t *)xcalloc(threads, sizeof(pthread_t), __func__);
-	for (i = 0; i < threads; i++)
+	for (i = 0; i < threads; i++) {
 	    pthread_create(&workers[i], &attr, worker, NULL);
+	}
 
         /* Wait for all the threads to die off. */
-	for (i = 0; i < threads; i++)
-          pthread_join(workers[i], NULL);
+	for (i = 0; i < threads; i++) {
+            pthread_join(workers[i], NULL);
+	}
         
 	pthread_mutex_destroy(&enqueue_mutex);
 	pthread_mutex_destroy(&revlist_mutex);
-    }
-    else
+    } else
 #endif /* THREADS */
 	worker(NULL);
 
@@ -478,4 +497,8 @@ void analyze_masters(int argc, const char *argv[],
     forest->vendor_warning = vendor_warning;
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

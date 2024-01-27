@@ -1,6 +1,7 @@
 /*  SPDX-License-Identifier: GPL-2.0+ */
 
 #include <stdlib.h>
+
 #include "cvs.h"
 
 #if defined(__APPLE__)
@@ -285,4 +286,8 @@ void debugmsg(char const *format,...)
     va_end(args);
 }
 
-// end
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

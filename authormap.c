@@ -26,9 +26,11 @@ fullname(const char *name)
     cvs_author	**bucket = &author_buckets[author_hash(name)];
     cvs_author	*a;
 
-    for (a = *bucket; a; a = a->next)
-	if (a->name == name)
+    for (a = *bucket; a; a = a->next) {
+        if (a->name == name) {
 	    return a;
+        }
+    }
     return NULL;
 }
 
@@ -79,8 +81,9 @@ load_author_map(const char *filename)
 	    return false;
 	}
 	full = equal + 1;
-	while (equal > line && equal[-1] == ' ')
+	while (equal > line && equal[-1] == ' ') {
 	    equal--;
+	}
 	*equal = '\0';
 	name = atom(line);
 	if (fullname(name)) {
@@ -100,10 +103,12 @@ load_author_map(const char *filename)
 	    return false;
 	}
 	email = angle + 1;
-	while (full < angle && full[0] == ' ')
+	while (full < angle && full[0] == ' ') {
 	    full++;
-        while (angle > full && angle[-1] == ' ')
+	}
+        while (angle > full && angle[-1] == ' ') {
 	    angle--;
+	}
 	*angle = '\0';
 	a->full = atom(full);
 	angle = strchr(email, '>');
@@ -118,14 +123,16 @@ load_author_map(const char *filename)
 	a->email = atom(email);
 	a->timezone = NULL;
 	if (*++angle) {
-	    while (isspace((unsigned char)*angle))
+	  while (isspace((unsigned char)*angle)) {
 		angle++;
+	  }
 	    while (*angle != '\0') {
 		char *end = angle + strlen(angle) - 1;
-		if (isspace((unsigned char)*end))
+		if (isspace((unsigned char)*end)) {
 		    *end = '\0';
-		else
+		} else {
 		    break;
+		}
 	    }
 	    a->timezone = atom(angle);
 	}
@@ -137,4 +144,8 @@ load_author_map(const char *filename)
     return true;
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

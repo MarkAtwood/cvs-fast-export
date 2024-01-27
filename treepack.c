@@ -95,11 +95,13 @@ revdir_iter_same_dir(const revdir_iter *it1, const revdir_iter *it2)
 cvs_commit *
 revdir_iter_next(revdir_iter *it) {
     while (1) {
-	if (it->file != it->filemax)
-	    return *it->file++;
-	// end of stack
-	if (!it->dirpos)
-	    return NULL;
+	if (it->file != it->filemax) {
+	      return *it->file++;
+	}
+	  // end of stack
+	if (!it->dirpos) {
+	      return NULL;
+	}
 
 	// pop the stack
 	dir_pos *d = &it->dirstack[--it->dirpos];
@@ -132,8 +134,9 @@ revdir_iter_next_dir(revdir_iter *it)
 /* skip the current directory */
 {
     while(1) {
-	if (!it->dirpos)
-	    return NULL;
+	if (!it->dirpos) {
+	      return NULL;
+	}
 
 	dir_pos *d = &it->dirstack[--it->dirpos];
 	if (++d->dir != d->dirmax) {
@@ -155,8 +158,9 @@ revdir_iter_next_dir(revdir_iter *it)
 	    it->file = dir->files;
 	    it->filemax = dir->files + dir->nfiles;
 	}
-	if (it->file != it->filemax)
+	if (it->file != it->filemax) {
 	    return *it->file++;
+	}
     }
 }
 
@@ -171,10 +175,11 @@ revdir_iter_start(revdir_iter *it, const revdir *revdir)
 	d->parent = dir;
 	d->dir = dir->dirs;
 	d->dirmax = dir->dirs + dir->ndirs;
-	if (dir->ndirs > 0)
+	if (dir->ndirs > 0) {
 	    dir = dir->dirs[0];
-	else
+	} else {
 	    break;
+	}
     } 
     it->file = dir->files;
     it->filemax = dir->files + dir->nfiles;
@@ -192,8 +197,9 @@ static const master_dir *
 first_subdir (const master_dir *child, const master_dir *ancestor)
 /* in ancestor/d1/d2/child, return d1 */
 {
-    while (child->parent != ancestor)
-	child = child->parent;
+    while (child->parent != ancestor) {
+	  child = child->parent;
+    }
     return child;
 }
 
@@ -225,10 +231,11 @@ push_rev_pack(const rev_pack * const r)
 {
     unsigned short *s = &frame->sdirs;
     if (*s == frame->ndirs) {
-	if (!*s)
-	    *s = 16;
-	else
-	    *s *= 2;
+	if (!*s) {
+	      *s = 16;
+	} else {
+	      *s *= 2;
+	}
 	frame->dirs = xrealloc(frame->dirs, *s * sizeof(rev_pack *), __func__);
     }
     frame->dirs[frame->ndirs++] = r;
@@ -251,8 +258,9 @@ revdir_pack_add(const cvs_commit *file, const master_dir *dir)
 	    return;
 	}
 	if (dir_is_ancestor(dir, frame->dir)) {
-	    if (frame - frames == MAX_DIR_DEPTH)
-		fatal_error("Directories nested too deep, increase MAX_DIR_DEPTH\n");
+	    if (frame - frames == MAX_DIR_DEPTH) {
+		  fatal_error("Directories nested too deep, increase MAX_DIR_DEPTH\n");
+	    }
 	    
 	    const master_dir *parent = frame++->dir;
 	    frame->dir = first_subdir(dir, parent);
@@ -275,8 +283,9 @@ revdir_pack_end(revdir *revdir)
     const rev_pack * r = NULL;
     while (1) {
 	r = rev_pack_dir();
-	if (frame == frames)
+	if (frame == frames) {
 	    break;
+	}
 	
 	nfiles = 0;
 	frame--;
@@ -300,8 +309,9 @@ revpack_nfiles(const rev_pack *revpack)
 {
     serial_t c = 0, i;
 
-    for (i = 0; i < revpack->ndirs; i++)
+    for (i = 0; i < revpack->ndirs; i++) {
 	c += revpack_nfiles(revpack->dirs[i]);
+    }
     return c + revpack->nfiles;
 
 }
@@ -317,8 +327,7 @@ revdir_pack_files(const cvs_commit **files, const size_t nfiles, revdir *revdir)
 {
     size_t i;
 #ifdef DEBUG
-    if (enable_debug(DEBUG_ORDER1))
-    {
+    if (enable_debug(DEBUG_ORDER1)) {
 	debugmsg("Packing:\n");
 	    for (const cvs_commit **s = files; s < files + nfiles; s++)
 	debugmsg("cvs_commit: %s\n", (*s)->master->name);
@@ -337,8 +346,9 @@ revdir_pack_files(const cvs_commit **files, const size_t nfiles, revdir *revdir)
      */
     revdir_pack_alloc(nfiles);
     revdir_pack_init();
-    for (i = 0; i < nfiles; i++)
+    for (i = 0; i < nfiles; i++) {
 	revdir_pack_add(files[i], files[i]->dir);
+    }
 	
     revdir_pack_end(revdir);
     revdir_pack_free();
@@ -371,3 +381,9 @@ revdir_free_bufs(void)
 	frames[i].sdirs = 0;
     }
 }
+
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

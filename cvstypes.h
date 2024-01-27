@@ -42,3 +42,9 @@ typedef uint16_t		branchcount_t;
 typedef uint32_t        hash_t;
 
 #endif /* _CVSTYPES_H_ */
+
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

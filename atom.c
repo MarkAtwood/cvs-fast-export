@@ -4,12 +4,14 @@
  *  SPDX-License-Identifier: GPL-2.0+
  */
 
-#include "cvs.h"
-#include "hash.h"
 #include <stdint.h>
 #ifdef THREADS
 #include <pthread.h>
 #endif /* THREADS */
+
+#include "cvs.h"
+#include "hash.h"
+
 /*****************************************************************************
 
 From http://planetmath.org/goodhashtableprimes:
@@ -106,13 +108,15 @@ collision:
 	head = &(b->next);
     }
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_lock(&bucket_mutex);
+    }
 #endif /* THREADS */
     if ((b = *head)) {
 #ifdef THREADS
-	if (threads > 1)
+      if (threads > 1) {
 	    pthread_mutex_unlock(&bucket_mutex);
+      }
 #endif /* THREADS */
 	goto collision;
     }
@@ -125,8 +129,9 @@ collision:
     *head = b;
     natoms++;
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_unlock(&bucket_mutex);
+    }
 #endif /* THREADS */
     return b->string;
 }
@@ -156,18 +161,21 @@ atom_cvs_number(const cvs_number n)
 
     while ((b = *head)) {
     collision:
-	if (cvs_number_equal(&b->number, &n))
+        if (cvs_number_equal(&b->number, &n)) {
 	    return &b->number;
+        }
 	head = &(b->next);
     }
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_lock(&number_bucket_mutex);
+    }
 #endif /* THREADS */
     if ((b = *head)) {
 #ifdef THREADS
-	if (threads > 1)
-	    pthread_mutex_unlock(&number_bucket_mutex);
+        if (threads > 1) {
+  	    pthread_mutex_unlock(&number_bucket_mutex);
+        }
 #endif /* THREADS */
 	goto collision;
     }
@@ -177,8 +185,9 @@ atom_cvs_number(const cvs_number n)
     memcpy(&b->number, &n, sizeof(cvs_number));
     *head = b;
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_unlock(&number_bucket_mutex);
+    }
 #endif /* THREADS */
     return &b->number;
 }
@@ -190,24 +199,30 @@ discard_atoms(void)
     int			i;
 
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_lock(&bucket_mutex);
+    }
 #endif /* THREADS */
-    for (i = 0; i < HASH_SIZE; i++)
+    for (i = 0; i < HASH_SIZE; i++) {
 	for (head = &buckets[i]; (b = *head);) {
 	    *head = b->next;
 	    free(b);
 	}
+    }
 #ifdef THREADS
     if (threads > 1) {
 	pthread_mutex_unlock(&bucket_mutex);
 	/*
 	 * This is irreversible, and will have to be factored out if
-	 * dicard_atoms() is ever called anywhere but in final cleanup.
+	 * discard_atoms() is ever called anywhere but in final cleanup.
 	 */
 	pthread_mutex_destroy(&bucket_mutex);
     }
 #endif /* THREADS */
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

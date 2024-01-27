@@ -42,9 +42,11 @@ static tag_t *find_tag(const char *name)
 {
     int hash = tag_hash(name);
     tag_t *tag;
-    for (tag = table[hash]; tag; tag = tag->hash_next)
-	if (tag->name == name)
-	    return tag;
+    for (tag = table[hash]; tag; tag = tag->hash_next) {
+	if (tag->name == name) {
+	      return tag;
+	}
+    }
     tag = xcalloc(1, sizeof(tag_t), "tag lookup");
     tag->name = name;
     tag->hash_next = table[hash];
@@ -60,8 +62,9 @@ void tag_commit(cvs_commit *c, const char *name, cvs_file *cvsfile)
 {
     tag_t *tag;
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_lock(&tag_mutex);
+    }
 #endif /* THREADS */
     tag = find_tag(name);
     if (tag->last == cvsfile->gen.master_name) {
@@ -79,8 +82,9 @@ void tag_commit(cvs_commit *c, const char *name, cvs_file *cvsfile)
 	tag->count++;
     }
 #ifdef THREADS
-    if (threads > 1)
+    if (threads > 1) {
 	pthread_mutex_unlock(&tag_mutex);
+    }
 #endif /* THREADS */
 }
 
@@ -98,8 +102,9 @@ cvs_commit **tagged(tag_t *tag)
 	v = p;
 	memcpy(p, c->v + tag->left, n * sizeof(*p));
 
-	for (c = c->next, p += n; c; c = c->next, p += Ncommits)
+	for (c = c->next, p += n; c; c = c->next, p += Ncommits) {
 	    memcpy(p, c->v, Ncommits * sizeof(*p));
+	}
     }
     return v;
 }
@@ -122,4 +127,8 @@ void discard_tags(void)
     }
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

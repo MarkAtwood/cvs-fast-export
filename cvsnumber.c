@@ -38,8 +38,9 @@ cvs_same_branch(const cvs_number *a, const cvs_number *b)
 	t.n[t.c++] = 0;
 	return cvs_same_branch(a, &t);
     }
-    if (a->c != b->c)
+    if (a->c != b->c) {
 	return false;
+    }
     /*
      * Everything on x.y is trunk
      */
@@ -57,8 +58,9 @@ cvs_same_branch(const cvs_number *a, const cvs_number *b)
 	    if (an == 0) an = a->n[i+1];
 	    if (bn == 0) bn = b->n[i+1];
 	}
-	if (an != bn)
+	if (an != bn) {
 	    return false;
+	}
     }
     return true;
 }
@@ -97,18 +99,22 @@ cvs_number_compare(const cvs_number *a, const cvs_number *b)
      * on the nodes.
      */
     for (i = 0; i < n; i++) {
-	if (a->n[i] < b->n[i])
-	    return -1;
-	if (a->n[i] > b->n[i])
-	    return 1;
+	if (a->n[i] < b->n[i]) {
+	      return -1;
+	}
+	if (a->n[i] > b->n[i]) {
+	      return 1;
+	}
     }
     /*
      * Branch root commits sort before any commit on their branch.
      */
-    if (a->c < b->c)
+    if (a->c < b->c) {
 	return -1;
-    if (a->c > b->c)
+    }
+    if (a->c > b->c) {
 	return 1;
+    }
     /*
      * Can happen only if the CVS numbers are equal.
      */
@@ -121,15 +127,17 @@ cvs_number_degree(const cvs_number *n)
 {
     cvs_number	four;
 
-    if (n->c < 4)
+    if (n->c < 4) {
 	return n->c;
+    }
     four = *n;
     four.c = 4;
     /*
      * Place vendor branch between trunk and other branches
      */
-    if (cvs_is_vendor(&four))
+    if (cvs_is_vendor(&four)) {
 	return n->c - 1;
+    }
     return n->c;
 }
 
@@ -147,14 +155,15 @@ bool
 cvs_is_vendor(const cvs_number *number)
 /* is the specified CVS release number on a vendor branch? */
 {
-    if (number->c != 4)
-      return false;
-    if (number->n[0] != 1)
+    if (number->c != 4) {
 	return false;
-    if (number->n[1] != 1)
-	return false;
-    if ((number->n[2] & 1) != 1)
-	return false;
+    } else if (number->n[0] != 1) {
+	  return false;
+    } else if (number->n[1] != 1) {
+	  return false;
+    } else if ((number->n[2] & 1) != 1) {
+	  return false;
+    }
     return true;
 }
 
@@ -168,13 +177,14 @@ cvs_number_string(const cvs_number *n, char *str, size_t maxlen)
     str[0] = '\0';
     for (i = 0; i < n->c; i++) {
 	snprintf(r, CVS_MAX_DIGITS, "%d", n->n[i]);
-	if (i > 0)
+	if (i > 0) {
 	    strcat(str, ".");
-	if (strlen(str) + strlen(r) < maxlen -1)
+	}
+	if (strlen(str) + strlen(r) < maxlen -1) {
 	    strcat(str, r);
-	else
+	} else {
 	    fatal_error("revision string too long");
-
+	}
     }
     return str;
 }
@@ -185,20 +195,24 @@ stringify_revision(const char *name, const char *sep,
 		   char *buf, size_t bufsz)
 /* stringify a revision number */
 {
-    if (name != NULL)
-    {
-	if (strlen(name) >= bufsz - strlen(sep) - 1)
-	    fatal_error("filename too long");
+    if (name != NULL) {
+	if (strlen(name) >= bufsz - strlen(sep) - 1) {
+	      fatal_error("filename too long");
+	}
 	strncpy(buf, name, bufsz - strlen(sep) - 1);
 	strcat(buf, sep);
     }
 
-    if (number)
+    if (number) {
 	cvs_number_string(number,
 			  buf + strlen(buf),
 			  bufsz - strlen(buf));
-
+    }
     return buf;
 }
 
-/* end */
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

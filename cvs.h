@@ -768,3 +768,9 @@ extern int threads;
 #endif /* THREADS */
 
 #endif /* _CVS_H_ */
+
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */

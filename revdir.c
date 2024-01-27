@@ -16,10 +16,11 @@
 static bool
 dir_is_ancestor(const master_dir *child, const master_dir *ancestor)
 {
-    while ((child = child->parent))
-	if (child == ancestor) {
-	    return true;
-	}
+    while ((child = child->parent)) {
+	  if (child == ancestor) {
+	      return true;
+	  }
+    }
     return false;
 }
 
@@ -29,6 +30,9 @@ dir_is_ancestor(const master_dir *child, const master_dir *ancestor)
 #include "dirpack.c"
 #endif
 
-
-// end
+/* Local Variables:    */
+/* mode: c             */
+/* c-basic-offset: 4   */
+/* indent-tabs-mode: t */
+/* End:                */
 
