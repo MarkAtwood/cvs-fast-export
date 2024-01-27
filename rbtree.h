@@ -5,21 +5,19 @@
 
 struct rbtree_node;
 
-void
-rbtree_insert(struct rbtree_node **root, const void *key, void *value,
-              int (*compare)(const void* key1, const void* key2));
+void rbtree_insert(struct rbtree_node **root, const void *key, void *value,
+                   int (*compare)(const void *key1, const void *key2));
 
-struct rbtree_node*
-rbtree_lookup(struct rbtree_node *root, const void* key,
-              int (*compare)(const void* key1, const void* key2));
+struct rbtree_node *rbtree_lookup(struct rbtree_node *root, const void *key,
+                                  int (*compare)(const void *key1,
+                                                 const void *key2));
 
 void *rbtree_value(struct rbtree_node *n);
 
-void
-rbtree_free(struct rbtree_node *root);
+void rbtree_free(struct rbtree_node *root);
 
 /* Local Variables:    */
 /* mode: c             */
-/* c-basic-offset: 4   */
+/* c-basic-offset: 8   */
 /* indent-tabs-mode: t */
 /* End:                */

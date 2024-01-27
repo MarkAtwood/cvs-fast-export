@@ -1,5 +1,6 @@
 /*
- *  SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>, Copyright © 2018 Eric S. Raymond <esr@thyrsus.com>
+ *  SPDX-FileCopyrightText: Copyright © 2006 Keith Packard <keithp@keithp.com>,
+ * Copyright © 2018 Eric S. Raymond <esr@thyrsus.com>
  *
  *  SPDX-License-Identifier: GPL-2.0+
  */
@@ -13,347 +14,342 @@
 
 bool difffiles = false;
 
-void
-dump_log(FILE *f, const char *log)
-{
-    int		j;
-    for (j = 0; j < 48; j++) {
-      if (log[j] == '\0') {
-	    break;
-      }
-	if (log[j] == '\n') {
-	    if (j > 5) break;
-	    continue;
-	}
-	if (log[j] & 0x80) {
-	    continue;
-	}
-	if (log[j] < ' ') {
-	    continue;
-	}
-	if (log[j] == '(' || log[j] == ')' ||
-	    log[j] == '[' || log[j] == ']' ||
-	    log[j] == '{' || log[j] == '}') {
-	    continue;
-	}
-	if (log[j] == '"') {
-	    putc('\\', f);
-	}
-	putc(log[j], f);
-	if (log[j] == '.' && isspace((unsigned char)log[j+1])) {
-	    break;
-	}
-    }
-}
-
-static void
-dot_ref_name(FILE *f, const rev_ref *ref)
-{
-    if (ref->parent) {
-	dot_ref_name(f, ref->parent);
-	fprintf(f, " > ");
-    }
-    fprintf(f, "%s", ref->ref_name);
-}
-
-static bool
-cvs_commit_list_has_filename(const cvs_commit_list *fl, const char *name)
-{
-    for (; fl; fl = fl->next) {
-	if (fl->file->master->name == name) {
-		return true;
-	}
-    }
-    return false;
-}
-
-static void dot_commit_graph(git_commit *c, const rev_ref *branch)
-{
-    printf("\"");
-    if (branch) {
-	dot_ref_name(stdout, branch);
-    }
-    printf("\\n");
-    printf("%s\\n", cvstime2rfc3339(c->date));
-    dump_log(stdout, c->log);
-    printf("\\n");
-    if (difffiles) {
-	rev_diff    *diff = git_commit_diff(c->parent, c);
-	cvs_commit_list   *fl;
-
-	for (fl = diff->add; fl; fl = fl->next) {
-	    if (!cvs_commit_list_has_filename(diff->del, fl->file->master->name)) {
-	        printf("+");	// Tag CVS commits that add files
-		dump_number(fl->file->master->name, fl->file->number);
-		printf("\\n");
-	    }
-	}
-	for (fl = diff->add; fl; fl = fl->next) {
-	    if (cvs_commit_list_has_filename(diff->del, fl->file->master->name)) {
-	        printf("|");	// Tag CVS commits that change files
-		dump_number(fl->file->master->name, fl->file->number);
-		printf("\\n");
-	    }
-	}
-	for (fl = diff->del; fl; fl = fl->next) {
-	    if (!cvs_commit_list_has_filename(diff->add, fl->file->master->name)) {
-	        printf("-");	// Tag CVS commits that delete files
-		dump_number(fl->file->master->name, fl->file->number);
-		printf("\\n");
-	    }
-	}
-	rev_diff_free(diff);
-    } else {
-	cvs_commit  *f;
-	revdir_iter *r = revdir_iter_alloc(&c->revdir);
-	while ((f = revdir_iter_next(r))) {
-	    dump_number(f->master->name, f->number);
-	    printf("\\n");
-	}
-	free(r);
-    }
-    printf("%p", c);
-    printf("\"");
-}
-
-static void dot_tag_name(FILE *f, const tag_t *tag)
-{
-    if (tag->parent) {
-	dot_ref_name(f, tag->parent);
-	fprintf(f, " > ");
-    }
-    fprintf(f, "%s", tag->name);
-}
-
-static rev_ref *dump_find_branch(git_repo *rl, const git_commit *commit)
-{
-    rev_ref	*h;
-    git_commit	*c;
-
-    for (h = rl->heads; h; h = h->next) {
-	if (h->tail)
-	    continue;
-	/* PUNNING: see the big comment in cvs.h */ 
-	for (c = (git_commit *)h->commit; c; c = c->parent) {
-	    if (c == commit) {
-		  return h;
-	    }
-	    if (c->tail) {
-		  break;
-	    }
-	}
-    }
-    return NULL;
-}
-
-static void dot_refs(git_repo *rl, rev_ref *refs, 
-		     const char *title, const char *shape)
-{
-    rev_ref	*r, *o;
-    int		n;
-
-    for (r = refs; r; r = r->next) {
-	if (!r->shown) {
-	    printf("\t");
-	    printf("\"");
-	    if (title) {
-		printf("%s\\n", title);
-	    }
-	    if (r->tail) {
-		printf("TAIL\\n");
-	    }
-	    n = 0;
-	    for (o = r; o; o = o->next) {
-		if (!o->shown && o->commit == r->commit) {
-		    o->shown = true;
-		    if (n) {
-			printf("\\n");
-		    }
-		    dot_ref_name(stdout, o);
-		    printf(" (%u)", o->degree);
-		    n++;
+void dump_log(FILE *f, const char *log) {
+	int j;
+	for (j = 0; j < 48; j++) {
+		if (log[j] == '\0') {
+			break;
 		}
-	    }
-	    printf("\" [fontsize=6,fixedsize=false,shape=%s];\n", shape);
-	}
-    }
-    for (r = refs; r; r = r->next)
-	r->shown = false;
-    for (r = refs; r; r = r->next) {
-	if (!r->shown) {
-	    printf("\t");
-	    printf("\"");
-	    if (title) {
-		printf("%s\\n", title);
-	    }
-	    if (r->tail) {
-		printf("TAIL\\n");
-	    }
-	    n = 0;
-	    for (o = r; o; o = o->next) {
-		if (!o->shown && o->commit == r->commit) {
-		    o->shown = true;
-		    if (n) {
-			printf("\\n");
-		    }
-		    dot_ref_name(stdout, o);
-		    printf(" (%u)", o->degree);
-		    n++;
+		if (log[j] == '\n') {
+			if (j > 5)
+				break;
+			continue;
 		}
-	    }
-	    printf("\"");
-	    printf(" -> ");
-	    if (r->commit) {
-		/* PUNNING: see the big comment in cvs.h */ 
-		dot_commit_graph((git_commit *)r->commit, dump_find_branch(rl,
-									     (git_commit *)r->commit));
-	    } else {
-		printf("LOST");
-	    }
-	    printf(" [weight=%d];\n", !r->tail ? 100 : 3);
+		if (log[j] & 0x80) {
+			continue;
+		}
+		if (log[j] < ' ') {
+			continue;
+		}
+		if (log[j] == '(' || log[j] == ')' || log[j] == '[' ||
+		    log[j] == ']' || log[j] == '{' || log[j] == '}') {
+			continue;
+		}
+		if (log[j] == '"') {
+			putc('\\', f);
+		}
+		putc(log[j], f);
+		if (log[j] == '.' && isspace((unsigned char)log[j + 1])) {
+			break;
+		}
 	}
-    }
-    for (r = refs; r; r = r->next) {
-	r->shown = false;
-    }
 }
 
-static void dot_tags(git_repo *rl, const char *title, const char *shape)
-{
-    tag_t	*r;
-    int n;
-    int i, count;
-    struct {
-	int alias;
-	tag_t *t;
-    } *v;
+static void dot_ref_name(FILE *f, const rev_ref *ref) {
+	if (ref->parent) {
+		dot_ref_name(f, ref->parent);
+		fprintf(f, " > ");
+	}
+	fprintf(f, "%s", ref->ref_name);
+}
 
-    for (r = all_tags, count = 0; r; r = r->next, count++) {
-	continue;
-    }
+static bool cvs_commit_list_has_filename(const cvs_commit_list *fl,
+                                         const char *name) {
+	for (; fl; fl = fl->next) {
+		if (fl->file->master->name == name) {
+			return true;
+		}
+	}
+	return false;
+}
 
-    v = xcalloc(count, sizeof(*v), __func__);
+static void dot_commit_graph(git_commit *c, const rev_ref *branch) {
+	printf("\"");
+	if (branch) {
+		dot_ref_name(stdout, branch);
+	}
+	printf("\\n");
+	printf("%s\\n", cvstime2rfc3339(c->date));
+	dump_log(stdout, c->log);
+	printf("\\n");
+	if (difffiles) {
+		rev_diff *diff = git_commit_diff(c->parent, c);
+		cvs_commit_list *fl;
 
-    for (r = all_tags, i = 0; r; r = r->next) {
-	v[i++].t = r;
-    }
-
-    for (i = 0; i < count; i++) {
-      if (v[i].alias) {
-	    continue;
-      }
-	r = v[i].t;
-	printf("\t\"");
-	if (title) {
-	    printf("%s\\n", title);
-	}
-	dot_tag_name(stdout, r);
-	for (n = i + 1; n < count; n++) {
-	    if (v[n].t->commit == r->commit) {
-		v[n].alias = 1;
-		printf("\\n");
-		dot_tag_name(stdout, v[n].t);
-	    }
-	}
-	printf("\" [fontsize=6,fixedsize=false,shape=%s];\n", shape);
-    }
-    for (i = 0; i < count; i++) {
-	if (v[i].alias) {
-	      continue;
-	}
-	r = v[i].t;
-	printf("\t\"");
-	if (title) {
-	    printf("%s\\n", title);
-	}
-	dot_tag_name(stdout, r);
-	for (n = i + 1; n < count; n++) {
-	    if (v[n].alias && v[n].t->commit == r->commit) {
-		printf("\\n");
-		dot_tag_name(stdout, v[n].t);
-	    }
-	}
-	printf("\" -> ");
-	if (r->commit) {
-	    dot_commit_graph(r->commit, dump_find_branch(rl, r->commit));
+		for (fl = diff->add; fl; fl = fl->next) {
+			if (!cvs_commit_list_has_filename(
+			        diff->del, fl->file->master->name)) {
+				printf("+"); // Tag CVS commits that add files
+				dump_number(fl->file->master->name,
+				            fl->file->number);
+				printf("\\n");
+			}
+		}
+		for (fl = diff->add; fl; fl = fl->next) {
+			if (cvs_commit_list_has_filename(
+			        diff->del, fl->file->master->name)) {
+				printf(
+				    "|"); // Tag CVS commits that change files
+				dump_number(fl->file->master->name,
+				            fl->file->number);
+				printf("\\n");
+			}
+		}
+		for (fl = diff->del; fl; fl = fl->next) {
+			if (!cvs_commit_list_has_filename(
+			        diff->add, fl->file->master->name)) {
+				printf(
+				    "-"); // Tag CVS commits that delete files
+				dump_number(fl->file->master->name,
+				            fl->file->number);
+				printf("\\n");
+			}
+		}
+		rev_diff_free(diff);
 	} else {
-	    printf("LOST");
+		cvs_commit *f;
+		revdir_iter *r = revdir_iter_alloc(&c->revdir);
+		while ((f = revdir_iter_next(r))) {
+			dump_number(f->master->name, f->number);
+			printf("\\n");
+		}
+		free(r);
 	}
-	printf(" [weight=3];\n");
-    }
-    free(v);
+	printf("%p", c);
+	printf("\"");
+}
+
+static void dot_tag_name(FILE *f, const tag_t *tag) {
+	if (tag->parent) {
+		dot_ref_name(f, tag->parent);
+		fprintf(f, " > ");
+	}
+	fprintf(f, "%s", tag->name);
+}
+
+static rev_ref *dump_find_branch(git_repo *rl, const git_commit *commit) {
+	rev_ref *h;
+	git_commit *c;
+
+	for (h = rl->heads; h; h = h->next) {
+		if (h->tail)
+			continue;
+		/* PUNNING: see the big comment in cvs.h */
+		for (c = (git_commit *)h->commit; c; c = c->parent) {
+			if (c == commit) {
+				return h;
+			}
+			if (c->tail) {
+				break;
+			}
+		}
+	}
+	return NULL;
+}
+
+static void dot_refs(git_repo *rl, rev_ref *refs, const char *title,
+                     const char *shape) {
+	rev_ref *r, *o;
+	int n;
+
+	for (r = refs; r; r = r->next) {
+		if (!r->shown) {
+			printf("\t");
+			printf("\"");
+			if (title) {
+				printf("%s\\n", title);
+			}
+			if (r->tail) {
+				printf("TAIL\\n");
+			}
+			n = 0;
+			for (o = r; o; o = o->next) {
+				if (!o->shown && o->commit == r->commit) {
+					o->shown = true;
+					if (n) {
+						printf("\\n");
+					}
+					dot_ref_name(stdout, o);
+					printf(" (%u)", o->degree);
+					n++;
+				}
+			}
+			printf("\" [fontsize=6,fixedsize=false,shape=%s];\n",
+			       shape);
+		}
+	}
+	for (r = refs; r; r = r->next)
+		r->shown = false;
+	for (r = refs; r; r = r->next) {
+		if (!r->shown) {
+			printf("\t");
+			printf("\"");
+			if (title) {
+				printf("%s\\n", title);
+			}
+			if (r->tail) {
+				printf("TAIL\\n");
+			}
+			n = 0;
+			for (o = r; o; o = o->next) {
+				if (!o->shown && o->commit == r->commit) {
+					o->shown = true;
+					if (n) {
+						printf("\\n");
+					}
+					dot_ref_name(stdout, o);
+					printf(" (%u)", o->degree);
+					n++;
+				}
+			}
+			printf("\"");
+			printf(" -> ");
+			if (r->commit) {
+				/* PUNNING: see the big comment in cvs.h */
+				dot_commit_graph(
+				    (git_commit *)r->commit,
+				    dump_find_branch(rl,
+				                     (git_commit *)r->commit));
+			} else {
+				printf("LOST");
+			}
+			printf(" [weight=%d];\n", !r->tail ? 100 : 3);
+		}
+	}
+	for (r = refs; r; r = r->next) {
+		r->shown = false;
+	}
+}
+
+static void dot_tags(git_repo *rl, const char *title, const char *shape) {
+	tag_t *r;
+	int n;
+	int i, count;
+	struct {
+		int alias;
+		tag_t *t;
+	} * v;
+
+	for (r = all_tags, count = 0; r; r = r->next, count++) {
+		continue;
+	}
+
+	v = xcalloc(count, sizeof(*v), __func__);
+
+	for (r = all_tags, i = 0; r; r = r->next) {
+		v[i++].t = r;
+	}
+
+	for (i = 0; i < count; i++) {
+		if (v[i].alias) {
+			continue;
+		}
+		r = v[i].t;
+		printf("\t\"");
+		if (title) {
+			printf("%s\\n", title);
+		}
+		dot_tag_name(stdout, r);
+		for (n = i + 1; n < count; n++) {
+			if (v[n].t->commit == r->commit) {
+				v[n].alias = 1;
+				printf("\\n");
+				dot_tag_name(stdout, v[n].t);
+			}
+		}
+		printf("\" [fontsize=6,fixedsize=false,shape=%s];\n", shape);
+	}
+	for (i = 0; i < count; i++) {
+		if (v[i].alias) {
+			continue;
+		}
+		r = v[i].t;
+		printf("\t\"");
+		if (title) {
+			printf("%s\\n", title);
+		}
+		dot_tag_name(stdout, r);
+		for (n = i + 1; n < count; n++) {
+			if (v[n].alias && v[n].t->commit == r->commit) {
+				printf("\\n");
+				dot_tag_name(stdout, v[n].t);
+			}
+		}
+		printf("\" -> ");
+		if (r->commit) {
+			dot_commit_graph(r->commit,
+			                 dump_find_branch(rl, r->commit));
+		} else {
+			printf("LOST");
+		}
+		printf(" [weight=3];\n");
+	}
+	free(v);
 }
 
 #define dump_get_rev_parent(c) ((c)->parent)
 
-static void dot_rev_graph_nodes(git_repo *rl, const char *title)
-{
-    rev_ref	*h;
-    git_commit	*c, *p;
-    bool	tail;
+static void dot_rev_graph_nodes(git_repo *rl, const char *title) {
+	rev_ref *h;
+	git_commit *c, *p;
+	bool tail;
 
-    dot_refs(rl, rl->heads, title, "ellipse");
-    dot_tags(rl, title, "diamond");
-    for (h = rl->heads; h; h = h->next) {
-      if (h->tail) {
-	    continue;
-      }
-	/* PUNNING: see the big comment in cvs.h */ 
-	for (c = (git_commit *)h->commit; c; c = p) {
-	    p = dump_get_rev_parent(c);
-	    tail = c->tail;
-	    if (!p) {
-		break;
-	    }
-	    printf("\t");
-	    dot_commit_graph(c, h);
-	    printf(" -> ");
-	    dot_commit_graph(p, tail ? h->parent : h);
-	    if (!tail) {
-		printf(" [weight=10];");
-	    }
-	    printf("\n");
-	    if (tail) {
-		break;
-	    }
+	dot_refs(rl, rl->heads, title, "ellipse");
+	dot_tags(rl, title, "diamond");
+	for (h = rl->heads; h; h = h->next) {
+		if (h->tail) {
+			continue;
+		}
+		/* PUNNING: see the big comment in cvs.h */
+		for (c = (git_commit *)h->commit; c; c = p) {
+			p = dump_get_rev_parent(c);
+			tail = c->tail;
+			if (!p) {
+				break;
+			}
+			printf("\t");
+			dot_commit_graph(c, h);
+			printf(" -> ");
+			dot_commit_graph(p, tail ? h->parent : h);
+			if (!tail) {
+				printf(" [weight=10];");
+			}
+			printf("\n");
+			if (tail) {
+				break;
+			}
+		}
 	}
-    }
 }
 
-static void dot_rev_graph_begin(void)
-{
-    printf("digraph G {\n");
-    printf("nodesep=0.1;\n");
-    printf("ranksep=0.1;\n");
-    printf("edge [dir=none];\n");
-    printf("node [shape=box,fontsize=6];\n");
+static void dot_rev_graph_begin(void) {
+	printf("digraph G {\n");
+	printf("nodesep=0.1;\n");
+	printf("ranksep=0.1;\n");
+	printf("edge [dir=none];\n");
+	printf("node [shape=box,fontsize=6];\n");
 }
 
-static void dot_rev_graph_end(void)
-{
-    printf("}\n");
-}
+static void dot_rev_graph_end(void) { printf("}\n"); }
 
-void
-dump_rev_graph(git_repo *rl, const char *title)
+void dump_rev_graph(git_repo *rl, const char *title)
 /* dump a DOT graph representation of a apecified revlist */
 {
-    dot_rev_graph_begin();
-    dot_rev_graph_nodes(rl, title);
-    dot_rev_graph_end();
+	dot_rev_graph_begin();
+	dot_rev_graph_nodes(rl, title);
+	dot_rev_graph_end();
 }
 
-void
-dump_cvs_graph(forest_t *forest)
-/* Dump a DOT graph of the tree before collation */ 
+void dump_cvs_graph(forest_t *forest)
+/* Dump a DOT graph of the tree before collation */
 {
-    dot_rev_graph_begin();
+	dot_rev_graph_begin();
 
-    dot_rev_graph_end();
+	dot_rev_graph_end();
 }
 
 /* Local Variables:    */
 /* mode: c             */
-/* c-basic-offset: 4   */
+/* c-basic-offset: 8   */
 /* indent-tabs-mode: t */
 /* End:                */

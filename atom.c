@@ -77,73 +77,72 @@ Happy hashing!
  * worst case to about 4.  Space cost on a 64-bit machine is 8 times
  * this in bytes.
  */
-#define HASH_SIZE	49157
+#define HASH_SIZE 49157
 
-unsigned int natoms;	/* we report this so we can tune the hash properly */
+unsigned int natoms; /* we report this so we can tune the hash properly */
 
 typedef struct _hash_bucket {
-    struct _hash_bucket	*next;
-    hash_t		hash;
-    char		string[0];
+	struct _hash_bucket *next;
+	hash_t hash;
+	char string[0];
 } hash_bucket_t;
 
-static hash_bucket_t	*buckets[HASH_SIZE];
+static hash_bucket_t *buckets[HASH_SIZE];
 #ifdef THREADS
 static pthread_mutex_t bucket_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif /* THREADS */
 
-const char *
-atom(const char *string)
+const char *atom(const char *string)
 /* intern a string, avoiding having separate storage for duplicate copies */
 {
-    hash_t		hash = hash_string(string);
-    hash_bucket_t	**head = &buckets[hash % HASH_SIZE];
-    hash_bucket_t	*b;
-    int			len;
+	hash_t hash = hash_string(string);
+	hash_bucket_t **head = &buckets[hash % HASH_SIZE];
+	hash_bucket_t *b;
+	int len;
 
-    while ((b = *head)) {
-collision:
-	if (b->hash == hash && !strcmp(string, b->string))
-	    return b->string;
-	head = &(b->next);
-    }
+	while ((b = *head)) {
+	collision:
+		if (b->hash == hash && !strcmp(string, b->string))
+			return b->string;
+		head = &(b->next);
+	}
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_lock(&bucket_mutex);
-    }
+	if (threads > 1) {
+		pthread_mutex_lock(&bucket_mutex);
+	}
 #endif /* THREADS */
-    if ((b = *head)) {
+	if ((b = *head)) {
 #ifdef THREADS
-      if (threads > 1) {
-	    pthread_mutex_unlock(&bucket_mutex);
-      }
+		if (threads > 1) {
+			pthread_mutex_unlock(&bucket_mutex);
+		}
 #endif /* THREADS */
-	goto collision;
-    }
+		goto collision;
+	}
 
-    len = strlen(string);
-    b = xmalloc(sizeof(hash_bucket_t) + len + 1, __func__);
-    b->next = 0;
-    b->hash = hash;
-    memcpy(b->string, string, len + 1);
-    *head = b;
-    natoms++;
+	len = strlen(string);
+	b = xmalloc(sizeof(hash_bucket_t) + len + 1, __func__);
+	b->next = 0;
+	b->hash = hash;
+	memcpy(b->string, string, len + 1);
+	*head = b;
+	natoms++;
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_unlock(&bucket_mutex);
-    }
+	if (threads > 1) {
+		pthread_mutex_unlock(&bucket_mutex);
+	}
 #endif /* THREADS */
-    return b->string;
+	return b->string;
 }
 
 typedef struct _number_bucket {
-    struct _number_bucket *next;
-    cvs_number number;
+	struct _number_bucket *next;
+	cvs_number number;
 } number_bucket_t;
 
 #define NUMBER_HASH_SIZE 6151
 
-static number_bucket_t  *number_buckets[NUMBER_HASH_SIZE];
+static number_bucket_t *number_buckets[NUMBER_HASH_SIZE];
 #ifdef THREADS
 static pthread_mutex_t number_bucket_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif /* THREADS */
@@ -152,77 +151,74 @@ static pthread_mutex_t number_bucket_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Intern a revision number
  * netbsd-pkgsrc calls this 42,000,000 times for 22,000 distinct values
  */
-const cvs_number *
-atom_cvs_number(const cvs_number n)
-{
-    size_t          bucket = hash_cvs_number(&n) % NUMBER_HASH_SIZE;
-    number_bucket_t **head = &number_buckets[bucket];
-    number_bucket_t *b;
+const cvs_number *atom_cvs_number(const cvs_number n) {
+	size_t bucket = hash_cvs_number(&n) % NUMBER_HASH_SIZE;
+	number_bucket_t **head = &number_buckets[bucket];
+	number_bucket_t *b;
 
-    while ((b = *head)) {
-    collision:
-        if (cvs_number_equal(&b->number, &n)) {
-	    return &b->number;
-        }
-	head = &(b->next);
-    }
+	while ((b = *head)) {
+	collision:
+		if (cvs_number_equal(&b->number, &n)) {
+			return &b->number;
+		}
+		head = &(b->next);
+	}
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_lock(&number_bucket_mutex);
-    }
+	if (threads > 1) {
+		pthread_mutex_lock(&number_bucket_mutex);
+	}
 #endif /* THREADS */
-    if ((b = *head)) {
+	if ((b = *head)) {
 #ifdef THREADS
-        if (threads > 1) {
-  	    pthread_mutex_unlock(&number_bucket_mutex);
-        }
+		if (threads > 1) {
+			pthread_mutex_unlock(&number_bucket_mutex);
+		}
 #endif /* THREADS */
-	goto collision;
-    }
+		goto collision;
+	}
 
-    b = xmalloc(sizeof(number_bucket_t), __func__);
-    b->next = NULL;
-    memcpy(&b->number, &n, sizeof(cvs_number));
-    *head = b;
+	b = xmalloc(sizeof(number_bucket_t), __func__);
+	b->next = NULL;
+	memcpy(&b->number, &n, sizeof(cvs_number));
+	*head = b;
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_unlock(&number_bucket_mutex);
-    }
+	if (threads > 1) {
+		pthread_mutex_unlock(&number_bucket_mutex);
+	}
 #endif /* THREADS */
-    return &b->number;
+	return &b->number;
 }
-void
-discard_atoms(void)
+void discard_atoms(void)
 /* empty all string buckets */
 {
-    hash_bucket_t	**head, *b;
-    int			i;
+	hash_bucket_t **head, *b;
+	int i;
 
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_lock(&bucket_mutex);
-    }
-#endif /* THREADS */
-    for (i = 0; i < HASH_SIZE; i++) {
-	for (head = &buckets[i]; (b = *head);) {
-	    *head = b->next;
-	    free(b);
+	if (threads > 1) {
+		pthread_mutex_lock(&bucket_mutex);
 	}
-    }
+#endif /* THREADS */
+	for (i = 0; i < HASH_SIZE; i++) {
+		for (head = &buckets[i]; (b = *head);) {
+			*head = b->next;
+			free(b);
+		}
+	}
 #ifdef THREADS
-    if (threads > 1) {
-	pthread_mutex_unlock(&bucket_mutex);
-	/*
-	 * This is irreversible, and will have to be factored out if
-	 * discard_atoms() is ever called anywhere but in final cleanup.
-	 */
-	pthread_mutex_destroy(&bucket_mutex);
-    }
+	if (threads > 1) {
+		pthread_mutex_unlock(&bucket_mutex);
+		/*
+		 * This is irreversible, and will have to be factored out if
+		 * discard_atoms() is ever called anywhere but in final cleanup.
+		 */
+		pthread_mutex_destroy(&bucket_mutex);
+	}
 #endif /* THREADS */
 }
 
 /* Local Variables:    */
 /* mode: c             */
-/* c-basic-offset: 4   */
+/* c-basic-offset: 8   */
 /* indent-tabs-mode: t */
 /* End:                */

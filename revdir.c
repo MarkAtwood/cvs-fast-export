@@ -9,19 +9,18 @@
  * which directories are coalesced.
  */
 
+#include "revdir.h"
 #include "cvs.h"
 #include "hash.h"
-#include "revdir.h"
 
-static bool
-dir_is_ancestor(const master_dir *child, const master_dir *ancestor)
-{
-    while ((child = child->parent)) {
-	  if (child == ancestor) {
-	      return true;
-	  }
-    }
-    return false;
+static bool dir_is_ancestor(const master_dir *child,
+                            const master_dir *ancestor) {
+	while ((child = child->parent)) {
+		if (child == ancestor) {
+			return true;
+		}
+	}
+	return false;
 }
 
 #ifdef TREEPACK
@@ -32,7 +31,6 @@ dir_is_ancestor(const master_dir *child, const master_dir *ancestor)
 
 /* Local Variables:    */
 /* mode: c             */
-/* c-basic-offset: 4   */
+/* c-basic-offset: 8   */
 /* indent-tabs-mode: t */
 /* End:                */
-
