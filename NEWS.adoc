@@ -1,5 +1,8 @@
 = cvs-fast-export project news =
 
+Repository head::
+   cvsconvert can do multiple conversions in a single run.
+
 1.63: 2024-01-01::
    Now issues a warning when a vendor branch is detected.
    Leading !\n in .cvsignore files is translated correctly.
