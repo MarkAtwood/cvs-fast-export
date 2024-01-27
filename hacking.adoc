@@ -708,16 +708,23 @@ if it's not in the list on `cvs-fast-export.adoc`, it needs to be.
 
 == Good practice ==
 
-When modifying this code, run the regression tests (`make check`) early
-and often.  It is very easy to break even with apparently innocuous
-changes.  You will want to have `cppcheck`, `pylint`, and `shellcheck`
-installed for full code validation.
+When modifying this code, run the regression tests (`make check`)
+early and often.  It is very easy to break even with apparently
+innocuous changes.  You will want to have `cppcheck`, `pylint`, and
+`shellcheck` installed for full code validation, and `clang-format` to
+reflow the code.
 
 If you find a bug and fix it, please try to create a toy repo exhibiting
 the problem - or, better yet, a minimal set of operations to reproduce
 it. Then add that to the regression tests.
 
 Likewise, when adding a feature, add a test for it as well.
+
+This code is entirely enough of a comprehension problem without the extra drag
+created by style variations in whitespace. The "make reflow" production
+uses clang-format to enforce a modern 1TBS style. Please always use
+braces even on single-statement blocks. Before shipping a patch,
+please run "make reflow" and test the code again.
 
 If you figure out something about the code that isn't documented here
 - or, especially, if it's documented wrongly - please include an
