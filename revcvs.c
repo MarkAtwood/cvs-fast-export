@@ -70,13 +70,12 @@ void atom_dir_init(void) {
 }
 #endif /* THREADS */
 
-static const master_dir *atom_dir(const char *dirname)
+static const master_dir *atom_dir(const char *dirname) {
 /* Extract information about the directory a master is in .
  * atomize the result so all references to the same directory
  * point the the same value.
  * Needs to be called with an atomized string
  */
-{
 	dir_bucket **head = &dir_buckets[HASH_VALUE(dirname) % DIR_BUCKETS];
 	dir_bucket *b;
 
@@ -118,9 +117,8 @@ static const master_dir *atom_dir(const char *dirname)
 }
 
 static cvs_commit *cvs_master_find_revision(cvs_master *cm,
-                                            const cvs_number *number)
+                                            const cvs_number *number) {
 /* given a single-file revlist tree, locate the specific version number */
-{
 	rev_ref *h;
 	cvs_commit *c;
 
@@ -152,9 +150,8 @@ static rev_master *build_rev_master(cvs_file *cvs, rev_master *master) {
 }
 
 static cvs_commit *cvs_master_branch_build(cvs_file *cvs, rev_master *master,
-                                           const cvs_number *branch)
+                                           const cvs_number *branch) {
 /* build a list of commit objects representing a branch from deltas on it */
-{
 	cvs_number n;
 	const cvs_number *atom_n;
 	cvs_commit *head = NULL;
@@ -389,9 +386,8 @@ static bool cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs) {
 	return found_vendor;
 }
 
-static void cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs)
+static void cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs) {
 /* turn disconnected branches into a tree by grafting roots to parents */
-{
 	rev_ref *h;
 	cvs_commit *c;
 	cvs_version *cv;
@@ -487,9 +483,8 @@ static void cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs)
 	}
 }
 
-static rev_ref *cvs_master_find_branch(cvs_master *cm, const cvs_number *number)
+static rev_ref *cvs_master_find_branch(cvs_master *cm, const cvs_number *number) {
 /* look up a revision reference in a revlist by symbol */
-{
 	cvs_number n;
 	rev_ref *h;
 
@@ -513,9 +508,8 @@ static rev_ref *cvs_master_find_branch(cvs_master *cm, const cvs_number *number)
 	return h;
 }
 
-static void cvs_master_set_refs(cvs_master *cm, cvs_file *cvsfile)
+static void cvs_master_set_refs(cvs_master *cm, cvs_file *cvsfile) {
 /* create head references or tags for each symbol in the CVS master */
-{
 	rev_ref *h, **ph, *h2;
 	cvs_symbol *s;
 
@@ -693,9 +687,8 @@ static void cvs_master_set_refs(cvs_master *cm, cvs_file *cvsfile)
 }
 
 #ifdef REDBLACK
-static int cvs_symbol_name_compare(const void *x, const void *y)
+static int cvs_symbol_name_compare(const void *x, const void *y) {
 /* compare function used for red-black tree lookup */
-{
 	if (x < y) {
 		return -1;
 	} else if (y < x) {
@@ -706,9 +699,8 @@ static int cvs_symbol_name_compare(const void *x, const void *y)
 }
 #endif /* REDBLACK */
 
-static cvs_symbol *cvs_find_symbol(cvs_file *cvs, const char *name)
+static cvs_symbol *cvs_find_symbol(cvs_file *cvs, const char *name) {
 /* return the CVS symbol corresponding to a specified name */
-{
 #ifdef REDBLACK
 	struct rbtree_node *n, **tree;
 
@@ -737,9 +729,8 @@ static cvs_symbol *cvs_find_symbol(cvs_file *cvs, const char *name)
 	return NULL;
 }
 
-static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1, const rev_ref *r2)
+static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1, const rev_ref *r2) {
 /* comparison function used for topological sorting */
-{
 	cvs_symbol *s1, *s2;
 	s1 = cvs_find_symbol(cvs, r1->ref_name);
 	s2 = cvs_find_symbol(cvs, r2->ref_name);
@@ -754,9 +745,8 @@ static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1, const rev_ref *r2)
 	return cvs_number_compare(s1->number, s2->number);
 }
 
-static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs)
+static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs) {
 /* sort branch heads so parents are always before children; trunk first. */
-{
 	rev_ref *p = cm->heads, *q;
 	rev_ref *e;
 	rev_ref *l = NULL, *lastl = NULL;
@@ -850,9 +840,8 @@ static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs)
 #endif /* DEBUG */
 }
 
-cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
+cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master) {
 /* fill out a linked list capturing the CVS master file structure */
-{
 	const cvs_number *trunk_number;
 	cvs_commit *trunk;
 	cvs_commit *branch;

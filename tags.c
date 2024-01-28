@@ -25,9 +25,8 @@ size_t tag_count = 0;
 static pthread_mutex_t tag_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif /* THREADS */
 
-static int tag_hash(const char *name)
+static int tag_hash(const char *name) {
 /* return the hash code for a specified tag */
-{
 	uintptr_t l = (uintptr_t)name;
 	int res = 0;
 	while (l) {
@@ -37,9 +36,8 @@ static int tag_hash(const char *name)
 	return res & 4095;
 }
 
-static tag_t *find_tag(const char *name)
+static tag_t *find_tag(const char *name) {
 /* look up a tag by name */
-{
 	int hash = tag_hash(name);
 	tag_t *tag;
 	for (tag = table[hash]; tag; tag = tag->hash_next) {
@@ -57,9 +55,8 @@ static tag_t *find_tag(const char *name)
 	return tag;
 }
 
-void tag_commit(cvs_commit *c, const char *name, cvs_file *cvsfile)
+void tag_commit(cvs_commit *c, const char *name, cvs_file *cvsfile) {
 /* add a CVS commit to the list associated with a named tag */
-{
 	tag_t *tag;
 #ifdef THREADS
 	if (threads > 1) {
@@ -88,9 +85,8 @@ void tag_commit(cvs_commit *c, const char *name, cvs_file *cvsfile)
 #endif /* THREADS */
 }
 
-cvs_commit **tagged(tag_t *tag)
+cvs_commit **tagged(tag_t *tag) {
 /* return an allocated list of pointers to commits with the specified tag */
-{
 	cvs_commit **v = NULL;
 
 	if (tag->count) {
@@ -110,9 +106,8 @@ cvs_commit **tagged(tag_t *tag)
 	return v;
 }
 
-void discard_tags(void)
+void discard_tags(void) {
 /* discard all tag storage */
-{
 	tag_t *tag = all_tags;
 	all_tags = NULL;
 	while (tag) {

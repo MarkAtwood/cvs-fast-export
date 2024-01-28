@@ -244,9 +244,8 @@ static char const *basefilename(const char *const p) {
 		}
 }
 
-static char const *getfullRCSname(editbuffer_t *eb)
+static char const *getfullRCSname(editbuffer_t *eb) {
 /* Convert relative RCS filename to absolute path */
-{
 	char *wdbuf = NULL;
 	int wdbuflen = 0;
 
@@ -301,9 +300,8 @@ static char const *getfullRCSname(editbuffer_t *eb)
 	return eb->Gabspath;
 }
 
-static enum markers trymatch(char const *const string)
+static enum markers trymatch(char const *const string) {
 /* Check if string starts with a keyword followed by a KDELIM or VDELIM */
-{
 	int j;
 	for (j = sizeof(Keyword) / sizeof(*Keyword); (--j);) {
 		char const *p, *s;
@@ -324,9 +322,8 @@ static enum markers trymatch(char const *const string)
 	return (Nomatch);
 }
 #ifdef LINESTATS
-static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l)
+static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
-{
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
 		fatal_error("edit script tried to insert beyond eof");
 	}
@@ -359,9 +356,8 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l)
 }
 
 static void deletelines(editbuffer_t *eb, const unsigned long n,
-                        const unsigned long nlines)
+                        const unsigned long nlines) {
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
-{
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
 		fatal_error("edit script tried to delete beyond eof");
@@ -379,9 +375,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 }
 
 #else
-static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l)
+static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
-{
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
 		fatal_error("edit script tried to insert beyond eof");
 	}
@@ -412,9 +407,8 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l)
 }
 
 static void deletelines(editbuffer_t *eb, const unsigned long n,
-                        const unsigned long nlines)
+                        const unsigned long nlines) {
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
-{
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
 		fatal_error("edit script tried to delete beyond eof");
@@ -431,9 +425,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 	Ggapsize(eb) += nlines;
 }
 #endif
-static long parsenum(editbuffer_t *eb)
+static long parsenum(editbuffer_t *eb) {
 /* parse and return a decimal integer */
-{
 	int c;
 	long ret = 0;
 	for (c = in_buffer_getc(eb); isdigit(c); c = in_buffer_getc(eb))
@@ -535,9 +528,8 @@ static void escape_string(editbuffer_t *eb, register char const *s) {
 	}
 }
 
-static void keyreplace(editbuffer_t *eb, enum markers marker)
+static void keyreplace(editbuffer_t *eb, enum markers marker) {
 /* output the appropriate keyword value(s) */
-{
 	char *leader = NULL;
 	char date_string[25];
 	enum expand_mode exp = eb->Gexpand;
@@ -1162,9 +1154,8 @@ static void generate_wrap(generator_t *gen) {
 
 void generate_files(generator_t *gen, export_options_t *opts,
                     void (*hook)(node_t *node, void *buf, size_t len,
-                                 export_options_t *opts))
+                                 export_options_t *opts)) {
 /* export all the revision states of a CVS/RCS master through a hook */
-{
 	editbuffer_t *eb = &gen->editbuffer;
 	node_t *node = generate_setup(gen);
 

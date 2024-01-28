@@ -46,9 +46,8 @@ static char blobdir[PATH_MAX];
 
 static export_stats_t export_stats;
 
-static int seqno_next(void)
+static int seqno_next(void) {
 /* Returns next sequence number, starting with 1 */
-{
 	++seqno;
 
 	if (seqno >= MAX_SERIAL_T) {
@@ -73,9 +72,8 @@ static int seqno_next(void)
 	"end\n"
 
 static char *blobfile(const char *basename, const int serial, const bool create,
-                      char *path)
+                      char *path) {
 /* Random-access location of the blob corresponding to the specified serial */
-{
 	int m;
 
 #ifdef DEBUG
@@ -139,9 +137,8 @@ static char *blobfile(const char *basename, const int serial, const bool create,
 
 static void export_blob(node_t *node, void *buf, const size_t len,
 
-                        export_options_t *opts)
+                        export_options_t *opts) {
 /* output the blob, or save where it will be available for random access */
-{
 	/*
 	 * This is the only place we do interpretation of ignores.
 	 *
@@ -306,9 +303,8 @@ static void dump_commit(const git_commit *commit, FILE *fp) {
 #endif /* DEBUG */
 
 static struct fileop *next_op_slot(struct fileop **operations,
-                                   struct fileop *op, int *noperations)
+                                   struct fileop *op, int *noperations) {
 /* move to next operations slot, expand if necessary */
-{
 #define OP_CHUNK 32
 	if (++op == (*operations) + (*noperations)) {
 		(*noperations) += OP_CHUNK;
@@ -321,9 +317,8 @@ static struct fileop *next_op_slot(struct fileop **operations,
 	return op;
 }
 
-static void build_modify_op(cvs_commit *c, struct fileop *op)
+static void build_modify_op(cvs_commit *c, struct fileop *op) {
 /* fill out a modify fileop from a cvs commit */
-{
 	op->rev = c;
 	op->path = c->master->fileop_name;
 	op->op = 'M';
@@ -335,9 +330,8 @@ static void build_modify_op(cvs_commit *c, struct fileop *op)
 }
 
 static void append_revpair(cvs_commit *c, const export_options_t *opts,
-                           char **revpairs, size_t *revpairsize)
+                           char **revpairs, size_t *revpairsize) {
 /* append file information if requested */
-{
 	if (opts->revision_map || opts->reposurgeon || opts->embed_ids) {
 		const char *cvs_leader = "CVS-ID: ";
 		char fr[BUFSIZ];
@@ -377,9 +371,8 @@ static const char *visualize_branch_name(const char *name) {
 }
 
 static void export_commit(git_commit *commit, const char *branch,
-                          const bool report, const export_options_t *opts)
+                          const bool report, const export_options_t *opts) {
 /* export a commit and the blobs it is the first to reference */
-{
 	const git_commit *parent = commit->parent;
 	cvs_commit *cc;
 	cvs_author *author;
@@ -610,9 +603,8 @@ static void export_commit(git_commit *commit, const char *branch,
 #undef OP_CHUNK
 }
 
-static int export_ncommit(const git_repo *rl)
+static int export_ncommit(const git_repo *rl) {
 /* return a count of converted commits */
-{
 	rev_ref *h;
 	git_commit *c;
 	int n = 0;
@@ -638,9 +630,8 @@ struct commit_seq {
 	bool realized;
 };
 
-static struct commit_seq *canonicalize(git_repo *rl)
+static struct commit_seq *canonicalize(git_repo *rl) {
 /* copy/sort collated commits into git-fast-export order */
-{
 	/*
 	 * Dump in canonical (strict git-fast-export) order.
 	 *
@@ -739,9 +730,8 @@ static struct commit_seq *canonicalize(git_repo *rl)
 	return history;
 }
 
-void export_authors(forest_t *forest, export_options_t *opts)
+void export_authors(forest_t *forest, export_options_t *opts) {
 /* dump a list of author IDs in the repository */
-{
 	const char **authors;
 	int i, nauthors = 0;
 	size_t alloc;
@@ -777,9 +767,8 @@ void export_authors(forest_t *forest, export_options_t *opts)
 }
 
 void export_commits(forest_t *forest, export_options_t *opts,
-                    export_stats_t *stats)
+                    export_stats_t *stats) {
 /* export a revision list as a git fast-import stream */
-{
 	tag_t *t;
 	git_repo *rl = forest->git;
 	generator_t *gp;

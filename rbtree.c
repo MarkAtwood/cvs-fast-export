@@ -21,10 +21,9 @@ typedef struct rbtree_node {
 	rbtree_color color;
 } rbtree_node;
 
-static struct rbtree_node *rbtree_parent(const struct rbtree_node *node)
+static struct rbtree_node *rbtree_parent(const struct rbtree_node *node) {
 /* This function should be called if existence of the parent is
    guaranteed within or required by the calling function */
-{
 	assert(node->parent);
 	return node->parent;
 }
@@ -57,9 +56,8 @@ static struct rbtree_node *rbtree_sibling(const struct rbtree_node *node) {
 	}
 }
 
-static rbtree_color rbtree_node_color(const struct rbtree_node *node)
+static rbtree_color rbtree_node_color(const struct rbtree_node *node) {
 /* we use NULL as sentinel */
-{
 	if (node) {
 		return node->color;
 	}
@@ -67,10 +65,9 @@ static rbtree_color rbtree_node_color(const struct rbtree_node *node)
 }
 
 #if RBDEBUG
-static void rbtree_assert_links(const struct rbtree_node *node)
+static void rbtree_assert_links(const struct rbtree_node *node) {
 /* not a red-black property, but make sure parent <-> child links are
  * correct at all times */
-{
 	if (node) {
 		if (node->left) {
 			assert(rbtree_is_left_child(node->left, node));
@@ -83,9 +80,8 @@ static void rbtree_assert_links(const struct rbtree_node *node)
 	}
 }
 
-static void rbtree_assert_property_2(const struct rbtree_node *root)
+static void rbtree_assert_property_2(const struct rbtree_node *root) {
 /* 2. red-black property: the root is black */
-{
 	assert(struct rbtree_node_color(root) == BLACK);
 }
 
@@ -123,10 +119,9 @@ static void rbtree_assert_property_5_helper(const struct rbtree_node *node,
 	}
 }
 
-static void rbtree_assert_property_5(const struct rbtree_node *node)
+static void rbtree_assert_property_5(const struct rbtree_node *node) {
 /* 5. red-black property: For each node, all paths to its leaf nodes
    contain the same number of black nodes */
-{
 	int first_leaf_count = -1;
 	rbtree_assert_property_5_helper(node, 0, &first_leaf_count);
 }
@@ -142,10 +137,9 @@ static void rbtree_assert_properties(const struct rbtree_node *root) {
 }
 #endif /* #if RBDEBUG */
 
-static void rbtree_rotate_helper(struct rbtree_node *x, struct rbtree_node *y)
+static void rbtree_rotate_helper(struct rbtree_node *x, struct rbtree_node *y) {
 /* change the parent <-> child links for all nodes involved in a
    binary tree rotation */
-{
 	assert(x);
 	assert(y);
 	assert(y->parent == x);
@@ -187,10 +181,9 @@ static void rbtree_rotate_right(struct rbtree_node *x) {
 }
 
 static void rbtree_insert_fixup(struct rbtree_node **root,
-                                struct rbtree_node *z)
+                                struct rbtree_node *z) {
 /* this one is pretty much copied from the pseudo code in
    Cormen/Leisterson/Rivest/Stein */
-{
 	if (*root != z) {
 		while (rbtree_node_color(z->parent) == RED) {
 			struct rbtree_node *p, *g, *y;

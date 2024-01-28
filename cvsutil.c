@@ -11,9 +11,8 @@
 
 #include "cvs.h"
 
-static void cvs_symbol_free(cvs_symbol *symbol)
+static void cvs_symbol_free(cvs_symbol *symbol) {
 /* discard all master symbols from this CVS context */
-{
 	cvs_symbol *s;
 
 	while ((s = symbol)) {
@@ -22,9 +21,8 @@ static void cvs_symbol_free(cvs_symbol *symbol)
 	}
 }
 
-static void cvs_branch_free(cvs_branch *branch)
+static void cvs_branch_free(cvs_branch *branch) {
 /* discard all master branches from this CVS context */
-{
 	cvs_branch *b;
 
 	while ((b = branch)) {
@@ -33,9 +31,8 @@ static void cvs_branch_free(cvs_branch *branch)
 	}
 }
 
-static void cvs_version_free(cvs_version *version)
+static void cvs_version_free(cvs_version *version) {
 /* discard all master versions from this CVS context */
-{
 	cvs_version *v;
 
 	while ((v = version)) {
@@ -45,9 +42,8 @@ static void cvs_version_free(cvs_version *version)
 	}
 }
 
-static void cvs_patch_free(cvs_patch *patch)
+static void cvs_patch_free(cvs_patch *patch) {
 /* discard all master patches from this CVS context */
-{
 	cvs_patch *v;
 
 	while ((v = patch)) {
@@ -62,9 +58,8 @@ void generator_free(generator_t *gen) {
 	clean_hash(&gen->nodehash);
 }
 
-void cvs_file_free(cvs_file *cvs)
+void cvs_file_free(cvs_file *cvs) {
 /* discard a file object and its storage */
-{
 	cvs_symbol_free(cvs->symbols);
 #ifdef REDBLACK
 	rbtree_free(cvs->symbols_by_name);

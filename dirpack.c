@@ -20,9 +20,8 @@ typedef struct _file_list_hash {
 
 static file_list_hash *buckets[REV_DIR_HASH];
 
-static hash_t hash_files(const cvs_commit *const *const files, const int nfiles)
+static hash_t hash_files(const cvs_commit *const *const files, const int nfiles) {
 /* hash a file list so we can recognize it cheaply */
-{
 	hash_t h = 0;
 	size_t i;
 	/* Combine existing hashes rather than computing new ones */
@@ -33,9 +32,8 @@ static hash_t hash_files(const cvs_commit *const *const files, const int nfiles)
 }
 
 static file_list *pack_file_list(const cvs_commit *const *const files,
-                                 const int nfiles)
+                                 const int nfiles) {
 /* pack a collection of file revisions for space efficiency */
-{
 	hash_t hash = hash_files(files, nfiles);
 	file_list_hash **bucket = &buckets[hash % REV_DIR_HASH];
 	file_list_hash *h;
@@ -61,9 +59,8 @@ static file_list *pack_file_list(const cvs_commit *const *const files,
 static size_t sdirs = 0;
 static file_list **dirs = NULL;
 
-static void fl_put(const size_t index, file_list *fl)
+static void fl_put(const size_t index, file_list *fl) {
 /* puts an entry into the dirs buffer, growing if needed */
-{
 	if (sdirs == 0) {
 		sdirs = 128;
 		dirs = xmalloc(sdirs * sizeof(file_list *), __func__);

@@ -17,9 +17,8 @@ static unsigned author_hash(const char *name) {
 	return h % AUTHOR_HASH;
 }
 
-cvs_author *fullname(const char *name)
+cvs_author *fullname(const char *name) {
 /* return the fullname structure corresponding to a specified shortname */
-{
 	cvs_author **bucket = &author_buckets[author_hash(name)];
 	cvs_author *a;
 
@@ -31,9 +30,8 @@ cvs_author *fullname(const char *name)
 	return NULL;
 }
 
-void free_author_map(void)
+void free_author_map(void) {
 /* discard author-map information */
-{
 	int h;
 
 	for (h = 0; h < AUTHOR_HASH; h++) {
@@ -47,9 +45,8 @@ void free_author_map(void)
 	}
 }
 
-bool load_author_map(const char *filename)
+bool load_author_map(const char *filename) {
 /* load author-map information from a file */
-{
 	char line[10240];
 	char *equal;
 	char *angle;

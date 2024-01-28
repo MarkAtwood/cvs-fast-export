@@ -85,9 +85,8 @@ struct _revdir_iter {
 	dir_pos dirstack[MAX_DIR_DEPTH];
 };
 
-bool revdir_iter_same_dir(const revdir_iter *it1, const revdir_iter *it2)
+bool revdir_iter_same_dir(const revdir_iter *it1, const revdir_iter *it2) {
 /* Are two file iterators pointing to the same revdir? */
-{
 	return it1->dirstack[it1->dirpos].dir == it2->dirstack[it2->dirpos].dir;
 }
 
@@ -127,9 +126,8 @@ cvs_commit *revdir_iter_next(revdir_iter *it) {
 	}
 }
 
-cvs_commit *revdir_iter_next_dir(revdir_iter *it)
+cvs_commit *revdir_iter_next_dir(revdir_iter *it) {
 /* skip the current directory */
-{
 	while (1) {
 		if (!it->dirpos) {
 			return NULL;
@@ -161,9 +159,8 @@ cvs_commit *revdir_iter_next_dir(revdir_iter *it)
 	}
 }
 
-void revdir_iter_start(revdir_iter *it, const revdir *revdir)
+void revdir_iter_start(revdir_iter *it, const revdir *revdir) {
 /* post order traversal of rev_dir tree */
-{
 	const rev_pack *dir = revdir->revpack;
 	it->dirpos = -1;
 	while (1) {
@@ -188,9 +185,8 @@ revdir_iter *revdir_iter_alloc(const revdir *revdir) {
 }
 
 static const master_dir *first_subdir(const master_dir *child,
-                                      const master_dir *ancestor)
+                                      const master_dir *ancestor) {
 /* in ancestor/d1/d2/child, return d1 */
-{
 	while (child->parent != ancestor) {
 		child = child->parent;
 	}
@@ -216,9 +212,8 @@ void revdir_pack_init(void) {
 	frames[0].hash = hash_init();
 }
 
-static void push_rev_pack(const rev_pack *const r)
+static void push_rev_pack(const rev_pack *const r) {
 /* Store a revpack in the recursive gathering area */
-{
 	unsigned short *s = &frame->sdirs;
 	if (*s == frame->ndirs) {
 		if (!*s) {
