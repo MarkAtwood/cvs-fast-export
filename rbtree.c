@@ -67,7 +67,7 @@ static rbtree_color rbtree_node_color(const struct rbtree_node *node) {
 #if RBDEBUG
 static void rbtree_assert_links(const struct rbtree_node *node) {
 /* not a red-black property, but make sure parent <-> child links are
- * correct at all times */
+   correct at all times */
 	if (node) {
 		if (node->left) {
 			assert(rbtree_is_left_child(node->left, node));
@@ -138,8 +138,7 @@ static void rbtree_assert_properties(const struct rbtree_node *root) {
 #endif /* #if RBDEBUG */
 
 static void rbtree_rotate_helper(struct rbtree_node *x, struct rbtree_node *y) {
-/* change the parent <-> child links for all nodes involved in a
-   binary tree rotation */
+/* change the parent <-> child links for all nodes involved in a binary tree rotation */
 	assert(x);
 	assert(y);
 	assert(y->parent == x);
@@ -182,8 +181,8 @@ static void rbtree_rotate_right(struct rbtree_node *x) {
 
 static void rbtree_insert_fixup(struct rbtree_node **root,
                                 struct rbtree_node *z) {
-/* this one is pretty much copied from the pseudo code in
-   Cormen/Leisterson/Rivest/Stein */
+	/* this one is pretty much copied from the pseudo code in
+	   Cormen/Leisterson/Rivest/Stein */
 	if (*root != z) {
 		while (rbtree_node_color(z->parent) == RED) {
 			struct rbtree_node *p, *g, *y;

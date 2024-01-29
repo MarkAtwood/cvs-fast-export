@@ -110,10 +110,11 @@ cvs_commit *revdir_iter_next(revdir_iter *it) {
 				d->parent = dir;
 				d->dir = dir->dirs;
 				d->dirmax = dir->dirs + dir->ndirs;
-				if (dir->ndirs > 0)
+				if (dir->ndirs > 0) {
 					dir = dir->dirs[0];
-				else
+				} else {
 					break;
+				}
 			}
 			it->file = dir->files;
 			it->filemax = dir->files + dir->nfiles;
@@ -127,7 +128,7 @@ cvs_commit *revdir_iter_next(revdir_iter *it) {
 }
 
 cvs_commit *revdir_iter_next_dir(revdir_iter *it) {
-/* skip the current directory */
+	/* skip the current directory */
 	while (1) {
 		if (!it->dirpos) {
 			return NULL;
@@ -141,10 +142,11 @@ cvs_commit *revdir_iter_next_dir(revdir_iter *it) {
 				d->parent = dir;
 				d->dir = dir->dirs;
 				d->dirmax = dir->dirs + dir->ndirs;
-				if (dir->ndirs > 0)
+				if (dir->ndirs > 0) {
 					dir = dir->dirs[0];
-				else
+				} else {
 					break;
+				}
 			}
 			it->file = dir->files;
 			it->filemax = dir->files + dir->nfiles;
@@ -306,8 +308,9 @@ void revdir_pack_files(const cvs_commit **files, const size_t nfiles,
 #ifdef DEBUG
 	if (enable_debug(DEBUG_ORDER1)) {
 		debugmsg("Packing:\n");
-		for (const cvs_commit **s = files; s < files + nfiles; s++)
+		for (const cvs_commit **s = files; s < files + nfiles; s++) {
 			debugmsg("cvs_commit: %s\n", (*s)->master->name);
+		}
 	}
 #endif /* DEBUG */
 

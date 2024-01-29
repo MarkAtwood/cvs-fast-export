@@ -28,9 +28,10 @@ void *xmemalign(size_t align, size_t size, char const *legend) {
 	int err;
 
 	err = posix_memalign(&ret, align, size);
-	if (err)
+	if (err) {
 		fatal_error("posix_memalign(%zd, %zd) failed in %s: %s", align,
 		            size, legend, strerror(err));
+	}
 	return ret;
 }
 #endif
@@ -38,33 +39,38 @@ void *xmemalign(size_t align, size_t size, char const *legend) {
 void *xmalloc(size_t size, char const *legend) {
 	void *ret = malloc(size);
 #ifndef __COVERITY__
-	if (!ret && !size)
+	if (!ret && !size) {
 		ret = malloc(1);
+	}
 #endif /* __COVERITY__ */
-	if (!ret)
+	if (!ret) {
 		fatal_system_error("Out of memory, malloc(%zd) failed in %s",
 		                   size, legend);
+	}
 	return ret;
 }
 
 void *xcalloc(size_t nmemb, size_t size, char const *legend) {
 	void *ret = calloc(nmemb, size);
-	if (!ret)
+	if (!ret) {
 		fatal_system_error(
 		    "Out of memory, calloc(%zd, %zd) failed in %s", nmemb, size,
 		    legend);
+	}
 	return ret;
 }
 
 void *xrealloc(void *ptr, size_t size, char const *legend) {
 	void *ret = realloc(ptr, size);
 #ifndef __COVERITY__
-	if (!ret && !size)
+	if (!ret && !size) {
 		ret = realloc(ptr, 1);
+	}
 #endif /* __COVERITY__ */
-	if (!ret)
+	if (!ret) {
 		fatal_system_error("Out of memory, realloc(%zd) failed in %s",
 		                   size, legend);
+	}
 	return ret;
 }
 
@@ -105,8 +111,9 @@ void progress_begin(const char *msg, const int max) {
 	time_t now = time(NULL);
 	struct tm *tm = localtime(&now);
 
-	if (!progress)
+	if (!progress) {
 		return;
+	}
 	progress_max = max;
 	progress_counter = 0;
 	progress_in_progress = true;
@@ -120,16 +127,18 @@ void progress_begin(const char *msg, const int max) {
 }
 
 void progress_step(void) {
-	if (!progress)
+	if (!progress) {
 		return;
+	}
 	progress_in_progress = true;
 	progress_counter++;
 	_progress_print(false, "", _unused_va_list);
 }
 
 void progress_jump(const int count) {
-	if (!progress)
+	if (!progress) {
 		return;
+	}
 	progress_in_progress = true;
 	progress_counter = count;
 	_progress_print(false, "", _unused_va_list);
@@ -138,8 +147,9 @@ void progress_jump(const int count) {
 void progress_end(const char *format, ...) {
 	va_list args;
 
-	if (!progress)
+	if (!progress) {
 		return;
+	}
 	progress_in_progress = false;
 	progress_max = progress_counter; /* message will say "100%" or "done" */
 	va_start(args, format);
@@ -149,8 +159,9 @@ void progress_end(const char *format, ...) {
 }
 
 static void _progress_print(bool newline, const char *format, va_list args) {
-	if (!progress)
+	if (!progress) {
 		return;
+	}
 
 	/*
 	 * If a non-empty format was given, use the format and args.
@@ -238,11 +249,13 @@ void announce(char const *format, ...) {
 void warn(char const *format, ...) {
 	va_list args;
 
-	if (nowarn)
+	if (nowarn) {
 		return;
+	}
 
-	if (logfile == stderr)
+	if (logfile == stderr) {
 		progress_interrupt();
+	}
 	fprintf(logfile, "cvs-fast-export: ");
 	va_start(args, format);
 	vfprintf(logfile, format, args);

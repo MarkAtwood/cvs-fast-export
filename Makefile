@@ -15,6 +15,9 @@
 #
 # Note: the reason for the .adoc extensions on README/NEWS/TODO is so they'll
 # display nicely in GitLab's repository-browsing interface.
+#
+# SPDX-FileCopyrightText: (C) Eric S. Raymond <esr@thyrsus.com>
+# SPDX-License-Identifier: BSD-2-Clause
 
 VERSION=$(shell sed -n <NEWS.adoc '/::/s/^\([0-9][^:]*\).*/\1/p' | head -1)
 

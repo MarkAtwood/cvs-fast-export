@@ -16,9 +16,9 @@ unsigned long hash_cvs_number(const cvs_number *const key) {
 static node_t *node_for_cvs_number(nodehash_t *context,
                                    const cvs_number *const n) {
 /*
- * look up the node associated with a specified CVS release number
- * only call with a number that has been through atom_cvs_number
- */
+* look up the node associated with a specified CVS release number
+* only call with a number that has been through atom_cvs_number
+*/
 	const cvs_number *k = n;
 	node_t *p;
 	hash_t hash = hash_cvs_number(k) % NODE_HASH_SIZE;
@@ -154,10 +154,11 @@ static void try_pair(nodehash_t *context, node_t *a, node_t *b) {
 			b->to = a;
 			return;
 		}
-		for (i = n - 2; i >= 0; i--)
+		for (i = n - 2; i >= 0; i--) {
 			if (a->number->n[i] != b->number->n[i]) {
 				break;
 			}
+		}
 		if (i < 0) {
 			a->next = b;
 			a->to = b;
@@ -182,7 +183,8 @@ static void try_pair(nodehash_t *context, node_t *a, node_t *b) {
 /* entry points begin here */
 
 node_t *cvs_find_version(const cvs_file *cvs, const cvs_number *number) {
-/* find the file version associated with the specified CVS release number */
+/* find the file version associated with the specified CVS release
+	 * number */
 	cvs_version *cv;
 	cvs_version *nv = NULL;
 
@@ -214,10 +216,12 @@ void build_branches(nodehash_t *context) {
 	}
 	qsort(v, context->nentries, sizeof(node_t *), compare);
 	/* only trunk? */
-	if (v[context->nentries - 1]->number->c == 2)
+	if (v[context->nentries - 1]->number->c == 2) {
 		context->head_node = v[context->nentries - 1];
-	for (p = v + context->nentries - 2; p >= v; p--)
+	}
+	for (p = v + context->nentries - 2; p >= v; p--) {
 		try_pair(context, p[0], p[1]);
+	}
 	for (p = v + context->nentries - 1; p >= v; p--) {
 		node_t *a = *p, *b = NULL;
 		if (!a->starts) {

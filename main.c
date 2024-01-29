@@ -307,10 +307,11 @@ int main(int argc, char **argv) {
 		case 'R':
 			assert(optarg);
 			export_options.revision_map = fopen(optarg, "w");
-			if (export_options.revision_map == NULL)
+			if (export_options.revision_map == NULL) {
 				fatal_error(
 				    "cannot open %s for revision-map write",
 				    optarg);
+			}
 			break;
 		case 'r':
 			export_options.reposurgeon = true;
@@ -370,9 +371,10 @@ int main(int argc, char **argv) {
 	}
 
 	if (export_options.reposurgeon) {
-		if (export_options.embed_ids)
+		if (export_options.embed_ids) {
 			fatal_error("The options --reposurgeon and --embed-id "
 			            "cannot be combined.\n");
+		}
 	}
 
 	argv[optind - 1] = argv[0];
@@ -381,8 +383,9 @@ int main(int argc, char **argv) {
 
 #ifdef THREADS
 #ifdef _SC_NPROCESSORS_ONLN
-	if (threads == NO_MAX)
+	if (threads == NO_MAX) {
 		threads = 2 * sysconf(_SC_NPROCESSORS_ONLN);
+	}
 #endif /*  _SC_NPROCESSORS_ONLN */
 #endif
 
@@ -415,8 +418,9 @@ int main(int argc, char **argv) {
 			break;
 		case ExecuteExport:
 			export_commits(&forest, &export_options, &export_stats);
-			if (export_options.revision_map != NULL)
+			if (export_options.revision_map != NULL) {
 				fclose(export_options.revision_map);
+			}
 			break;
 		}
 	}

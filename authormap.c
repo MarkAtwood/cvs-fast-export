@@ -65,8 +65,9 @@ bool load_author_map(const char *filename) {
 	}
 	while (fgets(line, sizeof(line) - 1, f)) {
 		lineno++;
-		if (line[0] == '#')
+		if (line[0] == '#') {
 			continue;
+		}
 		equal = strchr(line, '=');
 		if (!equal) {
 			announce("%s:%d: missing '='\n", filename, lineno);

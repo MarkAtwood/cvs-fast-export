@@ -67,24 +67,25 @@ static rev_ref *rev_ref_find_name(rev_ref *h, const char *name) {
 	return NULL;
 }
 
-static bool parents_in_revlist(const char *child_name, rev_ref *rev_list,
-                               cvs_master *source, size_t nsource) {
 /*
  * See whether all the parents of child_name are in rev_list
  * If child_name has no parents (e.g. master branch) then this is
  * trivally true.
  *
- * Parent branch names are determined by examining every cvs master.  See the
- * general note on branch matching under collate_changesets().
+ * Parent branch names are determined by examining every cvs master. See
+ * the general note on branch matching under collate_changesets().
  */
+static bool parents_in_revlist(const char *child_name, rev_ref *rev_list,
+                               cvs_master *source, size_t nsource) {
 	cvs_master *cm;
 	for (cm = source; cm < source + nsource; cm++) {
 		rev_ref *head = rev_find_head(cm, child_name);
 		if (head) {
 			if (head->parent &&
 			    !rev_ref_find_name(rev_list,
-			                       head->parent->ref_name))
+			                       head->parent->ref_name)) {
 				return false;
+			}
 		}
 	}
 	return true;
@@ -195,12 +196,15 @@ static int cvs_commit_canicalize_compare(const void *av, const void *bv) {
 }
 
 static cvs_commit *cvs_commit_latest(cvs_commit **commits, int ncommit) {
-/* find newest live commit in a set */
+	/* find newest live commit in a set */
 	cvs_commit *max = NULL, **c;
-	for (c = commits; c < commits + ncommit; c++)
-		if ((*c) && !(*c)->dead)
-			if (!max || time_compare((*c)->date, max->date) > 0)
+	for (c = commits; c < commits + ncommit; c++) {
+		if ((*c) && !(*c)->dead) {
+			if (!max || time_compare((*c)->date, max->date) > 0) {
 				max = (*c);
+			}
+		}
+	}
 	return max;
 }
 
@@ -234,7 +238,7 @@ static int cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions) {
 }
 
 static bool cvs_commit_time_close(const cvstime_t a, const cvstime_t b) {
-/* are two timestamps within the commit-coalescence window of each other? */
+/* are two timestamps within the commit-coalescence window of each * other? */
 	long diff = (long)a - (long)b;
 	if (diff < 0) {
 		diff = -diff;
@@ -277,12 +281,15 @@ static bool cvs_commit_match(const cvs_commit *a, const cvs_commit *b) {
 		break;
 	}
 
-	if (!cvs_commit_time_close(a->date, b->date))
+	if (!cvs_commit_time_close(a->date, b->date)) {
 		return false;
-	if (a->log != b->log)
+	}
+	if (a->log != b->log) {
 		return false;
-	if (a->author != b->author)
+	}
+	if (a->author != b->author) {
 		return false;
+	}
 	return true;
 }
 
@@ -389,8 +396,9 @@ static git_commit *git_commit_locate_any(const rev_ref *branch,
 		return NULL;
 	}
 	commit = git_commit_locate_any(branch->next, part);
-	if (commit)
+	if (commit) {
 		return commit;
+	}
 	return git_commit_locate_one(branch, part);
 }
 
@@ -502,8 +510,9 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 			c = c->parent;
 		}
 		if (c && (!c->dead || c->date != c->parent->date)) {
-			if (!birth || time_compare(c->date, birth) < 0)
+			if (!birth || time_compare(c->date, birth) < 0) {
 				birth = c->date;
+			}
 		}
 	}
 
@@ -583,8 +592,9 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 			cvs_commit *c = REVISIONS(n);
 			cvs_commit *to;
 			/* already got to parent branch? */
-			if (c->tailed)
+			if (c->tailed) {
 				continue;
+			}
 			/* not affected? */
 			if (c != latest && !cvs_commit_match(c, latest)) {
 				if (c->parent || !c->dead) {
@@ -714,14 +724,14 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 				break;
 			}
 		}
-		if (present == nbranch)
+		if (present == nbranch) {
 			/*
 			 * Branch join looks normal, we can just go ahead and
 			 * build the last commit.
 			 */
 			*tail = NULL;
-		else if ((*tail = git_commit_locate_one(branch->parent,
-		                                        REVISIONS(present)))) {
+		} else if ((*tail = git_commit_locate_one(
+		                branch->parent, REVISIONS(present)))) {
 			if (prev &&
 			    time_compare((*tail)->date, prev->date) > 0) {
 				cvs_commit *first;
@@ -760,11 +770,11 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 				fprintf(logfile, "\n");
 			}
 		} else if ((*tail = git_commit_locate_date(
-		                branch->parent, REVISIONS(present)->date)))
+		                branch->parent, REVISIONS(present)->date))) {
 			warn(
 			    "warning - branch point %s -> %s matched by date\n",
 			    branch->ref_name, branch->parent->ref_name);
-		else {
+		} else {
 			rev_ref *lost;
 			warn("error - branch point %s -> %s not found.",
 			     branch->ref_name, branch->parent->ref_name);
@@ -776,8 +786,9 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 			fprintf(logfile, "\n");
 		}
 		if (*tail) {
-			if (prev)
+			if (prev) {
 				prev->tail = true;
+			}
 		} else {
 			*tail =
 			    git_commit_build(revisions, REVISIONS(0), nbranch);
@@ -801,10 +812,11 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 		}
 	}
 
-	for (n = 0; n < nbranch; n++)
+	for (n = 0; n < nbranch; n++) {
 		if (REVISIONS(n)) {
 			REVISIONS(n)->tailed = false;
 		}
+	}
 
 	free(revisions);
 	/* PUNNING: see the big comment in cvs.h */
@@ -932,8 +944,9 @@ static void rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl) {
 		git_commit *g;
 
 		for (h = gl->heads; h; h = h->next) {
-			if (h->tail)
+			if (h->tail) {
 				continue;
+			}
 			/* PUNNING: See large comment in cvs.h */
 			for (g = (git_commit *)h->commit; g; g = g->parent) {
 				if (g == c->gitspace) {
@@ -998,8 +1011,9 @@ static void rev_ref_set_parent(git_repo *gl, rev_ref *dest, cvs_master *source,
 	cvs_master *s;
 	rev_ref *p, *max;
 
-	if (dest->depth)
+	if (dest->depth) {
 		return;
+	}
 
 	max = NULL;
 	for (s = source; s < source + nmasters; s++) {
@@ -1060,8 +1074,9 @@ git_repo *collate_to_changesets(cvs_master *masters, size_t nmasters,
 				head_count++;
 				rev_list_add_head((head_list *)gl, NULL,
 				                  lh->ref_name, lh->degree);
-			} else if (lh->degree > h->degree)
+			} else if (lh->degree > h->degree) {
 				h->degree = lh->degree;
+			}
 		}
 		if (++n % 100 == 0) {
 			progress_jump(n);

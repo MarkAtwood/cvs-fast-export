@@ -206,10 +206,12 @@ static void out_awrite(editbuffer_t *eb, const char *s, size_t len) {
 }
 
 static bool latin1_alpha(const int c) {
-	if (c >= 192 && c != 215 && c != 247)
+	if (c >= 192 && c != 215 && c != 247) {
 		return true;
-	if ((c >= 97 && c < 123) || (c >= 65 && c < 91))
+	}
+	if ((c >= 97 && c < 123) || (c >= 65 && c < 91)) {
 		return true;
+	}
 	return false;
 }
 
@@ -234,7 +236,7 @@ enum expand_mode expand_override(char const *s) {
 
 static char const *basefilename(const char *const p) {
 	char const *b = p, *q = p;
-	for (;;)
+	for (;;) {
 		switch (*q++) {
 		case '/':
 			b = q;
@@ -242,6 +244,7 @@ static char const *basefilename(const char *const p) {
 		case 0:
 			return b;
 		}
+	}
 }
 
 static char const *getfullRCSname(editbuffer_t *eb) {
@@ -429,8 +432,9 @@ static long parsenum(editbuffer_t *eb) {
 /* parse and return a decimal integer */
 	int c;
 	long ret = 0;
-	for (c = in_buffer_getc(eb); isdigit(c); c = in_buffer_getc(eb))
+	for (c = in_buffer_getc(eb); isdigit(c); c = in_buffer_getc(eb)) {
 		ret = (ret * 10) + (c - '0');
+	}
 	in_buffer_ungetc(eb);
 	return ret;
 }
@@ -484,8 +488,9 @@ static enum edit_op parse_next_delta_command(editbuffer_t *eb,
 	}
 
 	if (cmd == 'a') {
-		if (line1 < dc->adprev)
+		if (line1 < dc->adprev) {
 			fatal_error("backward insertion in delta");
+		}
 		dc->adprev = line1 + 1;
 	} else if (cmd == 'd') {
 		if (line1 < dc->adprev || line1 < dc->dafter) {
@@ -599,15 +604,16 @@ static void keyreplace(editbuffer_t *eb, enum markers marker) {
 			break;
 		}
 
-		if (exp != EXPANDKV)
+		if (exp != EXPANDKV) {
 			out_putc(eb, ' ');
+		}
 	}
 
 #if 0
 /* Closing delimiter is processed again in expandline */
-    if (exp != EXPANDKV) {
-	out_putc(eb, KDELIM);
-    }
+	if (exp != EXPANDKV) {
+		out_putc(eb, KDELIM);
+	}
 #endif
 
 	if (marker == Log) {
@@ -666,10 +672,11 @@ static void keyreplace(editbuffer_t *eb, enum markers marker) {
 		}
 
 		/* Convert traditional C or Pascal leader to ` *'.  */
-		for (cw = 0; cw < cs; cw++)
+		for (cw = 0; cw < cs; cw++) {
 			if (!latin1_whitespace(xxp[cw])) {
 				break;
 			}
+		}
 		if (cw + 1 < cs && xxp[cw + 1] == '*' &&
 		    (xxp[cw] == '/' || xxp[cw] == '(')) {
 			size_t i = cw + 1;
@@ -695,8 +702,10 @@ static void keyreplace(editbuffer_t *eb, enum markers marker) {
 
 		/* Do not include state: it may change and is not updated.  */
 		cw = cs;
-		for (; cw && (xxp[cw - 1] == ' ' || xxp[cw - 1] == '\t'); --cw)
-			;
+		for (; cw && (xxp[cw - 1] == ' ' || xxp[cw - 1] == '\t');
+		     --cw) {
+			continue;
+		}
 		for (;;) {
 			out_putc(eb, '\n');
 			out_awrite(eb, xxp, cw);
@@ -709,8 +718,9 @@ static void keyreplace(editbuffer_t *eb, enum markers marker) {
 				out_awrite(eb, xxp + cw, cs - cw);
 				do {
 					out_putc(eb, c);
-					if (!ls)
+					if (!ls) {
 						break;
+					}
 					--ls;
 					c = *kw++;
 				} while (c != '\n');
@@ -904,8 +914,9 @@ static uchar *load_text(editbuffer_t *eb, const cvs_text *text) {
 		fatal_error("Cannot open %s", text->filename);
 	} else {
 		uchar *data;
-		if (fseek(f, text->offset, SEEK_SET) == -1)
+		if (fseek(f, text->offset, SEEK_SET) == -1) {
 			fatal_system_error("fseek %s", text->filename);
+		}
 		data = xmalloc(text->length + 2, __func__);
 		if (fread(data, 1, text->length, f) != text->length) {
 			fatal_system_error("short read %s", text->filename);
@@ -948,7 +959,7 @@ static void process_delta(editbuffer_t *eb, const node_t *const node,
 		while ((ptr = in_get_line(eb))) {
 			insertline(eb, editline++, ptr);
 		}
-		/* coverity[fallthrough] */
+	/* coverity[fallthrough] */
 	case EDIT:
 		dc.dafter = dc.adprev = 0;
 		while ((editor_command = parse_next_delta_command(eb, &dc)) !=
@@ -1077,12 +1088,13 @@ static void snapshotline_nodelim(editbuffer_t *eb, editline_t *l) {
 static void snapshotedit(editbuffer_t *eb) {
 	editline_t *p, *lim, *l = Gline(eb);
 
-	for (p = l, lim = l + Ggap(eb); p < lim;)
+	for (p = l, lim = l + Ggap(eb); p < lim;) {
 		if (p->has_stringdelim) {
 			snapshotline(eb, (*p++).ptr);
 		} else {
 			snapshotline_nodelim(eb, p++);
 		}
+	}
 
 	for (p += Ggapsize(eb), lim = l + Glinemax(eb); p < lim;) {
 		if (p->has_stringdelim) {
@@ -1159,8 +1171,9 @@ void generate_files(generator_t *gen, export_options_t *opts,
 	editbuffer_t *eb = &gen->editbuffer;
 	node_t *node = generate_setup(gen);
 
-	if (node == NULL)
+	if (node == NULL) {
 		return;
+	}
 
 	eb->current->node = node;
 	eb->current->node_text = load_text(eb, &node->patch->text);

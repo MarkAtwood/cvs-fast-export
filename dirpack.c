@@ -20,7 +20,8 @@ typedef struct _file_list_hash {
 
 static file_list_hash *buckets[REV_DIR_HASH];
 
-static hash_t hash_files(const cvs_commit *const *const files, const int nfiles) {
+static hash_t hash_files(const cvs_commit *const *const files,
+                         const int nfiles) {
 /* hash a file list so we can recognize it cheaply */
 	hash_t h = 0;
 	size_t i;
@@ -228,8 +229,9 @@ void revdir_pack_files(const cvs_commit **files, const size_t nfiles,
 #ifdef DEBUG
 	if (enable_debug(DEBUG_ORDER1)) {
 		debugmsg("Packing:\n");
-		for (cvs_commit **s = files; s < files + nfiles; s++)
+		for (cvs_commit **s = files; s < files + nfiles; s++) {
 			debugmsg("cvs_commit: %s\n", (*s)->master->name);
+		}
 	}
 #endif /* DEBUG */
 

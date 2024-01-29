@@ -40,8 +40,9 @@ bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 	/*
 	 * Everything on x.y is trunk
 	 */
-	if (a->c == 2)
+	if (a->c == 2) {
 		return true;
+	}
 	n = a->c;
 	for (i = 0; i < n - 1; i++) {
 		int an, bn;
@@ -51,10 +52,12 @@ bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 		 * deal with n.m.0.p branch numbering
 		 */
 		if (i == n - 2) {
-			if (an == 0)
+			if (an == 0) {
 				an = a->n[i + 1];
-			if (bn == 0)
+			}
+			if (bn == 0) {
 				bn = b->n[i + 1];
+			}
 		}
 		if (an != bn) {
 			return false;
@@ -64,7 +67,7 @@ bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 }
 
 bool cvs_number_equal(const cvs_number *n1, const cvs_number *n2) {
-	/* can use memcmp as cvs_number isn't padded */
+/* can use memcmp as cvs_number isn't padded */
 	return 0 == memcmp(n1, n2, sizeof(short) * (n1->c + 1));
 	/*
 	if (n1->n != n2->n)

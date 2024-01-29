@@ -21,8 +21,9 @@ void dump_log(FILE *f, const char *log) {
 			break;
 		}
 		if (log[j] == '\n') {
-			if (j > 5)
+			if (j > 5) {
 				break;
+			}
 			continue;
 		}
 		if (log[j] & 0x80) {
@@ -132,8 +133,9 @@ static rev_ref *dump_find_branch(git_repo *rl, const git_commit *commit) {
 	git_commit *c;
 
 	for (h = rl->heads; h; h = h->next) {
-		if (h->tail)
+		if (h->tail) {
 			continue;
+		}
 		/* PUNNING: see the big comment in cvs.h */
 		for (c = (git_commit *)h->commit; c; c = c->parent) {
 			if (c == commit) {
@@ -178,8 +180,9 @@ static void dot_refs(git_repo *rl, rev_ref *refs, const char *title,
 			       shape);
 		}
 	}
-	for (r = refs; r; r = r->next)
+	for (r = refs; r; r = r->next) {
 		r->shown = false;
+	}
 	for (r = refs; r; r = r->next) {
 		if (!r->shown) {
 			printf("\t");

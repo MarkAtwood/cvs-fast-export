@@ -168,17 +168,20 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 	char *cbuf = (char *)buf;
 	size_t clen = len;
 	if (is_ignore) {
-		if (!noignores)
+		if (!noignores) {
 			extralen = sizeof(CVS_IGNORES) - 1;
+		}
 		/*
 		 * Two incredibly obscure features of CVS:
 		 * 1. Spaces in include files are supposed to be
 		 *    treated equivalently to newlines,  Yes, really.
 		 * 2. A leading "!\n" says to ignore the defaults.
 		 */
-		for (char *cp = cbuf; cp < cbuf + len; cp++)
-			if (*cp == ' ')
+		for (char *cp = cbuf; cp < cbuf + len; cp++) {
+			if (*cp == ' ') {
 				*cp = '\n';
+			}
+		}
 		if (strlen(cbuf) >= 2 && cbuf[0] == '!' && cbuf[1] == '\n') {
 			extralen = 0;
 			cbuf += 2;
@@ -318,7 +321,7 @@ static struct fileop *next_op_slot(struct fileop **operations,
 }
 
 static void build_modify_op(cvs_commit *c, struct fileop *op) {
-/* fill out a modify fileop from a cvs commit */
+	/* fill out a modify fileop from a cvs commit */
 	op->rev = c;
 	op->path = c->master->fileop_name;
 	op->op = 'M';
@@ -336,8 +339,9 @@ static void append_revpair(cvs_commit *c, const export_options_t *opts,
 		const char *cvs_leader = "CVS-ID: ";
 		char fr[BUFSIZ];
 		int xtr = 2;
-		if (opts->embed_ids)
+		if (opts->embed_ids) {
 			xtr += strlen(cvs_leader);
+		}
 		stringify_revision(c->master->name, " ", c->number, fr,
 		                   sizeof fr);
 		if (strlen(*revpairs) + strlen(fr) + xtr > *revpairsize) {
@@ -387,8 +391,9 @@ static void export_commit(git_commit *commit, const char *branch,
 	serial_t here;
 	static const char *s_gitignore;
 
-	if (!s_gitignore)
+	if (!s_gitignore) {
 		s_gitignore = atom(".gitignore");
+	}
 
 	if (opts->reposurgeon || opts->revision_map || opts->embed_ids) {
 		revpairs = xmalloc((revpairsize = 1024), "revpair allocation");
@@ -512,9 +517,10 @@ static void export_commit(git_commit *commit, const char *branch,
 		timezone = author->timezone ? author->timezone : "UTC";
 	}
 
-	if (report)
+	if (report) {
 		printf("commit %s%s\n", opts->branch_prefix,
 		       visualize_branch_name(branch));
+	}
 	commit->serial = ++seqno;
 	here = markmap[commit->serial] = ++mark;
 #ifdef DEBUG
@@ -556,10 +562,11 @@ static void export_commit(git_commit *commit, const char *branch,
 
 		for (op2 = operations; op2 < op; op2++) {
 			assert(op2->op == 'M' || op2->op == 'D');
-			if (op2->op == 'M')
+			if (op2->op == 'M') {
 				printf("M 100%o :%d %s\n", op2->mode,
 				       (int)markmap[op2->rev->serial],
 				       op2->path);
+			}
 			if (op2->op == 'D') {
 				printf("D %s\n", op2->path);
 			}
@@ -616,8 +623,9 @@ static int export_ncommit(const git_repo *rl) {
 		/* PUNNING: see the big comment in cvs.h */
 		for (c = (git_commit *)h->commit; c; c = c->parent) {
 			n++;
-			if (c->tail)
+			if (c->tail) {
 				break;
+			}
 		}
 	}
 	return n;
@@ -631,7 +639,7 @@ struct commit_seq {
 };
 
 static struct commit_seq *canonicalize(git_repo *rl) {
-/* copy/sort collated commits into git-fast-export order */
+	/* copy/sort collated commits into git-fast-export order */
 	/*
 	 * Dump in canonical (strict git-fast-export) order.
 	 *
@@ -660,8 +668,9 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 	    (struct commit_seq *)xcalloc(export_stats.export_total_commits,
 	                                 sizeof(struct commit_seq), "export");
 #ifdef DEBUG
-	if (enable_debug(DEBUG_ORDER1))
+	if (enable_debug(DEBUG_ORDER1)) {
 		debugmsg("Export phase 1:\n");
+	}
 #endif /* DEBUG */
 	branchbase = 0;
 	for (h = rl->heads; h; h = h->next) {
@@ -669,8 +678,9 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 			int i = 0, branchlength = 0;
 			/* PUNNING: see the big comment in cvs.h */
 			for (c = (git_commit *)h->commit; c;
-			     c = (c->tail ? NULL : c->parent))
+			     c = (c->tail ? NULL : c->parent)) {
 				branchlength++;
+			}
 			/* PUNNING: see the big comment in cvs.h */
 			for (c = (git_commit *)h->commit; c;
 			     c = (c->tail ? NULL : c->parent)) {
@@ -775,8 +785,9 @@ void export_commits(forest_t *forest, export_options_t *opts,
 	int recount = 0;
 	char *tmp = getenv("TMPDIR");
 
-	if (tmp == NULL)
+	if (tmp == NULL) {
 		tmp = "/tmp";
+	}
 	seqno = mark = 0;
 	snprintf(blobdir, sizeof(blobdir), "%s/cvs-fast-export-XXXXXX", tmp);
 	if (mkdtemp(blobdir) == NULL) {
@@ -815,8 +826,9 @@ void export_commits(forest_t *forest, export_options_t *opts,
 	if (enable_debug(DEBUG_ORDER2)) {
 		debugmsg("Export phase 2:\n");
 		for (hp = history;
-		     hp < history + export_stats.export_total_commits; hp++)
+		     hp < history + export_stats.export_total_commits; hp++) {
 			dump_commit(hp->commit, logfile);
+		}
 	}
 #endif /* DEBUG */
 
@@ -855,14 +867,16 @@ void export_commits(forest_t *forest, export_options_t *opts,
 		}
 		progress_jump(hp - history);
 		export_commit(hp->commit, hp->head->ref_name, report, opts);
-		for (t = all_tags; t; t = t->next)
+		for (t = all_tags; t; t = t->next) {
 			if (t->commit == hp->commit &&
 			    display_date(hp->commit,
 			                 markmap[hp->commit->serial],
-			                 opts->force_dates) > opts->fromtime)
+			                 opts->force_dates) > opts->fromtime) {
 				printf("reset refs/tags/%s\nfrom :%d\n\n",
 				       t->name,
 				       (int)markmap[hp->commit->serial]);
+			}
+		}
 	}
 
 	free(history);

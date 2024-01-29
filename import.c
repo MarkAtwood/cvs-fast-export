@@ -73,18 +73,20 @@ static char *rectify_name(const char *raw, char *rectified, size_t rectlen) {
 	p = rectified;
 	s = raw + striplen;
 	while (*s) {
-		for (snext = s; *snext; snext++)
+		for (snext = s; *snext; snext++) {
 			if (*snext == '/') {
 				++snext;
 				/* assert(*snext != '\0'); */
 				break;
 			}
+		}
 		len = snext - s;
 		/* special processing for final components */
 		if (*snext == '\0') {
 			/* trim trailing ,v */
-			if (len > 2 && s[len - 2] == ',' && s[len - 1] == 'v')
+			if (len > 2 && s[len - 2] == ',' && s[len - 1] == 'v') {
 				len -= 2;
+			}
 		} else { /* s[len-1] == '/' */
 			/* drop some path components */
 			if (len == sizeof "Attic" &&
@@ -186,8 +188,9 @@ static void *worker(void *arg)
 	for (;;) {
 		/* pop a master off the queue, terminating if none left */
 #ifdef THREADS
-		if (threads > 1)
+		if (threads > 1) {
 			pthread_mutex_lock(&enqueue_mutex);
+		}
 #endif /* THREADS */
 		size_t i = fn_i++;
 #ifdef THREADS
@@ -205,8 +208,9 @@ static void *worker(void *arg)
 
 		/* pass it to the next stage */
 #ifdef THREADS
-		if (threads > 1)
+		if (threads > 1) {
 			pthread_mutex_lock(&revlist_mutex);
+		}
 #endif /* THREADS */
 		if ((generators[i] = out.generator).master_name != NULL) {
 			progress_jump(++load_current_file);
@@ -271,11 +275,12 @@ int path_deep_compare(const void *a, const void *b) {
 	if (!aslash && !bslash) {
 		return compar; /*    ? ~ ?    */
 	}
-	if (!aslash)
+	if (!aslash) {
 		return +1; /*    ? > ??/? */
-	if (!bslash)
+	}
+	if (!bslash) {
 		return -1; /* ??/? < ?    */
-
+	}
 	/*
 	 * If the final slashes are at the same position, then either
 	 * both paths are leaves of the same directory, or they
@@ -349,11 +354,13 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 		struct stat stb;
 		if (argc < 2) {
 			/* coverity[tainted_data] Safe, never handed to exec */
-			if (fgets(name, sizeof(name), stdin) == NULL)
+			if (fgets(name, sizeof(name), stdin) == NULL) {
 				break;
+			}
 			int l = strlen(name);
-			if (name[l - 1] == '\n')
+			if (name[l - 1] == '\n') {
 				name[l - 1] = '\0';
+			}
 			file = name;
 		} else {
 			file = (char *)argv[j++];
@@ -386,8 +393,9 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 		fn_tail = (rev_filename **)&fn->next;
 		if (striplen > 0 && last != NULL) {
 			c = strcommonendingwith(file, last, '/');
-			if (c < striplen)
+			if (c < striplen) {
 				striplen = c;
+			}
 		} else if (striplen < 0) {
 			striplen = 0;
 			for (i = 0; i < strlen(file); i++) {

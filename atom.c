@@ -102,8 +102,9 @@ const char *atom(const char *string)
 
 	while ((b = *head)) {
 	collision:
-		if (b->hash == hash && !strcmp(string, b->string))
+		if (b->hash == hash && !strcmp(string, b->string)) {
 			return b->string;
+		}
 		head = &(b->next);
 	}
 #ifdef THREADS

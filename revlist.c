@@ -18,8 +18,9 @@ rev_ref *rev_list_add_head(head_list *rl, cvs_commit *commit, const char *name,
 	rev_ref *r;
 	rev_ref **list = &rl->heads;
 
-	while (*list)
+	while (*list) {
 		list = &(*list)->next;
+	}
 	r = xcalloc(1, sizeof(rev_ref), "adding head reference");
 	r->commit = commit;
 	r->ref_name = name;

@@ -87,8 +87,9 @@ static const master_dir *atom_dir(const char *dirname) {
 		head = &(b->next);
 	}
 #ifdef THREADS
-	if (threads > 1)
+	if (threads > 1) {
 		pthread_mutex_lock(&dir_bucket_mutex);
+	}
 #endif /* THREADS */
 	if ((b = *head)) {
 #ifdef THREADS
@@ -151,7 +152,7 @@ static rev_master *build_rev_master(cvs_file *cvs, rev_master *master) {
 
 static cvs_commit *cvs_master_branch_build(cvs_file *cvs, rev_master *master,
                                            const cvs_number *branch) {
-/* build a list of commit objects representing a branch from deltas on it */
+/* build a list of commit objects representing a branch from deltas on * it */
 	cvs_number n;
 	const cvs_number *atom_n;
 	cvs_commit *head = NULL;
@@ -160,9 +161,10 @@ static cvs_commit *cvs_master_branch_build(cvs_file *cvs, rev_master *master,
 #if CVSDEBUG
 	char buf[CVS_MAX_REV_LEN];
 
-	if (cvs->verbose > 0)
+	if (cvs->verbose > 0) {
 		debugmsg("\tstarting new branch, branch number = %s\n",
 		         cvs_number_string(branch, buf, CVS_MAX_REV_LEN));
+	}
 #endif /* CVSDEBUG */
 
 	memcpy(&n, branch, sizeof(cvs_number));
@@ -372,15 +374,17 @@ static bool cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs) {
 		trunk->commit = nvendor->commit;
 		trunk->degree = nvendor->commit->number->c;
 		trunk->number = nvendor->commit->number;
-		for (vlast = trunk->commit; vlast; vlast = vlast->parent)
+		for (vlast = trunk->commit; vlast; vlast = vlast->parent) {
 			if (!vlast->parent) {
 				vlast->parent = oldtip;
 				break;
 			}
-		for (vendor = cm->heads; vendor; vendor = vendor->next)
+		}
+		for (vendor = cm->heads; vendor; vendor = vendor->next) {
 			if (vendor->next == nvendor) {
 				vendor->next = nvendor->next;
 			}
+		}
 	}
 
 	return found_vendor;
@@ -483,7 +487,8 @@ static void cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs) {
 	}
 }
 
-static rev_ref *cvs_master_find_branch(cvs_master *cm, const cvs_number *number) {
+static rev_ref *cvs_master_find_branch(cvs_master *cm,
+				       const cvs_number *number) {
 /* look up a revision reference in a revlist by symbol */
 	cvs_number n;
 	rev_ref *h;
@@ -729,14 +734,16 @@ static cvs_symbol *cvs_find_symbol(cvs_file *cvs, const char *name) {
 	return NULL;
 }
 
-static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1, const rev_ref *r2) {
+static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1,
+                           const rev_ref *r2) {
 /* comparison function used for topological sorting */
 	cvs_symbol *s1, *s2;
 	s1 = cvs_find_symbol(cvs, r1->ref_name);
 	s2 = cvs_find_symbol(cvs, r2->ref_name);
 	if (!s1) {
-		if (!s2)
+		if (!s2) {
 			return 0;
+		}
 		return -1;
 	}
 	if (!s2) {
@@ -770,8 +777,9 @@ static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs) {
 			qsize = k;
 			psize = 0;
 			for (i = 0; i < k; i++) {
-				if (!q->next)
+				if (!q->next) {
 					break;
+				}
 				psize++;
 				q = q->next;
 			}
@@ -817,8 +825,9 @@ static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs) {
 			p = q;
 		}
 
-		if (passmerges <= 1)
+		if (passmerges <= 1) {
 			break;
+		}
 
 		p = l;
 		l = lastl = NULL;
@@ -840,7 +849,8 @@ static void cvs_master_sort_heads(cvs_master *cm, cvs_file *cvs) {
 #endif /* DEBUG */
 }
 
-cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master) {
+cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm,
+                              rev_master *master) {
 /* fill out a linked list capturing the CVS master file structure */
 	const cvs_number *trunk_number;
 	cvs_commit *trunk;
@@ -849,8 +859,9 @@ cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 	cvs_branch *cb;
 	cvs_version *ctrunk = NULL;
 
-	if (!root_dir)
+	if (!root_dir) {
 		root_dir = atom_dir(atom("\0"));
+	}
 	build_rev_master(cvs, master);
 #if CVSDEBUG
 	char buf[CVS_MAX_REV_LEN];
@@ -896,9 +907,10 @@ cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm, rev_master *master)
 	/*
 	 * Search for other branches
 	 */
-	if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0)
+	if (enable_debug(DEBUG_CVSDEBUG) && cvs->verbose > 0) {
 		debugmsg("Building non-trunk branches for %s:\n",
 		         cvs->gen.master_name);
+	}
 #endif /* DEBUG */
 
 	for (cv = cvs->gen.versions; cv; cv = cv->next) {
