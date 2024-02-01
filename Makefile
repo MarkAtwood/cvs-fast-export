@@ -33,7 +33,6 @@ INSTALL = install
 TAR ?= tar
 BISON ?= bison
 FLEX ?= flex
-A2X ?= a2x
 
 GCC_WARNINGS1=-Wall -Wpointer-arith -Wstrict-prototypes
 GCC_WARNINGS2=-Wmissing-prototypes -Wmissing-declarations
@@ -119,16 +118,16 @@ gram.o: gram.c lex.h gram.h
 import.o: import.c lex.h gram.h
 lex.o: lex.c gram.h
 
-.SUFFIXES: .html .adoc .txt .1
-
-# Requires asciidoc
+# Note: to suppress the footers with timestamps being generated in HTML,
+# we use "-a nofooter".
 # To debug asciidoc problems, you may need to run "xmllint --nonet --noout --valid"
-# on the intermediate XML.
+# on the intermediate XML that throws an error.
+.SUFFIXES: .html .adoc .1
+
 .adoc.1:
-	$(A2X) --doctype manpage --format manpage $<
+	asciidoctor -D. -a nofooter -b manpage $<
 .adoc.html:
-	$(A2X) --doctype manpage --format xhtml -D . $<
-	rm -f docbook-xsl.css
+	asciidoctor -D. -a nofooter -a webfonts! $<
 
 reporting-bugs.html: reporting-bugs.adoc
 	asciidoc reporting-bugs.adoc
@@ -139,7 +138,7 @@ html: cvs-fast-export.html cvssync.html cvsconvert.html reporting-bugs.html
 
 clean:
 	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export
-	rm -f *.1 *.html docbook-xsl.css gram.output gmon.out
+	rm -f *.1 *.html gram.output gmon.out
 	rm -f MANIFEST index.html *.tar.gz
 	rm -f *.gcno *.gcda
 

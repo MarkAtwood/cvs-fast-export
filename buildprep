@@ -203,14 +203,14 @@ doc () {
         exit 1
         ;;
     apt)
-        $install asciidoc
+        $install asciidoctor
         ;;
     emerge)
         echo "Not yet supported" >&2
         exit 1
         ;;
     pacman)
-        $install asciidoc
+        $install asciidoctor
         ;;
     pkgin)
         echo "Not yet supported" >&2
@@ -225,7 +225,7 @@ doc () {
         exit 1
         ;;
     dnf)
-        $install asciidoc
+        $install asciidoctor
         ;;
     yast|zypper)
         echo "Not yet supported" >&2
