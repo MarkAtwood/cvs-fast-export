@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Repository head::
+1.64: 2024-02-03::
    cvsconvert can do multiple conversions in a single run.
 
 1.63: 2024-01-01::
