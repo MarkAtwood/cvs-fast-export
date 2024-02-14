@@ -177,7 +177,7 @@ main () {
 	$install bison                #
 	$install python3              # /usr/local/bin/python3 -> python3.9
 	# $install cppcheck           # Broken on 14.0-RELEASE-p4 - devel/cppcheck
-	$install hs-ShellCheck-0.9.0  # shellcheck
+	$install hs-ShellCheck-0.9.0
 	$install cvs                  # Source code control
 	# $install pylint             # Didn't need this
 	echo "FreeBSD Notes:"
