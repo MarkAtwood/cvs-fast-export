@@ -129,7 +129,8 @@ static void in_buffer_init(editbuffer_t *eb, const uchar *const text,
 	Ginbuf(eb)->ptr = Ginbuf(eb)->buffer = (uchar *)text;
 	Ginbuf(eb)->read_count = 0;
 	if (bypass_initial && *Ginbuf(eb)->ptr++ != SDELIM) {
-		fatal_error("in %s, llegal buffer, missing @ %s", eb->Gfilename, text);
+		fatal_error("at %s:%s, llegal buffer, missing @ %s",
+		      eb->Gfilename, eb->Gversion_number, text);
 	}
 }
 
@@ -328,7 +329,8 @@ static enum markers trymatch(char const *const string) {
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
-		fatal_error("in %s, edit script tried to insert beyond eof", eb->Gfilename);
+		fatal_error("at %s:%s, edit script tried to insert beyond eof",
+			    eb->Gfilename, eb->Gversion_number);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -363,7 +365,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
-		fatal_error("in %s, edit script tried to delete beyond eof", eb->Gfilename);
+		fatal_error("at %s:%s, edit script tried to delete beyond eof",
+			    eb->Gfilename, eb->Gversion_number);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
@@ -381,7 +384,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
-	  fatal_error("in %s, edit script tried to insert beyond eof", eb->Gfilename);
+	  fatal_error("at %s:%s, edit script tried to insert beyond eof",
+		      eb->Gfilename, eb->Gversion_number);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -414,7 +418,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
-		fatal_error("in %s, edit script tried to delete beyond eof.", eb->Gfilename);
+		fatal_error("at %s:%s, edit script tried to delete beyond eof.",
+			    eb->Gfilename, eb->Gversion_number);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
@@ -484,17 +489,20 @@ static enum edit_op parse_next_delta_command(editbuffer_t *eb,
 
 	// cppcheck-suppress invalidTestForOverflow
 	if (!nlines || line1 + nlines < line1) {
-		fatal_error("corrupt delta in %s", eb->Gfilename);
+		fatal_error("at %s:%s, corrupt delta",
+			    eb->Gfilename, eb->Gversion_number);
 	}
 
 	if (cmd == 'a') {
 		if (line1 < dc->adprev) {
-			fatal_error("backward insertion in delta");
+		  fatal_error("at %s:%s, backward insertion in delta",
+			    eb->Gfilename, eb->Gversion_number);
 		}
 		dc->adprev = line1 + 1;
 	} else if (cmd == 'd') {
 		if (line1 < dc->adprev || line1 < dc->dafter) {
-			fatal_error("backward deletion in delta");
+		  fatal_error("bat %s:%s, ackward deletion in delta",
+			    eb->Gfilename, eb->Gversion_number);
 		}
 		dc->adprev = line1;
 		dc->dafter = line1 + nlines;
@@ -922,10 +930,12 @@ static uchar *load_text(editbuffer_t *eb, const cvs_text *text) {
 			fatal_system_error("short read %s", text->filename);
 		}
 		if (data[0] != '@') {
-			fatal_error("doesn't start with '@'");
+		  fatal_error("dar %s:%s, oesn't start with '@'",
+			    eb->Gfilename, eb->Gversion_number);
 		}
 		if (data[text->length - 1] != '@') {
-			fatal_error("doesn't end with '@'");
+		  fatal_error("at %s:%s, doesn't end with '@'",
+			    eb->Gfilename, eb->Gversion_number);
 		}
 		data[text->length] = ' ';
 		data[text->length + 1] = '\0';
@@ -980,8 +990,8 @@ static void process_delta(editbuffer_t *eb, const node_t *const node,
 				adjust -= dc.nlines;
 				break;
 			case replace:
-				fatal_error("edit operation not found in %s",
-				            eb->Gfilename);
+				fatal_error("at %s:%s, edit operation not found",
+				            eb->Gfilename, eb->Gversion_number);
 			case eof:
 				/* should never happen */
 				break;
