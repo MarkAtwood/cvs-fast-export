@@ -2,6 +2,7 @@
 
 Repository head::
    Quietly handle malformed author IDs with embedded spaces.
+   Patch buildprep to do the right thing on FreeBSD.
 
 1.64: 2024-02-03::
    cvsconvert can do multiple conversions in a single run.
