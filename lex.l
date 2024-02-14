@@ -93,9 +93,15 @@ YY_DECL;
 <ACCESSS>[a-zA-Z_][a-zA-Z_0-9]* {
 					return LOGIN;
 				}
-<AUTHORSS>[-a-zA-Z_0-9+%][-a-zA-Z_0-9+/%=.~^\\*?]* {
+<AUTHORSS>[-a-zA-Z_0-9+%][-a-zA-Z_0-9+/%=.~^\\*? ]* {
+					for (char *cp = yytext; *cp != '\0'; cp++) {
+	   					if (isspace(*cp)) {
+							*cp = '_';
+						}   
+	   
+	   				}
 					yylval->atom = atom(yytext);
-					return TOKEN;
+					return SPACETOKEN;
 				}
 <PERM>[0-9]+			{
 					return IGNORED;

@@ -56,7 +56,7 @@ extern YY_DECL;	/* FIXME: once the Bison bug requiring this is fixed */
 %token		SEMI COLON IGNORED
 %token		BRAINDAMAGED_NUMBER
 %token		LOGIN
-%token <atom>	TOKEN TAGNAME
+%token <atom>	TOKEN SPACETOKEN TAGNAME
 %token <s>	DATA
 %token <text>	TEXT_DATA
 %token <number>	NUMBER
@@ -218,7 +218,7 @@ date		: DATE NUMBER SEMI
 		    $$ = lex_date (&$2, scanner, cvsfile);
 		  }
 		;
-author		: AUTHOR TOKEN SEMI
+author		: AUTHOR SPACETOKEN SEMI
 		  { $$ = $2; }
 		;
 state		: STATE TOKEN SEMI
