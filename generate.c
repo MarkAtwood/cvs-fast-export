@@ -129,7 +129,7 @@ static void in_buffer_init(editbuffer_t *eb, const uchar *const text,
 	Ginbuf(eb)->ptr = Ginbuf(eb)->buffer = (uchar *)text;
 	Ginbuf(eb)->read_count = 0;
 	if (bypass_initial && *Ginbuf(eb)->ptr++ != SDELIM) {
-		fatal_error("Illegal buffer, missing @ %s", text);
+		fatal_error("in %s, llegal buffer, missing @ %s", eb->Gfilename, text);
 	}
 }
 
@@ -328,7 +328,7 @@ static enum markers trymatch(char const *const string) {
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
-		fatal_error("edit script tried to insert beyond eof");
+		fatal_error("in %s, edit script tried to insert beyond eof", eb->Gfilename);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -363,7 +363,7 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
-		fatal_error("edit script tried to delete beyond eof");
+		fatal_error("in %s, edit script tried to delete beyond eof", eb->Gfilename);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
@@ -381,7 +381,7 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
-		fatal_error("edit script tried to insert beyond eof");
+	  fatal_error("in %s, edit script tried to insert beyond eof", eb->Gfilename);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -414,7 +414,7 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 /* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
-		fatal_error("edit script tried to delete beyond eof");
+		fatal_error("in %s, edit script tried to delete beyond eof.", eb->Gfilename);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
