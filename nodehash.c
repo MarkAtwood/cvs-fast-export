@@ -13,12 +13,12 @@ unsigned long hash_cvs_number(const cvs_number *const key) {
 	return hash_value((const char *)key, sizeof(short) * (key->c + 1));
 }
 
+/*
+ * look up the node associated with a specified CVS release number
+ * only call with a number that has been through atom_cvs_number
+ */
 static node_t *node_for_cvs_number(nodehash_t *context,
                                    const cvs_number *const n) {
-/*
-* look up the node associated with a specified CVS release number
-* only call with a number that has been through atom_cvs_number
-*/
 	const cvs_number *k = n;
 	node_t *p;
 	hash_t hash = hash_cvs_number(k) % NODE_HASH_SIZE;
@@ -42,9 +42,9 @@ static node_t *node_for_cvs_number(nodehash_t *context,
 	return p;
 }
 
+/* find the parent node of the specified prefix of a release number */
 static node_t *find_parent(nodehash_t *context, const cvs_number *const n,
                            const int depth) {
-/* find the parent node of the specified prefix of a release number */
 	cvs_number key;
 	const cvs_number *k;
 	node_t *p;
@@ -63,8 +63,8 @@ static node_t *find_parent(nodehash_t *context, const cvs_number *const n,
 	return NULL;
 }
 
-void hash_version(nodehash_t *context, cvs_version *v) {
 /* intern a version onto the node list */
+void hash_version(nodehash_t *context, cvs_version *v) {
 	v->node = node_for_cvs_number(context, v->number);
 	if (v->node->version) {
 		char name[CVS_MAX_REV_LEN];
@@ -82,8 +82,8 @@ void hash_version(nodehash_t *context, cvs_version *v) {
 	}
 }
 
-void hash_patch(nodehash_t *context, cvs_patch *p) {
 /* intern a patch onto the node list */
+void hash_patch(nodehash_t *context, cvs_patch *p) {
 	p->node = node_for_cvs_number(context, p->number);
 	if (p->node->patch) {
 		char name[CVS_MAX_REV_LEN];
@@ -101,13 +101,13 @@ void hash_patch(nodehash_t *context, cvs_patch *p) {
 	}
 }
 
-void hash_branch(nodehash_t *context, cvs_branch *b) {
 /* intern a branch onto the node list */
+void hash_branch(nodehash_t *context, cvs_branch *b) {
 	b->node = node_for_cvs_number(context, b->number);
 }
 
-void clean_hash(nodehash_t *context) {
 /* discard the node list */
+void clean_hash(nodehash_t *context) {
 	int i;
 	for (i = 0; i < NODE_HASH_SIZE; i++) {
 		node_t *p = context->table[i];
@@ -122,8 +122,8 @@ void clean_hash(nodehash_t *context) {
 	context->head_node = NULL;
 }
 
-static int compare(const void *a, const void *b) {
 /* total ordering of nodes by associated CVS revision number */
+static int compare(const void *a, const void *b) {
 	node_t *x = *(node_t *const *)a, *y = *(node_t *const *)b;
 	int n, i;
 	n = x->number->c;
@@ -182,9 +182,8 @@ static void try_pair(nodehash_t *context, node_t *a, node_t *b) {
 
 /* entry points begin here */
 
+/* find the file version associated with the specified CVS release number */
 node_t *cvs_find_version(const cvs_file *cvs, const cvs_number *number) {
-/* find the file version associated with the specified CVS release
-	 * number */
 	cvs_version *cv;
 	cvs_version *nv = NULL;
 
@@ -198,8 +197,8 @@ node_t *cvs_find_version(const cvs_file *cvs, const cvs_number *number) {
 	return nv ? nv->node : NULL;
 }
 
-void build_branches(nodehash_t *context) {
 /* build branch links in the node list */
+void build_branches(nodehash_t *context) {
 	if (context->nentries == 0) {
 		return;
 	}

@@ -21,9 +21,9 @@ typedef struct rbtree_node {
 	rbtree_color color;
 } rbtree_node;
 
-static struct rbtree_node *rbtree_parent(const struct rbtree_node *node) {
 /* This function should be called if existence of the parent is
    guaranteed within or required by the calling function */
+static struct rbtree_node *rbtree_parent(const struct rbtree_node *node) {
 	assert(node->parent);
 	return node->parent;
 }
@@ -56,8 +56,8 @@ static struct rbtree_node *rbtree_sibling(const struct rbtree_node *node) {
 	}
 }
 
-static rbtree_color rbtree_node_color(const struct rbtree_node *node) {
 /* we use NULL as sentinel */
+static rbtree_color rbtree_node_color(const struct rbtree_node *node) {
 	if (node) {
 		return node->color;
 	}
@@ -65,9 +65,9 @@ static rbtree_color rbtree_node_color(const struct rbtree_node *node) {
 }
 
 #if RBDEBUG
-static void rbtree_assert_links(const struct rbtree_node *node) {
 /* not a red-black property, but make sure parent <-> child links are
    correct at all times */
+static void rbtree_assert_links(const struct rbtree_node *node) {
 	if (node) {
 		if (node->left) {
 			assert(rbtree_is_left_child(node->left, node));
@@ -80,14 +80,13 @@ static void rbtree_assert_links(const struct rbtree_node *node) {
 	}
 }
 
-static void rbtree_assert_property_2(const struct rbtree_node *root) {
 /* 2. red-black property: the root is black */
+static void rbtree_assert_property_2(const struct rbtree_node *root) {
 	assert(struct rbtree_node_color(root) == BLACK);
 }
 
-static void rbtree_assert_property_4(const struct rbtree_node *node)
-/* 4. red-black property: If a node is red, both its children are black */
-{
+/* 3. red-black property: If a node is red, both its children are black */
+static void rbtree_assert_property_4(const struct rbtree_node *node) {
 	if (node) {
 		if (struct rbtree_node_color(node) == RED) {
 			assert(struct rbtree_node_color(node->left) == BLACK);
@@ -119,9 +118,9 @@ static void rbtree_assert_property_5_helper(const struct rbtree_node *node,
 	}
 }
 
-static void rbtree_assert_property_5(const struct rbtree_node *node) {
-/* 5. red-black property: For each node, all paths to its leaf nodes
+/* 4. red-black property: For each node, all paths to its leaf nodes
    contain the same number of black nodes */
+static void rbtree_assert_property_5(const struct rbtree_node *node) {
 	int first_leaf_count = -1;
 	rbtree_assert_property_5_helper(node, 0, &first_leaf_count);
 }
@@ -137,8 +136,11 @@ static void rbtree_assert_properties(const struct rbtree_node *root) {
 }
 #endif /* #if RBDEBUG */
 
+/*
+ * Change the parent <-> child links for all nodes involved in a binary tree
+ * rotation
+ */
 static void rbtree_rotate_helper(struct rbtree_node *x, struct rbtree_node *y) {
-/* change the parent <-> child links for all nodes involved in a binary tree rotation */
 	assert(x);
 	assert(y);
 	assert(y->parent == x);

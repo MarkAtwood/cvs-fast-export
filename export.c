@@ -46,8 +46,8 @@ static char blobdir[PATH_MAX];
 
 static export_stats_t export_stats;
 
-static int seqno_next(void) {
 /* Returns next sequence number, starting with 1 */
+static int seqno_next(void) {
 	++seqno;
 
 	if (seqno >= MAX_SERIAL_T) {
@@ -71,9 +71,9 @@ static int seqno_next(void) {
 	".obj\n*.so\n*.exe\n*.Z\n*.elc\n*.ln\ncore\n# CVS default ignores "    \
 	"end\n"
 
+/* Random-access location of the blob corresponding to the specified serial */
 static char *blobfile(const char *basename, const int serial, const bool create,
                       char *path) {
-/* Random-access location of the blob corresponding to the specified serial */
 	int m;
 
 #ifdef DEBUG
@@ -135,10 +135,10 @@ static char *blobfile(const char *basename, const int serial, const bool create,
 	return path;
 }
 
+/* output the blob, or save where it will be available for random access */
 static void export_blob(node_t *node, void *buf, const size_t len,
 
                         export_options_t *opts) {
-/* output the blob, or save where it will be available for random access */
 	/*
 	 * This is the only place we do interpretation of ignores.
 	 *
@@ -332,9 +332,9 @@ static void build_modify_op(cvs_commit *c, struct fileop *op) {
 	}
 }
 
+/* append file information if requested */
 static void append_revpair(cvs_commit *c, const export_options_t *opts,
                            char **revpairs, size_t *revpairsize) {
-/* append file information if requested */
 	if (opts->revision_map || opts->reposurgeon || opts->embed_ids) {
 		const char *cvs_leader = "CVS-ID: ";
 		char fr[BUFSIZ];
@@ -374,9 +374,9 @@ static const char *visualize_branch_name(const char *name) {
 	}
 }
 
+/* export a commit and the blobs it is the first to reference */
 static void export_commit(git_commit *commit, const char *branch,
                           const bool report, const export_options_t *opts) {
-/* export a commit and the blobs it is the first to reference */
 	const git_commit *parent = commit->parent;
 	cvs_commit *cc;
 	cvs_author *author;
@@ -610,8 +610,8 @@ static void export_commit(git_commit *commit, const char *branch,
 #undef OP_CHUNK
 }
 
-static int export_ncommit(const git_repo *rl) {
 /* return a count of converted commits */
+static int export_ncommit(const git_repo *rl) {
 	rev_ref *h;
 	git_commit *c;
 	int n = 0;
@@ -740,8 +740,8 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 	return history;
 }
 
-void export_authors(forest_t *forest, export_options_t *opts) {
 /* dump a list of author IDs in the repository */
+void export_authors(forest_t *forest, export_options_t *opts) {
 	const char **authors;
 	int i, nauthors = 0;
 	size_t alloc;
@@ -776,9 +776,9 @@ void export_authors(forest_t *forest, export_options_t *opts) {
 	free(history);
 }
 
+/* export a revision list as a git fast-import stream */
 void export_commits(forest_t *forest, export_options_t *opts,
                     export_stats_t *stats) {
-/* export a revision list as a git fast-import stream */
 	tag_t *t;
 	git_repo *rl = forest->git;
 	generator_t *gp;

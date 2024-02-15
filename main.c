@@ -60,8 +60,8 @@ static time_t mktime_utc(const struct tm *tm, const char *tzbuf) {
 	return ret;
 }
 
-static time_t convert_date(const char *dte) {
 /* accept a date in anything close to RFC3339 form */
+static time_t convert_date(const char *dte) {
 	static regex_t date_re;
 	static bool init_re;
 
@@ -153,8 +153,8 @@ struct checkpoint {
 static struct checkpoint checkpoints[5];
 static int ncheckpoints;
 
-static void gather_stats(const char *legend) {
 /* gather resource usage statistics */
+static void gather_stats(const char *legend) {
 	if (ncheckpoints >= sizeof(checkpoints) / sizeof(struct checkpoint)) {
 		announce("cran out of statistics slots %s", legend);
 		return;

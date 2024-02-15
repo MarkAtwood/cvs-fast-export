@@ -45,8 +45,8 @@ typedef struct _revision {
 #define REVISIONS(index) (REVISION_T_COMMIT(revisions[(index)]))
 #define DIR(index) (revisions[(index)].dir)
 
-static rev_ref *rev_find_head(head_list *rl, const char *name) {
 /* find a named branch head in a revlist - used on both CVS & gitspace sides */
+static rev_ref *rev_find_head(head_list *rl, const char *name) {
 	rev_ref *h;
 
 	for (h = rl->heads; h; h = h->next) {
@@ -57,8 +57,8 @@ static rev_ref *rev_find_head(head_list *rl, const char *name) {
 	return NULL;
 }
 
-static rev_ref *rev_ref_find_name(rev_ref *h, const char *name) {
 /* find a revision reference by name */
+static rev_ref *rev_ref_find_name(rev_ref *h, const char *name) {
 	for (; h; h = h->next) {
 		if (h->ref_name == name) {
 			return h;
@@ -91,9 +91,9 @@ static bool parents_in_revlist(const char *child_name, rev_ref *rev_list,
 	return true;
 }
 
+/* Sort a list of git space branches so parents come before children */
 static rev_ref *rev_ref_tsort(rev_ref *git_branches, cvs_master *masters,
                               size_t nmasters) {
-/* Sort a list of git space branches so parents come before children */
 	rev_ref *sorted_git_branches = NULL;
 	rev_ref **sorted_tail = &sorted_git_branches;
 	rev_ref *r, **prev;
@@ -224,8 +224,8 @@ static void dump_revision_order(char *legend, revision_t *revisions,
 }
 #endif /* DEBUG */
 
-static int cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions) {
 /* stable-sort CVS commits by date */
+static int cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions) {
 	qsort(revisions, nrevisions, sizeof(revision_t),
 	      cvs_commit_canicalize_compare);
 	/*
@@ -237,8 +237,8 @@ static int cvs_commit_canonicalize_sort(revision_t *revisions, int nrevisions) {
 	return nrevisions;
 }
 
-static bool cvs_commit_time_close(const cvstime_t a, const cvstime_t b) {
 /* are two timestamps within the commit-coalescence window of each * other? */
+static bool cvs_commit_time_close(const cvstime_t a, const cvstime_t b) {
 	long diff = (long)a - (long)b;
 	if (diff < 0) {
 		diff = -diff;
@@ -268,8 +268,8 @@ static tribool cvs_commitid_match(const cvs_commit *a, const cvs_commit *b) {
 	return maybe;
 }
 
-static bool cvs_commit_match(const cvs_commit *a, const cvs_commit *b) {
 /* are two CVS commits eligible to be coalesced into a changeset? */
+static bool cvs_commit_match(const cvs_commit *a, const cvs_commit *b) {
 	tribool idcheck = cvs_commitid_match(a, b);
 
 	switch (idcheck) {
@@ -311,10 +311,10 @@ static void git_commit_cleanup(void)
 	}
 }
 
+/* build a changeset commit from a clique of CVS revisions */
 static git_commit *git_commit_build(revision_t *revisions,
                                     const cvs_commit *leader,
                                     const int nrevisions) {
-/* build a changeset commit from a clique of CVS revisions */
 	size_t n;
 	git_commit *commit;
 
@@ -352,9 +352,9 @@ static git_commit *git_commit_build(revision_t *revisions,
 	return commit;
 }
 
+/* on a gitspace branch, locate a commit within fuzz-time distance ofodate */
 static git_commit *git_commit_locate_date(const rev_ref *branch,
                                           const cvstime_t date) {
-/* on a gitspace branch, locate a commit within fuzz-time distance of date */
 	git_commit *commit;
 
 	/* PUNNING: see the big comment in cvs.h */
@@ -367,9 +367,9 @@ static git_commit *git_commit_locate_date(const rev_ref *branch,
 	return NULL;
 }
 
+/* seek a gitspace commit on branch incorporating cvs_commit */
 static git_commit *git_commit_locate_one(const rev_ref *branch,
                                          const cvs_commit *part) {
-/* seek a gitspace commit on branch incorporating cvs_commit */
 	git_commit *commit;
 
 	if (!branch) {
@@ -387,9 +387,9 @@ static git_commit *git_commit_locate_one(const rev_ref *branch,
 	return NULL;
 }
 
+/* seek a gitspace commit on *any* branch incorporating cvs_commit */
 static git_commit *git_commit_locate_any(const rev_ref *branch,
                                          const cvs_commit *part) {
-/* seek a gitspace commit on *any* branch incorporating cvs_commit */
 	git_commit *commit;
 
 	if (!branch) {
@@ -422,9 +422,9 @@ static git_commit *git_commit_locate(const rev_ref *branch,
 	return git_commit_locate_any(branch, cm);
 }
 
+/* return the gitspace branch head that owns a specified CVS commit */
 static rev_ref *git_branch_of_commit(const git_repo *gl,
                                      const cvs_commit *commit) {
-/* return the gitspace branch head that owns a specified CVS commit */
 	rev_ref *h;
 	cvs_commit *c;
 
@@ -444,17 +444,17 @@ static rev_ref *git_branch_of_commit(const git_repo *gl,
 	return NULL;
 }
 
-static cvstime_t cvs_commit_first_date(cvs_commit *commit) {
 /* return time of first commit along entire history */
+static cvstime_t cvs_commit_first_date(cvs_commit *commit) {
 	while (commit->parent) {
 		commit = commit->parent;
 	}
 	return commit->date;
 }
 
+/* collate a set of per-CVS-master branches into a gitspace DAG branch */
 static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
                              git_repo *gl) {
-/* collate a set of per-CVS-master branches into a gitspace DAG branch */
 	int nlive;
 	int n;
 	git_commit *prev = NULL;
@@ -1005,9 +1005,9 @@ static void rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl) {
 	free(log);
 }
 
+/* compute parent relationships among gitspace branches */
 static void rev_ref_set_parent(git_repo *gl, rev_ref *dest, cvs_master *source,
                                size_t nmasters) {
-/* compute parent relationships among gitspace branches */
 	cvs_master *s;
 	rev_ref *p, *max;
 
@@ -1040,9 +1040,9 @@ static void rev_ref_set_parent(git_repo *gl, rev_ref *dest, cvs_master *source,
 	}
 }
 
+/* entry point - collate CVS revision lists to a gitspace DAG */
 git_repo *collate_to_changesets(cvs_master *masters, size_t nmasters,
                                 int verbose) {
-/* entry point - collate CVS revision lists to a gitspace DAG */
 	size_t head_count = 0;
 	int n; /* used only in progress messages */
 	git_repo *gl = xcalloc(1, sizeof(git_repo), "list collate");

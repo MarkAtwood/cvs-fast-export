@@ -65,7 +65,7 @@ static cvs_master *sort_cvs_masters(cvs_master *list);
 static void debug_cvs_masters(cvs_master *list);
 
 static char *rectify_name(const char *raw, char *rectified, size_t rectlen) {
-/* from master name to the name humans thought of the file by */
+	/* from master name to the name humans thought of the file by */
 	unsigned len;
 	const char *s, *snext;
 	char *p;
@@ -164,7 +164,6 @@ static void rev_list_file(rev_file *file, analysis_t *out, cvs_master *cm,
 }
 
 static int strcommonendingwith(const char *a, const char *b, char endc) {
-/* return the length of the common prefix of strings a and b ending with endc */
 	int c = 0;
 	int d = 0;
 	while (*a == *b) {
@@ -181,9 +180,8 @@ static int strcommonendingwith(const char *a, const char *b, char endc) {
 	return d;
 }
 
-static void *worker(void *arg)
 /* consume masters off the queue */
-{
+static void *worker(void *arg) {
 	analysis_t out = {0, 0, 0};
 	for (;;) {
 		/* pop a master off the queue, terminating if none left */
@@ -328,9 +326,9 @@ static bool has_suffix(const char *str, const char *suffix) {
 	return strcmp(str + (str_len - suffix_len), suffix) == 0;
 }
 
+/* main entry point; collect and parse CVS masters */
 void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
                      forest_t *forest) {
-/* main entry point; collect and parse CVS masters */
 	char name[PATH_MAX];
 	const char *last = NULL;
 	char *file;

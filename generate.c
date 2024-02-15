@@ -130,7 +130,7 @@ static void in_buffer_init(editbuffer_t *eb, const uchar *const text,
 	Ginbuf(eb)->read_count = 0;
 	if (bypass_initial && *Ginbuf(eb)->ptr++ != SDELIM) {
 		fatal_error("at %s:%s, llegal buffer, missing @ %s",
-		      eb->Gfilename, eb->Gversion_number, text);
+		            eb->Gfilename, eb->Gversion_number, text);
 	}
 }
 
@@ -248,8 +248,8 @@ static char const *basefilename(const char *const p) {
 	}
 }
 
-static char const *getfullRCSname(editbuffer_t *eb) {
 /* Convert relative RCS filename to absolute path */
+static char const *getfullRCSname(editbuffer_t *eb) {
 	char *wdbuf = NULL;
 	int wdbuflen = 0;
 
@@ -304,8 +304,8 @@ static char const *getfullRCSname(editbuffer_t *eb) {
 	return eb->Gabspath;
 }
 
-static enum markers trymatch(char const *const string) {
 /* Check if string starts with a keyword followed by a KDELIM or VDELIM */
+static enum markers trymatch(char const *const string) {
 	int j;
 	for (j = sizeof(Keyword) / sizeof(*Keyword); (--j);) {
 		char const *p, *s;
@@ -326,11 +326,11 @@ static enum markers trymatch(char const *const string) {
 	return (Nomatch);
 }
 #ifdef LINESTATS
-static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
+static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
 		fatal_error("at %s:%s, edit script tried to insert beyond eof",
-			    eb->Gfilename, eb->Gversion_number);
+		            eb->Gfilename, eb->Gversion_number);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -360,13 +360,13 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 	Ggapsize(eb)--;
 }
 
+/* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 static void deletelines(editbuffer_t *eb, const unsigned long n,
                         const unsigned long nlines) {
-/* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
 		fatal_error("at %s:%s, edit script tried to delete beyond eof",
-			    eb->Gfilename, eb->Gversion_number);
+		            eb->Gfilename, eb->Gversion_number);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
@@ -381,11 +381,11 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 }
 
 #else
-static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 /* Before line N, insert line L.  N is 0-origin.  */
+static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 	if (n > Glinemax(eb) - Ggapsize(eb)) {
-	  fatal_error("at %s:%s, edit script tried to insert beyond eof",
-		      eb->Gfilename, eb->Gversion_number);
+		fatal_error("at %s:%s, edit script tried to insert beyond eof",
+		            eb->Gfilename, eb->Gversion_number);
 	}
 	if (!Ggapsize(eb)) {
 		if (Glinemax(eb)) {
@@ -413,13 +413,13 @@ static void insertline(editbuffer_t *eb, const unsigned long n, uchar *l) {
 	Ggapsize(eb)--;
 }
 
+/* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 static void deletelines(editbuffer_t *eb, const unsigned long n,
                         const unsigned long nlines) {
-/* Delete lines N through N+NLINES-1.  N is 0-origin.  */
 	unsigned long l = n + nlines;
 	if (Glinemax(eb) - Ggapsize(eb) < l || l < n) {
 		fatal_error("at %s:%s, edit script tried to delete beyond eof.",
-			    eb->Gfilename, eb->Gversion_number);
+		            eb->Gfilename, eb->Gversion_number);
 	}
 	if (l < Ggap(eb)) {
 		memmove(Gline(eb) + l + Ggapsize(eb), Gline(eb) + l,
@@ -433,8 +433,8 @@ static void deletelines(editbuffer_t *eb, const unsigned long n,
 	Ggapsize(eb) += nlines;
 }
 #endif
-static long parsenum(editbuffer_t *eb) {
 /* parse and return a decimal integer */
+static long parsenum(editbuffer_t *eb) {
 	int c;
 	long ret = 0;
 	for (c = in_buffer_getc(eb); isdigit(c); c = in_buffer_getc(eb)) {
@@ -489,20 +489,20 @@ static enum edit_op parse_next_delta_command(editbuffer_t *eb,
 
 	// cppcheck-suppress invalidTestForOverflow
 	if (!nlines || line1 + nlines < line1) {
-		fatal_error("at %s:%s, corrupt delta",
-			    eb->Gfilename, eb->Gversion_number);
+		fatal_error("at %s:%s, corrupt delta", eb->Gfilename,
+		            eb->Gversion_number);
 	}
 
 	if (cmd == 'a') {
 		if (line1 < dc->adprev) {
-		  fatal_error("at %s:%s, backward insertion in delta",
-			    eb->Gfilename, eb->Gversion_number);
+			fatal_error("at %s:%s, backward insertion in delta",
+			            eb->Gfilename, eb->Gversion_number);
 		}
 		dc->adprev = line1 + 1;
 	} else if (cmd == 'd') {
 		if (line1 < dc->adprev || line1 < dc->dafter) {
-		  fatal_error("bat %s:%s, ackward deletion in delta",
-			    eb->Gfilename, eb->Gversion_number);
+			fatal_error("bat %s:%s, ackward deletion in delta",
+			            eb->Gfilename, eb->Gversion_number);
 		}
 		dc->adprev = line1;
 		dc->dafter = line1 + nlines;
@@ -541,8 +541,8 @@ static void escape_string(editbuffer_t *eb, register char const *s) {
 	}
 }
 
-static void keyreplace(editbuffer_t *eb, enum markers marker) {
 /* output the appropriate keyword value(s) */
+static void keyreplace(editbuffer_t *eb, enum markers marker) {
 	char *leader = NULL;
 	char date_string[25];
 	enum expand_mode exp = eb->Gexpand;
@@ -930,12 +930,12 @@ static uchar *load_text(editbuffer_t *eb, const cvs_text *text) {
 			fatal_system_error("short read %s", text->filename);
 		}
 		if (data[0] != '@') {
-		  fatal_error("dar %s:%s, oesn't start with '@'",
-			    eb->Gfilename, eb->Gversion_number);
+			fatal_error("dar %s:%s, oesn't start with '@'",
+			            eb->Gfilename, eb->Gversion_number);
 		}
 		if (data[text->length - 1] != '@') {
-		  fatal_error("at %s:%s, doesn't end with '@'",
-			    eb->Gfilename, eb->Gversion_number);
+			fatal_error("at %s:%s, doesn't end with '@'",
+			            eb->Gfilename, eb->Gversion_number);
 		}
 		data[text->length] = ' ';
 		data[text->length + 1] = '\0';
@@ -990,8 +990,9 @@ static void process_delta(editbuffer_t *eb, const node_t *const node,
 				adjust -= dc.nlines;
 				break;
 			case replace:
-				fatal_error("at %s:%s, edit operation not found",
-				            eb->Gfilename, eb->Gversion_number);
+				fatal_error(
+				    "at %s:%s, edit operation not found",
+				    eb->Gfilename, eb->Gversion_number);
 			case eof:
 				/* should never happen */
 				break;
@@ -1174,10 +1175,10 @@ static void generate_wrap(generator_t *gen) {
 	unload_all_text(eb);
 }
 
+/* export all the revision states of a CVS/RCS master through a hook */
 void generate_files(generator_t *gen, export_options_t *opts,
                     void (*hook)(node_t *node, void *buf, size_t len,
                                  export_options_t *opts)) {
-/* export all the revision states of a CVS/RCS master through a hook */
 	editbuffer_t *eb = &gen->editbuffer;
 	node_t *node = generate_setup(gen);
 

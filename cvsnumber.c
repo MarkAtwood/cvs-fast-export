@@ -12,14 +12,14 @@
 
 const cvs_number cvs_zero = {.c = 0};
 
-bool cvs_is_head(const cvs_number *n) {
 /* is a specified CVS revision the magic name of a branch's sticky tag? */
+bool cvs_is_head(const cvs_number *n) {
 	assert(n->c <= CVS_MAX_DEPTH);
 	return (n->c > 2 && (n->c & 1) == 0 && n->n[n->c - 2] == 0);
 }
 
-bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 /* are two specified CVS revisions on the same branch? */
+bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 	cvs_number t;
 	int i;
 	int n;
@@ -66,8 +66,8 @@ bool cvs_same_branch(const cvs_number *a, const cvs_number *b) {
 	return true;
 }
 
-bool cvs_number_equal(const cvs_number *n1, const cvs_number *n2) {
 /* can use memcmp as cvs_number isn't padded */
+bool cvs_number_equal(const cvs_number *n1, const cvs_number *n2) {
 	return 0 == memcmp(n1, n2, sizeof(short) * (n1->c + 1));
 	/*
 	if (n1->n != n2->n)
@@ -81,8 +81,8 @@ bool cvs_number_equal(const cvs_number *n1, const cvs_number *n2) {
 	*/
 }
 
-int cvs_number_compare(const cvs_number *a, const cvs_number *b) {
 /* total ordering for CVS revision numbers - parent always < child */
+int cvs_number_compare(const cvs_number *a, const cvs_number *b) {
 	int n = min(a->c, b->c);
 	int i;
 
@@ -119,8 +119,8 @@ int cvs_number_compare(const cvs_number *a, const cvs_number *b) {
 	return 0;
 }
 
-int cvs_number_degree(const cvs_number *n) {
 /* what is the degree of branchiness of the specified revision? */
+int cvs_number_degree(const cvs_number *n) {
 	cvs_number four;
 
 	if (n->c < 4) {
@@ -137,16 +137,14 @@ int cvs_number_degree(const cvs_number *n) {
 	return n->c;
 }
 
-bool cvs_is_trunk(const cvs_number *number) {
 /* does the specified CVS release number describe a trunk revision? */
-	return number->c == 2;
-}
+bool cvs_is_trunk(const cvs_number *number) { return number->c == 2; }
 
 /*
  * Import branches are of the form 1.1.x where x is odd
  */
-bool cvs_is_vendor(const cvs_number *number) {
 /* is the specified CVS release number on a vendor branch? */
+bool cvs_is_vendor(const cvs_number *number) {
 	if (number->c != 4) {
 		return false;
 	} else if (number->n[0] != 1) {
@@ -159,8 +157,8 @@ bool cvs_is_vendor(const cvs_number *number) {
 	return true;
 }
 
-char *cvs_number_string(const cvs_number *n, char *str, size_t maxlen) {
 /* return the human-readable representation of a CVS release number */
+char *cvs_number_string(const cvs_number *n, char *str, size_t maxlen) {
 	char r[CVS_MAX_DIGITS + 1];
 	int i;
 
@@ -179,9 +177,9 @@ char *cvs_number_string(const cvs_number *n, char *str, size_t maxlen) {
 	return str;
 }
 
+/* stringify a revision number */
 char *stringify_revision(const char *name, const char *sep,
                          const cvs_number *number, char *buf, size_t bufsz) {
-/* stringify a revision number */
 	if (name != NULL) {
 		if (strlen(name) >= bufsz - strlen(sep) - 1) {
 			fatal_error("filename too long");
