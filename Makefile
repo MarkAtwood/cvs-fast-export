@@ -155,8 +155,9 @@ cleancheck:
 	@$(MAKE) -s -C tests clean
 	@$(MAKE) -s check
 
-reflow:
-	@clang-format --style="{IndentWidth: 8, UseTab: ForIndentation}" -i $$(find . -name "*.[ch]")
+# Needs clean first because reflowing generated .c and .h files produces ungappy resulys
+reflow: clean
+	@clang-format --style="{IndentWidth: 8, UseTab: ForIndentation}" -i $$(find . -name "*.[chl]")
 
 fixme:
 	@if command -v rg; then \
