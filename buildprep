@@ -198,8 +198,8 @@ main () {
         exit 1
         ;;
     zypper)
-        echo "Not yet supported" >&2
-        exit 1
+        $install timezone
+        $install make grep sed gcc bison flex rcs cvs python3-pylint cppcheck ShellCheck
         ;;
     esac
 }
@@ -236,8 +236,7 @@ doc () {
         $install asciidoctor
         ;;
     yast|zypper)
-        echo "Not yet supported" >&2
-        exit 1
+        $install asciidoc 'rubygem(asciidoctor)'
         ;;
     esac
 }
