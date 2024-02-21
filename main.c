@@ -7,11 +7,11 @@
 #include "revdir.h"
 #include <getopt.h>
 #include <regex.h>
+#include <stdlib.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#include <stdlib.h>
 
 /* options */
 int commit_time_window = 300;
@@ -184,6 +184,7 @@ int main(int argc, char **argv) {
 	};
 
 #if defined(__GLIBC__)
+#include <malloc.h>
 	/*
 	 * The default sbrk call grabs memory from the OS in 128kb chunks
 	 * for malloc. As we use up memory in prodigous amounts it is
