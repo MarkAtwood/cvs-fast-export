@@ -1,9 +1,13 @@
 = cvs-fast-export project news =
 
+Repository head::
+   Add buildprep support for OpenSUSE
+   Make failed author map load crap out early.
+
 1.65: 2024-02-15::
    Quietly handle malformed author IDs with embedded spaces.
    Patch buildprep to do the right thing on FreeBSD.
-   All fatal errors during master oarsing report file and rev.
+   All fatal errors during master parsing report file and rev.
 
 1.64: 2024-02-03::
    cvsconvert can do multiple conversions in a single run.
