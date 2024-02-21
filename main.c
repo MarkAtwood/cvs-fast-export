@@ -302,7 +302,10 @@ int main(int argc, char **argv) {
 			break;
 		case 'A':
 			assert(optarg);
-			load_author_map(optarg);
+			if (!load_author_map(optarg)) {
+				fatal_error("load of authormap file %s failed",
+				            optarg);
+			}
 			break;
 		case 'R':
 			assert(optarg);
