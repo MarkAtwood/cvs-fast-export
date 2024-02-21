@@ -11,9 +11,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#if defined(__GLIBC__)
-#include <malloc.h>
-#endif /* __GLIBC__ */
+#include <stdlib.h>
 
 /* options */
 int commit_time_window = 300;
