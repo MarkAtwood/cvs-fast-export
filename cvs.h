@@ -340,9 +340,9 @@ typedef struct _git_commit {
 typedef struct _rev_ref {
 	/* a reference to a branch head */
 	struct _rev_ref *next;
-	struct _rev_ref *parent; /* link into tree */
-	cvs_commit *commit;      /* or a git_commit in gitspace */
-	const char *ref_name;
+	struct _rev_ref *parent;  /* link into tree */
+	cvs_commit *commit;       /* or a git_commit in gitspace */
+	const char *ref_name;     /* symboilic name of the branch */
 	const cvs_number *number; /* not used in gitspace */
 	unsigned depth : 7;       /* branch depth in tree (1 is trunk) */
 	unsigned degree : 7;      /* # of digits in original CVS version */
@@ -350,10 +350,10 @@ typedef struct _rev_ref {
 	flag tail : 1;
 } rev_ref;
 
-/* Type punning, previously cvs_master and git_repo were rev_lists underneath
- * now cvs_master is backed by an array. We still have some general
- * functions that just operate on  the heads member, so this lets
- * us use them from both git and cvs sides.
+/* Type punning, previously cvs_master and git_repo were rev_lists
+ * underneath, now cvs_master is backed by an array. We still have
+ * some general functions that just operate on the heads member, so
+ * this lets us use them from both git and cvs sides.
  */
 typedef struct _head_list {
 	rev_ref *heads;

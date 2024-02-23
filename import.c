@@ -433,7 +433,7 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 	}
 	/*
 	 * Sort list of files in path_deep_compare order of output name.
-	 * cvs_masters and rev_masters will be mainteined in this order.
+	 * cvs_masters and rev_masters will be maintained in this order.
 	 * This causes commits to come out in correct pack order.
 	 * It also causes operations to come out in correct fileop_sort order.
 	 * Note some output names are different to input names.
