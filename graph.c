@@ -345,7 +345,9 @@ void dump_rev_graph(git_repo *rl, const char *title)
 
 static char *version_content(cvs_version *cv) {
 	static char content[256];
-	snprintf(content, sizeof(content)-1, "%s", cvstime2rfc3339(cv->date));
+	char nbuf[64];
+	cvs_number_string(cv->number, nbuf, sizeof(nbuf)-1);  
+	snprintf(content, sizeof(content)-1, "%s\n%s", cvstime2rfc3339(cv->date), nbuf);
 	return content;
 }
 
@@ -359,7 +361,7 @@ void dump_cvs_graph(forest_t *forest)
 		cvs_master *m = &forest->cvs[i];
 		printf("    subgraph \"cluster-%s\" {\n        label=\"%s\"\n", g->master_name, g->master_name);
 		for (rev_ref *r = m->heads; r != NULL; r = r->next) {
-			printf("        %s [fontsize=6,fixedsize=false,shape=ellipse]\n", r->ref_name);
+			printf("        %s [fixedsize=false,shape=ellipse]\n", r->ref_name);
 			for (cvs_version *cv = g->versions; cv != NULL; cv = cv->next) {
 				printf("        \"%p\" [label=\"%s\"]\n", cv, version_content(cv));
 			}
