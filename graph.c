@@ -326,7 +326,7 @@ static void dot_rev_graph_nodes(git_repo *rl, const char *title) {
 }
 
 static void dot_rev_graph_begin(void) {
-	printf("digraph G {\n");
+	printf("strict digraph G {\n");
 	printf("nodesep=0.1;\n");
 	printf("ranksep=0.1;\n");
 	printf("edge [dir=none];\n");
@@ -361,20 +361,30 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 	ssize_t vcounter = 1;
 	for (int i = 0; i < forest->filecount; i++) {
 		generator_t *g = &forest->generators[i];
+		for (cvs_version *cv = g->versions; cv != NULL; cv = cv->next) {
+			cv->commitid = NULL; 
+		}
+	}
+	for (int i = 0; i < forest->filecount; i++) {
+		generator_t *g = &forest->generators[i];
 		cvs_master *m = &forest->cvs[i];
 		printf("    subgraph \"cluster-%s\" {\n        label=\"%s\"\n",
 		       g->master_name, g->master_name);
 		for (rev_ref *r = m->heads; r != NULL; r = r->next) {
-			printf("        %s [fixedsize=false,shape=ellipse]\n",
-			       r->ref_name);
+			printf("        \"%s:%s\" [label=\"%s\",fixedsize=false,shape=ellipse]\n",
+			       g->master_name, r->ref_name, r->ref_name);
 			for (cvs_version *cv = g->versions; cv != NULL;
 			     cv = cv->next) {
-				cv->commitid = (char*)vcounter++;
+				if (cv->commitid == NULL) {
+					cv->commitid = (char*)vcounter++;
+				}
 				printf("        n%zd [label=\"%s\"]\n",
 				       (ssize_t)cv->commitid,
 				       version_content(cv, verbose));
 			}
-			printf("        %s -> n%zd\n", r->ref_name, (ssize_t)g->versions->commitid);
+			printf("        \"%s:%s\" -> n%zd\n",
+			       g->master_name, r->ref_name,
+			       (ssize_t)g->versions->commitid);
 			for (cvs_version *cv = g->versions; cv->next != NULL;
 			     cv = cv->next) {
 				printf("        n%zd -> n%zd\n",
