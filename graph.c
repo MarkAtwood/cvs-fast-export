@@ -343,33 +343,39 @@ void dump_rev_graph(git_repo *rl, const char *title)
 	dot_rev_graph_end();
 }
 
-static char *version_content(cvs_version *cv) {
+static char *version_content(cvs_version *cv, int verbose) {
 	static char content[256];
-	char nbuf[64];
-	cvs_number_string(cv->number, nbuf, sizeof(nbuf)-1);  
-	snprintf(content, sizeof(content)-1, "%s\n%s", cvstime2rfc3339(cv->date), nbuf);
+	cvs_number_string(cv->number, content, sizeof(content) - 1);
+	if (verbose > 0) {
+		strncat(content, "\n", sizeof(content) - 1);
+		strncat(content, cvstime2rfc3339(cv->date),
+		        sizeof(content) - 1);
+	}
 	return content;
 }
 
-
-void dump_cvs_graph(forest_t *forest)
+void dump_cvs_graph(forest_t *forest, int verbose)
 /* Dump a DOT graph of the forest before collation */
 {
 	dot_rev_graph_begin();
 	for (int i = 0; i < forest->filecount; i++) {
 		generator_t *g = &forest->generators[i];
 		cvs_master *m = &forest->cvs[i];
-		printf("    subgraph \"cluster-%s\" {\n        label=\"%s\"\n", g->master_name, g->master_name);
+		printf("    subgraph \"cluster-%s\" {\n        label=\"%s\"\n",
+		       g->master_name, g->master_name);
 		for (rev_ref *r = m->heads; r != NULL; r = r->next) {
-			printf("        %s [fixedsize=false,shape=ellipse]\n", r->ref_name);
-			for (cvs_version *cv = g->versions; cv != NULL; cv = cv->next) {
-				printf("        \"%p\" [label=\"%s\"]\n", cv, version_content(cv));
+			printf("        %s [fixedsize=false,shape=ellipse]\n",
+			       r->ref_name);
+			for (cvs_version *cv = g->versions; cv != NULL;
+			     cv = cv->next) {
+				printf("        \"%p\" [label=\"%s\"]\n", cv,
+				       version_content(cv, verbose));
 			}
 			printf("%s -> \"%p\"\n", r->ref_name, g->versions);
-			for (cvs_version *cv = g->versions; cv->next != NULL; cv = cv->next) {
+			for (cvs_version *cv = g->versions; cv->next != NULL;
+			     cv = cv->next) {
 				printf("\"%p\" -> \"%p\"\n", cv, cv->next);
 			}
-			
 		}
 		printf("    }\n");
 	}

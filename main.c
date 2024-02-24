@@ -397,7 +397,7 @@ int main(int argc, char **argv) {
 	analyze_masters(argc, (const char **)argv, &import_options, &forest);
 
 	if (exec_mode == ExecuteGraph && export_options.reposurgeon) {
-		dump_cvs_graph(&forest);
+	  dump_cvs_graph(&forest, export_options.force_dates ? 1 : 0);
 		exit(0);
 	}
 

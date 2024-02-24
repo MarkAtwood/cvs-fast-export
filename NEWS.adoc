@@ -3,6 +3,7 @@
 Repository head::
    Add buildprep support for OpenSUSE
    Make failed author map load crap out early.
+   Combination of -g and -r allows graphing of the CVS forest.
 
 1.65: 2024-02-15::
    Quietly handle malformed author IDs with embedded spaces.
