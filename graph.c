@@ -374,12 +374,12 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 				       (ssize_t)cv->commitid,
 				       version_content(cv, verbose));
 			}
-			printf("        %s -> \"n%zd\"\n", r->ref_name, (ssize_t)g->versions->commitid);
+			printf("        %s -> n%zd\n", r->ref_name, (ssize_t)g->versions->commitid);
 			for (cvs_version *cv = g->versions; cv->next != NULL;
 			     cv = cv->next) {
-				printf("        n%zd -> \"%p\"\n",
+				printf("        n%zd -> n%zd\n",
 				       (ssize_t)cv->commitid,
-				       cv->next);
+				       (ssize_t)cv->next->commitid);
 			}
 		}
 		printf("    }\n");
