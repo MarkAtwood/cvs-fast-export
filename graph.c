@@ -358,6 +358,7 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 /* Dump a DOT graph of the forest before collation */
 {
 	dot_rev_graph_begin();
+	ssize_t vcounter = 1;
 	for (int i = 0; i < forest->filecount; i++) {
 		generator_t *g = &forest->generators[i];
 		cvs_master *m = &forest->cvs[i];
@@ -368,13 +369,17 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 			       r->ref_name);
 			for (cvs_version *cv = g->versions; cv != NULL;
 			     cv = cv->next) {
-				printf("        \"%p\" [label=\"%s\"]\n", cv,
+				cv->commitid = (char*)vcounter++;
+				printf("        n%zd [label=\"%s\"]\n",
+				       (ssize_t)cv->commitid,
 				       version_content(cv, verbose));
 			}
-			printf("%s -> \"%p\"\n", r->ref_name, g->versions);
+			printf("        %s -> \"n%zd\"\n", r->ref_name, (ssize_t)g->versions->commitid);
 			for (cvs_version *cv = g->versions; cv->next != NULL;
 			     cv = cv->next) {
-				printf("\"%p\" -> \"%p\"\n", cv, cv->next);
+				printf("        n%zd -> \"%p\"\n",
+				       (ssize_t)cv->commitid,
+				       cv->next);
 			}
 		}
 		printf("    }\n");
