@@ -327,6 +327,7 @@ static void dot_rev_graph_nodes(git_repo *rl, const char *title) {
 
 static void dot_rev_graph_begin(void) {
 	printf("strict digraph G {\n");
+	/* alas, newrank does not seem to work as one might expect */
 	printf("newrank=true;\n");
 	printf("nodesep=0.1;\n");
 	printf("ranksep=0.1;\n");
@@ -358,13 +359,20 @@ static char *version_content(cvs_version *cv, int verbose) {
 void dump_cvs_graph(forest_t *forest, int verbose)
 /* Dump a DOT graph of the forest before collation */
 {
-	/* alas, newrank does not seem to work as one might expect */
 	dot_rev_graph_begin();
 	ssize_t vcounter = 1;
+	/*
+	 * We need a place to stash a serial nunber for each revision so we can
+	 * generate graph node IDs that are repeatable and eyeball-friendly. It
+	 * doesn't matter which fields we use, except that we have to clear them
+	 * all first so we can tell not to give a revision an ID twice.  This
+	 * means any ifo in the field will be unavailable for displty
+	 */
+#define serial state
 	for (int i = 0; i < forest->filecount; i++) {
 		generator_t *g = &forest->generators[i];
 		for (cvs_version *cv = g->versions; cv != NULL; cv = cv->next) {
-			cv->commitid = NULL; 
+			cv->serial = NULL;
 		}
 	}
 	for (int i = 0; i < forest->filecount; i++) {
@@ -373,30 +381,30 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 		printf("    subgraph \"cluster-%s\" {\n        label=\"%s\"\n",
 		       g->master_name, g->master_name);
 		for (rev_ref *r = m->heads; r != NULL; r = r->next) {
-			printf("        \"%s:%s\" [label=\"%s\",fixedsize=false,shape=ellipse]\n",
+			printf("        \"%s:%s\" "
+			       "[label=\"%s\",fixedsize=false,shape=ellipse]\n",
 			       g->master_name, r->ref_name, r->ref_name);
 			for (cvs_version *cv = g->versions; cv != NULL;
 			     cv = cv->next) {
-				if (cv->commitid == NULL) {
-					cv->commitid = (char*)vcounter++;
+				if (cv->serial == NULL) {
+					cv->serial = (char *)vcounter++;
 				}
-				printf("        n%zd [label=\"%s\",rank=%d]\n",
-				       (ssize_t)cv->commitid,
-				       version_content(cv, verbose),
-				       cv->date);
+				printf("        n%zd [label=\"%s\",rank=%u]\n",
+				       (ssize_t)cv->serial,
+				       version_content(cv, verbose), cv->date);
 			}
-			printf("        \"%s:%s\" -> n%zd\n",
-			       g->master_name, r->ref_name,
-			       (ssize_t)g->versions->commitid);
+			printf("        \"%s:%s\" -> n%zd\n", g->master_name,
+			       r->ref_name, (ssize_t)g->versions->serial);
 			for (cvs_version *cv = g->versions; cv->next != NULL;
 			     cv = cv->next) {
 				printf("        n%zd -> n%zd\n",
-				       (ssize_t)cv->commitid,
-				       (ssize_t)cv->next->commitid);
+				       (ssize_t)cv->serial,
+				       (ssize_t)cv->next->serial);
 			}
 		}
 		printf("    }\n");
 	}
+#undef serial
 	dot_rev_graph_end();
 }
 
