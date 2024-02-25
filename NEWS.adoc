@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Repository head::
+1.66: 2024-02-25::
    Add buildprep support for OpenSUSE
    Make failed author map load crap out early.
    Combination of -g and -r allows graphing of the CVS forest.
