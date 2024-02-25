@@ -327,6 +327,7 @@ static void dot_rev_graph_nodes(git_repo *rl, const char *title) {
 
 static void dot_rev_graph_begin(void) {
 	printf("strict digraph G {\n");
+	printf("newrank=true;\n");
 	printf("nodesep=0.1;\n");
 	printf("ranksep=0.1;\n");
 	printf("edge [dir=none];\n");
@@ -357,6 +358,7 @@ static char *version_content(cvs_version *cv, int verbose) {
 void dump_cvs_graph(forest_t *forest, int verbose)
 /* Dump a DOT graph of the forest before collation */
 {
+	/* alas, newrank does not seem to work as one might expect */
 	dot_rev_graph_begin();
 	ssize_t vcounter = 1;
 	for (int i = 0; i < forest->filecount; i++) {
@@ -378,9 +380,10 @@ void dump_cvs_graph(forest_t *forest, int verbose)
 				if (cv->commitid == NULL) {
 					cv->commitid = (char*)vcounter++;
 				}
-				printf("        n%zd [label=\"%s\"]\n",
+				printf("        n%zd [label=\"%s\",rank=%d]\n",
 				       (ssize_t)cv->commitid,
-				       version_content(cv, verbose));
+				       version_content(cv, verbose),
+				       cv->date);
 			}
 			printf("        \"%s:%s\" -> n%zd\n",
 			       g->master_name, r->ref_name,
