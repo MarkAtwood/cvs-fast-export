@@ -157,7 +157,7 @@ main () {
         # configuration when pulled as a dependency.  This package doesn't care
         # whether your Python is 2.x or 3.x.
         $install tzdata
-        $install make grep sed gcc bison flex python3 git rcs cvs pylint cppcheck shellcheck
+        $install make grep sed gcc bison flex python3 git rcs cvs pylint cppcheck shellcheck asciidoctor
         ;;
     emerge)
         echo "Not yet supported" >&2

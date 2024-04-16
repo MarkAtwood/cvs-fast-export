@@ -130,7 +130,7 @@ lex.o: lex.c gram.h
 	asciidoctor -D. -a nofooter -a webfonts! $<
 
 reporting-bugs.html: reporting-bugs.adoc
-	asciidoc reporting-bugs.adoc
+	asciidoctor reporting-bugs.adoc
 
 man: cvs-fast-export.1 cvssync.1 cvsconvert.1
 
