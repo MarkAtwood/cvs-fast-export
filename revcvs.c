@@ -225,10 +225,7 @@ static cvs_commit *cvs_master_branch_build(cvs_file *cvs, rev_master *master,
 			 * This may look like it's doing a bad thing to the
 			 * integrity of the input data, but in reality we don't
 			 * get here unless some commit times were messed up to
-			 * begin with.  The reason this can happen is that CVS
-			 * timestamps commits on the client, not at the server;
-			 * the ordering is therefor prone to get screwed up by
-			 * client clock skew, timezones, and DST.
+			 * begin with.
 			 *
 			 * The best thing we can do in this situation is replace
 			 * garbage with a well-formed timestamp sequence that is

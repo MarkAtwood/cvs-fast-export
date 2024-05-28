@@ -267,10 +267,6 @@ cvs-fast-export will try to warn you about these cases rather than
 silently producing broken or incomplete translations, but there be
 dragons. We recommend some precautions under SANITY CHECKING.
 
-Timestamps from CVS histories are not very reliable - CVS made them on
-the client side rather than at the server; this makes them subject to
-local clock skew, timezone, and DST issues.
-
 CVS-NT and versions of GNU CVS after 1.12 (2004) added a changeset
 commit-id to file metadata. Older sections of CVS history without
 these are vulnerable to various problems caused by clock skew between
