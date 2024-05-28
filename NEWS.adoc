@@ -1,5 +1,9 @@
 = cvs-fast-export project news =
 
+1.67: 2024-05-28::
+   Fix an embarassing packaging glitch.
+   Improve documentation.
+
 1.66: 2024-02-25::
    Add buildprep support for OpenSUSE
    Make failed author map load crap out early.
