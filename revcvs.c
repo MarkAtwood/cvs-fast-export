@@ -22,6 +22,9 @@
 #endif
 
 const master_dir *root_dir = NULL;
+#ifdef THREADS
+static pthread_mutex_t root_dir_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 static const char *fileop_name(const char *rectified) {
 	size_t rlen = strlen(rectified);
@@ -79,24 +82,24 @@ static const master_dir *atom_dir(const char *dirname) {
 	dir_bucket **head = &dir_buckets[HASH_VALUE(dirname) % DIR_BUCKETS];
 	dir_bucket *b;
 
-	while ((b = *head)) {
-	collision:
-		if (b->dir.name == dirname) {
-			return &(b->dir);
-		}
-		head = &(b->next);
-	}
 #ifdef THREADS
 	if (threads > 1) {
 		pthread_mutex_lock(&dir_bucket_mutex);
 	}
 #endif /* THREADS */
-	if ((b = *head)) {
+	while ((b = *head)) {
+	collision:
+		if (b->dir.name == dirname) {
 #ifdef THREADS
-		if (threads > 1) {
-			pthread_mutex_unlock(&dir_bucket_mutex);
-		}
+			if (threads > 1) {
+				pthread_mutex_unlock(&dir_bucket_mutex);
+			}
 #endif /* THREADS */
+			return &(b->dir);
+		}
+		head = &(b->next);
+	}
+	if ((b = *head)) {
 		goto collision;
 	}
 	b = xmalloc(sizeof(dir_bucket), __func__);
@@ -856,9 +859,17 @@ cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm,
 	cvs_branch *cb;
 	cvs_version *ctrunk = NULL;
 
+#ifdef THREADS
+    if (threads > 1)
+	pthread_mutex_lock(&root_dir_mutex);
+#endif
 	if (!root_dir) {
 		root_dir = atom_dir(atom("\0"));
 	}
+#ifdef THREADS
+    if (threads > 1)
+	pthread_mutex_unlock(&root_dir_mutex);
+#endif
 	build_rev_master(cvs, master);
 #if CVSDEBUG
 	char buf[CVS_MAX_REV_LEN];

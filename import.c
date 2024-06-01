@@ -347,6 +347,7 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 	striplen = analyzer->striplen;
 
 	forest->textsize = forest->filecount = 0;
+	forest->is_cvs = false;
 	progress_begin("Reading file list...", NO_MAX);
 	for (;;) {
 		struct stat stb;

@@ -182,7 +182,7 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 				*cp = '\n';
 			}
 		}
-		if (strlen(cbuf) >= 2 && cbuf[0] == '!' && cbuf[1] == '\n') {
+		if (strnlen(cbuf, len) >= 2 && cbuf[0] == '!' && cbuf[1] == '\n') {
 			extralen = 0;
 			cbuf += 2;
 			clen -= 2;
@@ -722,7 +722,7 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 	(((struct commit_seq *)x)->commit->date <                              \
 	 ((struct commit_seq *)y)->commit->date)
 		/* back up as far as we can */
-		while (!is_parent_of(bp - 1, hp) &&
+		while ((bp > history) && !is_parent_of(bp - 1, hp) &&
 		       !is_branchroot_of(bp - 1, hp) &&
 		       !is_older_than(bp - 1, hp)) {
 			bp--;

@@ -100,24 +100,24 @@ const char *atom(const char *string)
 	hash_bucket_t *b;
 	int len;
 
-	while ((b = *head)) {
-	collision:
-		if (b->hash == hash && !strcmp(string, b->string)) {
-			return b->string;
-		}
-		head = &(b->next);
-	}
 #ifdef THREADS
 	if (threads > 1) {
 		pthread_mutex_lock(&bucket_mutex);
 	}
 #endif /* THREADS */
-	if ((b = *head)) {
+	while ((b = *head)) {
+	collision:
+		if (b->hash == hash && !strcmp(string, b->string)) {
 #ifdef THREADS
-		if (threads > 1) {
-			pthread_mutex_unlock(&bucket_mutex);
-		}
+			if (threads > 1) {
+				pthread_mutex_unlock(&bucket_mutex);
+			}
 #endif /* THREADS */
+			return b->string;
+		}
+		head = &(b->next);
+	}
+	if ((b = *head)) {
 		goto collision;
 	}
 
@@ -157,24 +157,24 @@ const cvs_number *atom_cvs_number(const cvs_number n) {
 	number_bucket_t **head = &number_buckets[bucket];
 	number_bucket_t *b;
 
-	while ((b = *head)) {
-	collision:
-		if (cvs_number_equal(&b->number, &n)) {
-			return &b->number;
-		}
-		head = &(b->next);
-	}
 #ifdef THREADS
 	if (threads > 1) {
 		pthread_mutex_lock(&number_bucket_mutex);
 	}
 #endif /* THREADS */
-	if ((b = *head)) {
+	while ((b = *head)) {
+	collision:
+		if (cvs_number_equal(&b->number, &n)) {
 #ifdef THREADS
-		if (threads > 1) {
-			pthread_mutex_unlock(&number_bucket_mutex);
-		}
+			if (threads > 1) {
+				pthread_mutex_unlock(&number_bucket_mutex);
+			}
 #endif /* THREADS */
+			return &b->number;
+		}
+		head = &(b->next);
+	}
+	if ((b = *head)) {
 		goto collision;
 	}
 

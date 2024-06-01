@@ -210,6 +210,7 @@ void revdir_pack_init(void) {
 	frame = frames;
 	nfiles = 0;
 	frames[0].dir = root_dir;
+	frames[0].dirs = xmalloc(0, __func__);
 	frames[0].ndirs = 0;
 	frames[0].hash = hash_init();
 }
@@ -253,6 +254,7 @@ void revdir_pack_add(const cvs_commit *file, const master_dir *dir) {
 
 			const master_dir *parent = frame++->dir;
 			frame->dir = first_subdir(dir, parent);
+			frame->dirs = xmalloc(0, __func__);
 			frame->ndirs = 0;
 			frame->hash = hash_init();
 			continue;
