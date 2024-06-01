@@ -39,7 +39,7 @@ GCC_WARNINGS2=-Wmissing-prototypes -Wmissing-declarations
 GCC_WARNINGS3=-Wno-unused-function -Wno-unused-label -Wno-format-zero-length
 GCC_WARNINGS=$(GCC_WARNINGS1) $(GCC_WARNINGS2) $(GCC_WARNINGS3)
 CFLAGS += $(GCC_WARNINGS)
-CPPFLAGS += -I. -I$(srcdir)
+CPPFLAGS += -I.
 #LIBS=-lrt
 CPPFLAGS += -DVERSION=\"$(VERSION)\"
 
@@ -51,7 +51,7 @@ CPPFLAGS += -DTHREADS
 #CFLAGS += -march=native
 
 # To enable debugging of the Yacc grammar, uncomment the following line
-CPPFLAGS += -DYYDEBUG=1
+# CPPFLAGS += -DYYDEBUG=1
 # To enable verbose debugging of the analysis stage, uncomment the following line
 #CPPFLAGS += -DCVSDEBUG=1
 # To enable debugging of blob export, uncomment the following line
