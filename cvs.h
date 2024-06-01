@@ -124,13 +124,11 @@ struct in_buffer_type {
 	int read_count;
 };
 
-#ifdef LINESTATS
 typedef struct _edit_line {
 	unsigned char *ptr;
 	size_t length;
 	int has_stringdelim;
 } editline_t;
-#endif
 
 /* Don't modify this without syncing expand_names in generate.c */
 enum expand_mode {
@@ -152,10 +150,8 @@ typedef struct _editbuffer {
 	char Gversion_number[CVS_MAX_REV_LEN];
 	struct out_buffer_type *Goutbuf;
 	struct in_buffer_type in_buffer_store;
-#ifdef LINESTATS
 	int line_len; /* temporary used for insertline */
 	int has_stringdelim;
-#endif
 	enum expand_mode Gexpand;
 	/*
 	 * Gline contains pointers to the lines in the current edit buffer
@@ -170,11 +166,7 @@ typedef struct _editbuffer {
 		node_t *next_branch;
 		node_t *node;
 		unsigned char *node_text;
-#ifdef LINESTATS
 		editline_t *line;
-#else
-		unsigned char **line;
-#endif
 		size_t gap, gapsize, linemax;
 	} stack[CVS_MAX_DEPTH / 2], *current;
 #ifdef USE_MMAP

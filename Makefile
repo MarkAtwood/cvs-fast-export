@@ -69,7 +69,6 @@ CPPFLAGS += -DYYDEBUG=1
 # anything else
 CPPFLAGS += -DREDBLACK  # Use red-black trees for faster symbol lookup
 CPPFLAGS += -DUSE_MMAP  # Use mmap for reading CVS masters
-CPPFLAGS += -DLINESTATS # Keep track of which lines have @ string delimiters
 CPPFLAGS += -DTREEPACK  # Reduce memory usage, particularly on large repos
 CPPFLAGS += -DDEBUG     # Compile in debugging code
 
