@@ -3,7 +3,8 @@
 # Build requirements:  Read the "buildprep" script.
 # You may be able to run that to install all dependencies.
 #
-# The C compiler must support anonymous unions (GNU, clang, C11).
+# The C compiler must be C99-conformant, and support anonymous unions
+# (GNU, clang, C11).
 #
 # If you get a link error complaining that clock_gettime() can't be
 # found, uncomment the line that includes -lrt in the link flags.
@@ -71,11 +72,6 @@ CPPFLAGS += -DREDBLACK  # Use red-black trees for faster symbol lookup
 CPPFLAGS += -DUSE_MMAP  # Use mmap for reading CVS masters
 CPPFLAGS += -DTREEPACK  # Reduce memory usage, particularly on large repos
 CPPFLAGS += -DDEBUG     # Compile in debugging code
-
-# First line works for GNU C.  
-# Replace with the next if your compiler doesn't support C99 restrict qualifier
-CPPFLAGS+=-Drestrict=__restrict__
-#CPPFLAGS+=-Drestrict=""
 
 # To enable profiling, uncomment the following line
 # Note: the profiler gets confused if you don't also turn off -O flags.
