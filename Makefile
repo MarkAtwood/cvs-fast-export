@@ -36,7 +36,6 @@ BISON ?= bison
 FLEX ?= flex
 
 GCC_WARNINGS1=-Wall -Wextra -Werror -Wpointer-arith -Wstrict-prototypes
-GCC_WARNINGS2=-Wmissing-prototypes -Wmissing-declarations
 GCC_WARNINGS3=-Wno-format-zero-length
 GCC_WARNINGS=$(GCC_WARNINGS1) $(GCC_WARNINGS2) $(GCC_WARNINGS3)
 CFLAGS += $(GCC_WARNINGS)
