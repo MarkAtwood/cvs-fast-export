@@ -537,13 +537,13 @@ bool cvs_is_branch_of(const cvs_number *trunk, const cvs_number *branch);
 
 int cvs_number_degree(const cvs_number *a);
 
-const cvs_number cvs_previous_rev(const cvs_number *n);
+cvs_number cvs_previous_rev(const cvs_number *n);
 
-const cvs_number cvs_master_rev(const cvs_number *n);
+cvs_number cvs_master_rev(const cvs_number *n);
 
-const cvs_number cvs_branch_head(cvs_file *f, const cvs_number *branch);
+cvs_number cvs_branch_head(cvs_file *f, const cvs_number *branch);
 
-const cvs_number cvs_branch_parent(cvs_file *f, const cvs_number *branch);
+cvs_number cvs_branch_parent(cvs_file *f, const cvs_number *branch);
 
 node_t *cvs_find_version(const cvs_file *cvs, const cvs_number *number);
 
@@ -576,9 +576,9 @@ void dump_rev_graph(git_repo *rl, const char *title);
 
 void dump_cvs_graph(forest_t *, int);
 
-const char *atom(const char *string);
+char *atom(const char *string);
 
-const cvs_number *atom_cvs_number(const cvs_number n);
+cvs_number *atom_cvs_number(const cvs_number n);
 
 unsigned long hash_cvs_number(const cvs_number *const key);
 

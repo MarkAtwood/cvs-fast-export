@@ -210,7 +210,7 @@ static cvs_commit *cvs_commit_latest(cvs_commit **commits, int ncommit) {
 
 #ifdef DEBUG
 static void dump_revision_order(char *legend, revision_t *revisions,
-                                int ncommit, FILE *fp) {
+                                int ncommit) {
 	debugmsg("Revision order %s: ", legend);
 	for (revision_t *r = revisions; r < revisions + ncommit; r++) {
 		const cvs_commit *c = REVISION_T_COMMIT(*r);
@@ -315,7 +315,6 @@ static void git_commit_cleanup(void)
 static git_commit *git_commit_build(revision_t *revisions,
                                     const cvs_commit *leader,
                                     const int nrevisions) {
-	size_t n;
 	git_commit *commit;
 
 	commit = xmalloc(sizeof(git_commit), "creating commit");
@@ -330,7 +329,7 @@ static git_commit *git_commit_build(revision_t *revisions,
 	commit->refcount = commit->serial = 0;
 
 	revdir_pack_init();
-	for (n = 0; n < nrevisions; n++) {
+	for (int n = 0; n < nrevisions; n++) {
 		if (REVISIONS(n) && !(DEAD(n))) {
 			revdir_pack_add(REVISIONS(n), DIR(n));
 		}
@@ -685,11 +684,11 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 	 * up from the master.  Sort them and toss out deaders.
 	 */
 	if (enable_debug(DEBUG_SORT)) {
-		dump_revision_order("before sort", revisions, nbranch, logfile);
+		dump_revision_order("before sort", revisions, nbranch);
 	}
 	nbranch = cvs_commit_canonicalize_sort(revisions, nbranch);
 	if (enable_debug(DEBUG_SORT)) {
-		dump_revision_order("after sort", revisions, nbranch, logfile);
+		dump_revision_order("after sort", revisions, nbranch);
 	}
 
 	/*
@@ -976,8 +975,7 @@ static void rev_tag_search(tag_t *tag, cvs_commit **revisions, git_repo *gl) {
 	 * We have no way of knowing the correct author of a tag.
 	 */
 	revision_t *revs = xmalloc(sizeof(revision_t) * tag->count, __func__);
-	size_t i;
-	for (i = 0; i < tag->count; i++) {
+	for (int i = 0; i < tag->count; i++) {
 		REVISION_T_PACK_INIT(revs[i], revisions[i]);
 	}
 	git_commit *g = git_commit_build(revs, c, tag->count);

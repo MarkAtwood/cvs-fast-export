@@ -92,9 +92,8 @@ static hash_bucket_t *buckets[HASH_SIZE];
 static pthread_mutex_t bucket_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif /* THREADS */
 
-const char *atom(const char *string)
 /* intern a string, avoiding having separate storage for duplicate copies */
-{
+char *atom(const char *string) {
 	hash_t hash = hash_string(string);
 	hash_bucket_t **head = &buckets[hash % HASH_SIZE];
 	hash_bucket_t *b;
@@ -152,7 +151,7 @@ static pthread_mutex_t number_bucket_mutex = PTHREAD_MUTEX_INITIALIZER;
  * Intern a revision number
  * netbsd-pkgsrc calls this 42,000,000 times for 22,000 distinct values
  */
-const cvs_number *atom_cvs_number(const cvs_number n) {
+cvs_number *atom_cvs_number(const cvs_number n) {
 	size_t bucket = hash_cvs_number(&n) % NUMBER_HASH_SIZE;
 	number_bucket_t **head = &number_buckets[bucket];
 	number_bucket_t *b;

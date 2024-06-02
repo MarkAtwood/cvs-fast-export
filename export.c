@@ -41,7 +41,7 @@
 
 static serial_t *markmap;
 static serial_t mark;
-static volatile int seqno;
+static volatile unsigned int seqno;
 static char blobdir[PATH_MAX];
 
 static export_stats_t export_stats;
@@ -743,8 +743,7 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 /* dump a list of author IDs in the repository */
 void export_authors(forest_t *forest, export_options_t *opts) {
 	const char **authors;
-	int i, nauthors = 0;
-	size_t alloc;
+	size_t alloc, nauthors = 0;
 	authors = NULL;
 	alloc = 0;
 	export_stats.export_total_commits = export_ncommit(forest->git);
@@ -753,7 +752,7 @@ void export_authors(forest_t *forest, export_options_t *opts) {
 	progress_begin("Finding authors...", NO_MAX);
 	for (hp = history; hp < history + export_stats.export_total_commits;
 	     hp++) {
-		for (i = 0; i < nauthors; i++) {
+		for (size_t i = 0; i < nauthors; i++) {
 			if (authors[i] == hp->commit->author) {
 				goto duplicate;
 			}
@@ -768,7 +767,7 @@ void export_authors(forest_t *forest, export_options_t *opts) {
 	}
 	progress_end("done");
 
-	for (i = 0; i < nauthors; i++) {
+	for (size_t i = 0; i < nauthors; i++) {
 		printf("%s\n", authors[i]);
 	}
 
