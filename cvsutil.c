@@ -5,11 +5,12 @@
  */
 
 #include <assert.h>
+
+#include "cvs.h"
+
 #ifdef REDBLACK
 #include "rbtree.h"
 #endif /* REDBLACK */
-
-#include "cvs.h"
 
 /* discard all master symbols from this CVS context */
 static void cvs_symbol_free(cvs_symbol *symbol) {

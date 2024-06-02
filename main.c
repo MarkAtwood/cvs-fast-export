@@ -363,7 +363,7 @@ int main(int argc, char **argv) {
 			noignores = true;
 			break;
 		case 'd':
-			strncpy(debugopts, optarg, sizeof(debugopts));
+			strncpy(debugopts, optarg, sizeof(debugopts)-1);
 			break;
 		default: /* error message already emitted */
 			announce("try `%s --help' for more information.\n",

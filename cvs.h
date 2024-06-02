@@ -23,6 +23,16 @@
 #include <time.h>
 #include <unistd.h>
 
+/*
+ * Condition in various optimization hacks.  You almost certainly
+ * don't want to turn any of these off; the condition symbols are
+ * present more as documentation of the program structure than
+ * anything else
+ */
+#define REDBLACK /* Use red-black trees for faster symbol loookup */
+#define TREEPACK /* Use tree-packing optimization */
+#define USE_MMAP /* Memory-mapped I/O */
+
 #include "cvstypes.h"
 /*
  * CVS_MAX_BRANCHWIDTH should match the number in the longrev test.
@@ -259,7 +269,7 @@ typedef struct _revdir {
 	file_list **dirs;
 } revdir;
 
-#endif
+#endif /* TREEPACK */
 
 /*
  * Tricky polymorphism hack to reduce working set size for large repos

@@ -800,7 +800,7 @@ uncache_exit:
 	return r + e;
 }
 
-#if USE_MMAP
+#ifdef USE_MMAP
 
 #include <fcntl.h>
 #include <sys/mman.h>

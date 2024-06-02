@@ -51,6 +51,8 @@ CPPFLAGS += -DTHREADS
 # Optimizing for speed. Un-comment for testing Linux build
 #CFLAGS += -march=native
 
+# Compile in debugging code
+# CPPFLAGS += -DDEBUG
 # To enable debugging of the Yacc grammar, uncomment the following line
 # CPPFLAGS += -DYYDEBUG=1
 # To enable verbose debugging of the analysis stage, uncomment the following line
@@ -64,24 +66,15 @@ CPPFLAGS += -DTHREADS
 # To enable debugging of gitspace backlinks, uncomment the following line
 #CPPFLAGS += -DGITSPACEDEBUG=1
 
-# Condition in various optimization hacks.  You almost certainly
-# don't want to turn any of these off; the condition symbols are
-# present more as documentation of the program structure than
-# anything else
-CPPFLAGS += -DREDBLACK  # Use red-black trees for faster symbol lookup
-CPPFLAGS += -DUSE_MMAP  # Use mmap for reading CVS masters
-CPPFLAGS += -DTREEPACK  # Reduce memory usage, particularly on large repos
-CPPFLAGS += -DDEBUG     # Compile in debugging code
-
 # To enable profiling, uncomment the following line
 # Note: the profiler gets confused if you don't also turn off -O flags.
 # CFLAGS += -pg
 # Warning: Using -O3 has been seen to cause core dumps on repositories with
 # very long revision names - some bounds check gets optimized away. Don't do that.
-# CFLAGS += -O2
+CFLAGS += -O2
 # If your toolchain supports link time optimization this is a cheap speedup
 # CFLAGS += -flto
-CFLAGS += -g
+# CFLAGS += -g
 # Test coverage flags
 # CFLAGS += -ftest-coverage -fprofile-arcs
 CFLAGS += $(EXTRA_CFLAGS)

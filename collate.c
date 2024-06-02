@@ -683,13 +683,18 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 	 * Commits on this branch are still in the order they were picked
 	 * up from the master.  Sort them and toss out deaders.
 	 */
+
+#ifdef DEBUG
 	if (enable_debug(DEBUG_SORT)) {
 		dump_revision_order("before sort", revisions, nbranch);
 	}
+#endif /* DEBUG */
 	nbranch = cvs_commit_canonicalize_sort(revisions, nbranch);
+#ifdef DEBUG
 	if (enable_debug(DEBUG_SORT)) {
 		dump_revision_order("after sort", revisions, nbranch);
 	}
+#endif /* DEBUG */
 
 	/*
 	 * Gitspace branch construction is done. Now connect it to its
