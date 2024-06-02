@@ -37,7 +37,7 @@ FLEX ?= flex
 
 GCC_WARNINGS1=-Wall -Wpointer-arith -Wstrict-prototypes
 GCC_WARNINGS2=-Wmissing-prototypes -Wmissing-declarations
-GCC_WARNINGS3=-Wno-unused-function -Wno-format-zero-length
+GCC_WARNINGS3=-Wno-format-zero-length
 GCC_WARNINGS=$(GCC_WARNINGS1) $(GCC_WARNINGS2) $(GCC_WARNINGS3)
 CFLAGS += $(GCC_WARNINGS)
 CPPFLAGS += -I.
@@ -52,9 +52,9 @@ CPPFLAGS += -DTHREADS
 #CFLAGS += -march=native
 
 # Compile in debugging code
-# CPPFLAGS += -DDEBUG
+#CPPFLAGS += -DDEBUG
 # To enable debugging of the Yacc grammar, uncomment the following line
-# CPPFLAGS += -DYYDEBUG=1
+#CPPFLAGS += -DYYDEBUG=1
 # To enable verbose debugging of the analysis stage, uncomment the following line
 #CPPFLAGS += -DCVSDEBUG=1
 # To enable debugging of blob export, uncomment the following line
@@ -105,6 +105,7 @@ lex.h lex.c: lex.l
 gram.o: gram.c lex.h gram.h
 import.o: import.c lex.h gram.h
 lex.o: lex.c gram.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TARGET_ARCH) -Wno-unused-function  -c lex.c
 
 # Note: to suppress the footers with timestamps being generated in HTML,
 # we use "-a nofooter".

@@ -60,10 +60,6 @@ typedef struct _analysis {
 	generator_t generator;
 } analysis_t;
 
-static cvs_master *sort_cvs_masters(cvs_master *list);
-
-static void debug_cvs_masters(cvs_master *list);
-
 static char *rectify_name(const char *raw, char *rectified, size_t rectlen) {
 	/* from master name to the name humans thought of the file by */
 	unsigned len;

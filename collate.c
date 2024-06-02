@@ -386,6 +386,7 @@ static git_commit *git_commit_locate_one(const rev_ref *branch,
 	return NULL;
 }
 
+#ifdef __UNUSED__
 /* seek a gitspace commit on *any* branch incorporating cvs_commit */
 static git_commit *git_commit_locate_any(const rev_ref *branch,
                                          const cvs_commit *part) {
@@ -420,6 +421,7 @@ static git_commit *git_commit_locate(const rev_ref *branch,
 	}
 	return git_commit_locate_any(branch, cm);
 }
+#endif /* __UNUSED__ */
 
 /* return the gitspace branch head that owns a specified CVS commit */
 static rev_ref *git_branch_of_commit(const git_repo *gl,
