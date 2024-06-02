@@ -304,7 +304,7 @@ static void excise_branch(cvs_master *cm, rev_ref *branchtokill) {
  * A side effect of this code is to give a synthetic label to each
  * vendor branch that has not already been named.
  */
-static bool cvs_master_patch_vendor_branch(cvs_master *cm, cvs_file *cvs) {
+static bool cvs_master_patch_vendor_branch(cvs_master *cm) {
 	rev_ref *trunk = cm->heads;
 	rev_ref *vendor = NULL;
 	rev_ref *nvendor = NULL;
@@ -942,7 +942,7 @@ cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm,
 			rev_list_add_head(cm, branch, NULL, 0);
 		}
 	}
-	if (cvs_master_patch_vendor_branch(cm, cvs)) {
+	if (cvs_master_patch_vendor_branch(cm)) {
 		cvs->vendor_warning = true;
 	}
 	cvs_master_graft_branches(cm, cvs);

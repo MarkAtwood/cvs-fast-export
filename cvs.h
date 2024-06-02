@@ -423,6 +423,7 @@ typedef struct _cvs_author {
 #define _noreturn __attribute__((__noreturn__))
 #define _pure __attribute__((__noreturn__))
 #define _alignof(T) __alignof__(T)
+#define _unused __attribute__((unused))
 #else
 #define _printflike(fmtarg, firstvararg) /* nothing */
 #define _alloclike(sizearg)              /* nothing */
@@ -431,6 +432,7 @@ typedef struct _cvs_author {
 #define _noreturn                        /* nothing */
 #define _pure                            /* nothing */
 #define _alignof(T) sizeof(long double)
+#define _unused                          /* nothing */
 #endif
 
 /* For versions of Mac OS X before Sierra */

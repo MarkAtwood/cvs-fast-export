@@ -854,7 +854,7 @@ static void unload_all_text(editbuffer_t *eb) {
 	}
 }
 
-static void unload_text(editbuffer_t *eb, const cvs_text *text, uchar *data) {}
+static void unload_text(_unused editbuffer_t *eb, _unused const cvs_text *text, _unused uchar *data) {}
 #else
 static uchar *load_text(editbuffer_t *eb, const cvs_text *text) {
 	FILE *f = fopen(text->filename, "rb");
@@ -910,6 +910,7 @@ static void process_delta(editbuffer_t *eb, const node_t *const node,
 		while ((ptr = in_get_line(eb))) {
 			insertline(eb, editline++, ptr);
 		}
+	/* FALLTHROUGH */
 	/* coverity[fallthrough] */
 	case EDIT:
 		dc.dafter = dc.adprev = 0;
@@ -1014,7 +1015,7 @@ static void snapshotline_nodelim(editbuffer_t *eb, editline_t *l) {
 	struct out_buffer_type *ob = eb->Goutbuf;
 	size_t chars_read = l->length;
 	if (chars_read != 0) {
-		while (ob->end_of_text - ob->ptr < chars_read) {
+	  while ((size_t)(ob->end_of_text - ob->ptr) < chars_read) {
 			out_buffer_enlarge(eb);
 			ob = eb->Goutbuf;
 		}

@@ -72,7 +72,7 @@ static int seqno_next(void) {
 	"end\n"
 
 /* Random-access location of the blob corresponding to the specified serial */
-static char *blobfile(const char *basename, const int serial, const bool create,
+static char *blobfile(_unused const char *basename, const int serial, const bool create,
                       char *path) {
 	int m;
 
@@ -137,8 +137,7 @@ static char *blobfile(const char *basename, const int serial, const bool create,
 
 /* output the blob, or save where it will be available for random access */
 static void export_blob(node_t *node, void *buf, const size_t len,
-
-                        export_options_t *opts) {
+                        _unused export_options_t *opts) {
 	/*
 	 * This is the only place we do interpretation of ignores.
 	 *
@@ -224,8 +223,8 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 	}
 }
 
-static int unlink_cb(const char *fpath, const struct stat *sb, int typeflag,
-                     struct FTW *ftwbuf) {
+static int unlink_cb(const char *fpath, _unused const struct stat *sb, _unused int typeflag,
+                     _unused struct FTW *ftwbuf) {
 	int rv = remove(fpath);
 
 	if (rv) {
@@ -235,7 +234,7 @@ static int unlink_cb(const char *fpath, const struct stat *sb, int typeflag,
 	return rv;
 }
 
-static void cleanup(const export_options_t *opts) {
+static void cleanup(void) {
 	nftw(blobdir, unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
 }
 
@@ -550,7 +549,7 @@ static void export_commit(git_commit *commit, const char *branch,
 		}
 		if (commit->parent) {
 			if (markmap[commit->parent->serial] == 0) {
-				cleanup(opts);
+				cleanup();
 				/* should never happen */
 				fatal_error("internal error: child commit "
 				            "emitted before parent exists");
@@ -741,7 +740,7 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 }
 
 /* dump a list of author IDs in the repository */
-void export_authors(forest_t *forest, export_options_t *opts) {
+void export_authors(forest_t *forest, _unused export_options_t *opts) {
 	const char **authors;
 	size_t alloc, nauthors = 0;
 	authors = NULL;
@@ -897,7 +896,7 @@ void export_commits(forest_t *forest, export_options_t *opts,
 
 	fputs("done\n", stdout);
 
-	cleanup(opts);
+	cleanup();
 
 	if (forest->vendor_warning) {
 		warn("vendor branch detected.\n");

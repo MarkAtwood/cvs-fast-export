@@ -28,7 +28,7 @@ static int get_int_substr(const char *str, const regmatch_t *p) {
 	if (p->rm_so == -1) {
 		return 0;
 	}
-	if (p->rm_eo - p->rm_so >= sizeof(buff)) {
+	if ((size_t)(p->rm_eo - p->rm_so) >= sizeof(buff)) {
 		return 0;
 	}
 	memcpy(buff, str + p->rm_so, p->rm_eo - p->rm_so);
@@ -149,7 +149,7 @@ struct checkpoint {
 };
 
 static struct checkpoint checkpoints[5];
-static int ncheckpoints;
+static size_t ncheckpoints;
 
 /* gather resource usage statistics */
 static void gather_stats(const char *legend) {
