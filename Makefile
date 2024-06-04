@@ -73,7 +73,10 @@ CPPFLAGS += -DTHREADS
 CFLAGS += -O2
 # If your toolchain supports link time optimization this is a cheap speedup
 # CFLAGS += -flto
-# CFLAGS += -g
+# Bounds checks at runtime. Not enabled by default for performance reasons
+#CPPLAGS += -D_FORTIFY_SOURCE=2
+# Ordinary symbolic debugging
+#CFLAGS += -g
 # Test coverage flags
 # CFLAGS += -ftest-coverage -fprofile-arcs
 CFLAGS += $(EXTRA_CFLAGS)
