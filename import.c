@@ -179,7 +179,8 @@ static int strcommonendingwith(const char *a, const char *b, char endc) {
 /* consume masters off the queue */
 static void *worker(_unused void *arg) {
 	analysis_t out;
-	memset(&out, '\0', sizeof(analysis_t));	// Avoid missing-initializer warning.
+	memset(&out, '\0',
+	       sizeof(analysis_t)); // Avoid missing-initializer warning.
 	for (;;) {
 		/* pop a master off the queue, terminating if none left */
 #ifdef THREADS

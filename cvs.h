@@ -432,7 +432,7 @@ typedef struct _cvs_author {
 #define _noreturn                        /* nothing */
 #define _pure                            /* nothing */
 #define _alignof(T) sizeof(long double)
-#define _unused                          /* nothing */
+#define _unused /* nothing */
 #endif
 
 /* For versions of Mac OS X before Sierra */

@@ -72,8 +72,8 @@ static int seqno_next(void) {
 	"end\n"
 
 /* Random-access location of the blob corresponding to the specified serial */
-static char *blobfile(_unused const char *basename, const int serial, const bool create,
-                      char *path) {
+static char *blobfile(_unused const char *basename, const int serial,
+                      const bool create, char *path) {
 	int m;
 
 #ifdef DEBUG
@@ -181,7 +181,8 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 				*cp = '\n';
 			}
 		}
-		if (strnlen(cbuf, len) >= 2 && cbuf[0] == '!' && cbuf[1] == '\n') {
+		if (strnlen(cbuf, len) >= 2 && cbuf[0] == '!' &&
+		    cbuf[1] == '\n') {
 			extralen = 0;
 			cbuf += 2;
 			clen -= 2;
@@ -223,8 +224,8 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 	}
 }
 
-static int unlink_cb(const char *fpath, _unused const struct stat *sb, _unused int typeflag,
-                     _unused struct FTW *ftwbuf) {
+static int unlink_cb(const char *fpath, _unused const struct stat *sb,
+                     _unused int typeflag, _unused struct FTW *ftwbuf) {
 	int rv = remove(fpath);
 
 	if (rv) {

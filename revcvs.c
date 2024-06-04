@@ -860,15 +860,15 @@ cvs_commit *cvs_master_digest(cvs_file *cvs, cvs_master *cm,
 	cvs_version *ctrunk = NULL;
 
 #ifdef THREADS
-    if (threads > 1)
-	pthread_mutex_lock(&root_dir_mutex);
+	if (threads > 1)
+		pthread_mutex_lock(&root_dir_mutex);
 #endif
 	if (!root_dir) {
 		root_dir = atom_dir(atom("\0"));
 	}
 #ifdef THREADS
-    if (threads > 1)
-	pthread_mutex_unlock(&root_dir_mutex);
+	if (threads > 1)
+		pthread_mutex_unlock(&root_dir_mutex);
 #endif
 	build_rev_master(cvs, master);
 #if CVSDEBUG
