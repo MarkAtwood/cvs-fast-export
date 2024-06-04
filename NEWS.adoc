@@ -1,5 +1,8 @@
 = cvs-fast-export project news =
 
+Repository head::
+   Apply stricter code validation including asan, tsan and ubsan tests. 
+
 1.67: 2024-05-28::
    Fix an embarassing packaging glitch.
    Improve documentation.
@@ -92,7 +95,7 @@
 
 1.46: 2019-03-18::
    Make cvsreduce do the right (escaping) thing when a filename contains @.
-   In cvreduce, warn on files that aren't CVS masters.
+   In cvsreduce, warn on files that aren't CVS masters.
    Avoid losing commits when warning "tip commit older than imputed branch join" seen
    Warn about optimization bug triggered by -O3, reduce to -O2.
 
