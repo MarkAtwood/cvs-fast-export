@@ -1,10 +1,10 @@
 = cvs-fast-export project news =
 
-Repository head::
+1.68: 2024-07-31::
    Fix minor error in handling of -d argument.
    Apply stricter code validation including asan, tsan and ubsan tests.
-   Complete spellcheck of all documentatiuon.
-   Assume C99 conformance for restricct keyword.
+   Complete spellcheck of all documentation.
+   Assume C99 conformance for restrict keyword.
 
 1.67: 2024-05-28::
    Fix an embarrassing packaging glitch.
