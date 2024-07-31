@@ -202,7 +202,7 @@ distclean: clean
 	cd tests; $(MAKE) --quiet clean
 
 SOURCES = Makefile *.[ch] *.[yl] cvssync cvsconvert cvsstrip buildprep
-DOCS = control *.adoc cfe-logo.png
+DOCS = control *.adoc local.dic cfe-logo.png
 ALL =  $(SOURCES) $(DOCS) tests
 cvs-fast-export-$(VERSION).tar.gz: $(ALL)
 	$(TAR) --transform='s:^:cvs-fast-export-$(VERSION)/:' --show-transformed-names -cvzf cvs-fast-export-$(VERSION).tar.gz $(ALL)
