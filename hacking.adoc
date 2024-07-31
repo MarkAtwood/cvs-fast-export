@@ -158,7 +158,7 @@ branch) for `alternate` are different in the two CVS masters, so
 `cvs-fast-export` cannot rely on them matching to figure out the
 topology.
 
-It also has to deal wth this case correctly:
+It also has to deal with this case correctly:
 ---------------------------------------------------------------------------
 
  +--------------+                               +===============+
@@ -399,7 +399,7 @@ merge rule, the tip content will be that of 1.1.1.2 than 1.2.
 This does not match CVS's observed behavior.
 
 The behavior now implemented is to find the highest-numbered (thus,
-presumbably, the most recent) vendor branch, point the "master" named
+presumably, the most recent) vendor branch, point the "master" named
 reference at it, and then splice the existing master branch to the end
 of that vendor branch.
 
@@ -434,7 +434,7 @@ sequences) one per revision number.
 
 The analysis stage uses a yacc/lex grammar to parse headers in CVS
 files, and custom code to integrate their delta sequences into
-sequences of whole-file snaphots corresponding to each delta. These
+sequences of whole-file snapshots corresponding to each delta. These
 snapshots are stashed in a temporary directory, later to become blobs
 in the fast-export stream.
 
@@ -529,7 +529,7 @@ speed up collision searches.
 
 === authormap.c ===
 
-Manages a map from short CVS-syle names to DVCS-style name/email
+Manages a map from short CVS-style names to DVCS-style name/email
 pairs. Added by ESR, it has few ties to the core code.
 
 === cvsnumber.c ===

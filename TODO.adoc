@@ -49,7 +49,7 @@ lisp/progmodes/cperl-mode.el
 lisp/textmodes/flyspell.el
 
 These have differently named 1.1.1 branches (ILYA and FLYSPELL). Merging
-them into the same import-1.1.1 branch casues all sorts of weirdness
+them into the same import-1.1.1 branch causes all sorts of weirdness
 with tagging. The tags (e.g. Ilya_5_23) only point to commits in one branch.
 
 I think they need to treated as separate branch heads.

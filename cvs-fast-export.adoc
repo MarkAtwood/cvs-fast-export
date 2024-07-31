@@ -337,7 +337,7 @@ commit *is* also applied forward in the nearby mainline.
 
 Unless there an explicit expand directive in the CVS master, this
 program does the equivalent of cvs -kb when checking out masters, not
-performing any $-keyword expansion at all.  This differs drom CVS's
+performing any $-keyword expansion at all.  This differs from CVS's
 default behavior om checkoutbut has the advantage that binary files
 will never be clobbered.  It has the disadvantage that the data in
 $-headers is not reliable; at best you'll get the unexpanded version
@@ -363,7 +363,7 @@ program's behavior is nondeterministic.  If the same tag looks like it
 should be assigned to two different gitspace commits with the same
 timestamp, which tag it actually lands on will be random.
 
-CVSNT is supported, but CVSNT extension fields includig "permissions"
+CVSNT is supported, but CVSNT extension fields including "permissions"
 "hardlinks", "mregepoint" and "username" are ignored.
 
 Non-ASCII characters in user IDs are not supported.
@@ -403,7 +403,7 @@ sanity-check against the head revision.
 vendor branch detected::
      Source tree contains vendored commits. Check head carefully,
      branch content might have landed on trunk. If this happens, you
-     may be able to prefent it ny adding a dummy commit to trunk.
+     may be able to prevent it by adding a dummy commit to trunk.
 
 null branch name, probably from a damaged Attic file::
      The code was unable to deduce a name for a branch and tried to

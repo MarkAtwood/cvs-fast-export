@@ -146,7 +146,7 @@ cleancheck:
 	@$(MAKE) -s -C tests clean
 	@$(MAKE) -s check
 
-# Needs clean first because reflowing generated .c and .h files produces ungappy resulys
+# Needs clean first because reflowing generated .c and .h files produces ungappy results
 reflow: clean
 	@clang-format --style="{IndentWidth: 8, UseTab: ForIndentation}" -i $$(find . -name "*.[chl]")
 
@@ -156,6 +156,9 @@ fixme:
 	else \
 		find . -type f -exec grep -n FIX''ME {} /dev/null \; | grep -v "[.]git"; \
 	fi
+
+spellcheck: *.adoc
+	@batchspell local.dic *.adoc
 
 install: install-bin install-man
 install-bin: cvs-fast-export cvssync cvsconvert
