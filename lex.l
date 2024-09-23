@@ -80,7 +80,7 @@ YY_DECL;
 					BEGIN(INITIAL);
 					return TEXT_DATA;
 				}
-<CONTENT>[-a-zA-Z_+%][-a-zA-Z_0-9+/%=.~^\\*?#!\[\]()<>]* {
+<CONTENT>[-a-zA-Z_+%][-a-zA-Z_0-9+/%=.~^\\*?#!'\[\]()<>]* {
 					/* CVS-like tag identifiers */
 					fast_export_sanitize(yyscanner, cvs);
 					yylval->atom = atom(yytext);
