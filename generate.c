@@ -1066,7 +1066,7 @@ static node_t *generate_setup(generator_t *gen) {
 		eb->Gfilename = gen->master_name;
 		eb->Gexpand = gen->expand;
 		eb->Gabspath = NULL;
-		Gline(eb) = xmalloc(0, __func__);
+		Gline(eb) = NULL;
 		Ggap(eb) = Ggapsize(eb) = Glinemax(eb) = 0;
 	}
 
