@@ -410,8 +410,8 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 	}
 	forest->filecount = total_files;
 
-	generators = xcalloc(sizeof(generator_t), total_files, "Generators");
-	sorted_files = xmalloc(sizeof(rev_file) * total_files, "sorted_files");
+	generators = xcalloc(total_files, sizeof(generator_t), "Generators");
+	sorted_files = xcalloc(total_files, sizeof(rev_file), "sorted_files");
 	cvs_masters = xcalloc(total_files, sizeof(cvs_master), "cvs_masters");
 	rev_masters = xmalloc(sizeof(rev_master) * total_files, "rev_masters");
 	fn_n = total_files;
