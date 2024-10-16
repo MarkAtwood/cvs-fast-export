@@ -10,12 +10,13 @@ the name of a directory containing CVS master files; in that case a
 corresponding directory of stripped files is created.
 
 Options:
+   -c      Suppress replacement of revision content.
    -o dir  Set name of output directory. Defaults to the input dirname
            with the suffix '-reduced'.
+   -i      Interactive mode. Experimental, read the embedded documentation. 
+   -l      Suppress replacement of log content with a hash.
    -t      Suppress stripping of (non-sticky) tags.  Sticky tags are
            always preserved.
-   -l      Suppress replacement of log content with a hash.
-   -c      Suppress replacement of revision content.
    -v      Enable progress messages.
 
 Default behavior is to strip non-sticky tags, replace each version
@@ -35,7 +36,7 @@ sensitive data.
 # pylint: disable=line-too-long,invalid-name,missing-function-docstring,no-else-continue,too-many-branches,consider-using-f-string,consider-using-with
 
 # pylint: disable=multiple-imports
-import os, sys, getopt, hashlib, io, shutil
+import os, sys, getopt, hashlib, io, shutil, cmd
 
 strip_tags = True
 strip_logs = True
@@ -194,18 +195,68 @@ def skeletonize(inputf, outputf):
         outputf.write(line)
 
 
+class StripDebug(cmd.Cmd):
+    "Interactive strip debugger"
+    intro = "Welcome to the strip debugger. Ctrl-D to exit, ? for a command summary."
+    prompt = "> "
+
+    def __init__(self):
+        cmd.Cmd.__init__(self)
+        self.pwd = os.getcwd()
+
+    def emptyline(self):
+        pass
+
+    def help_cd(self):
+        sys.stdout.write(
+            """
+Change directory to point to a tree of CVS masters.
+
+Ad the end of the interpreter run, the original starting
+directory will be restored.
+"""
+        )
+
+    def do_cd(self, line):
+        os.chdir(line)
+
+    def help_EOF(self):
+        sys.stdout.write(
+            """
+Exit the program cleanly, emitting a goodbye message.
+
+Typing EOT (usually Ctrl-D) will exit quietly.
+"""
+        )
+
+    def do_EOF(self, _line):
+        os.chdir(self.pwd)
+        print("\nGoodbye.")
+        sys.exit(0)
+
+    def do_shell(self, line):
+        "Execute a shell command."
+        sys.stdout.flush()
+        sys.stderr.flush()
+        if os.system(line):
+            print(f"'shell {line}' returned error.")
+
+
 if __name__ == "__main__":
-    (opts, arguments) = getopt.getopt(sys.argv[1:], "ctlo:v")
+    (opts, arguments) = getopt.getopt(sys.argv[1:], "cilo:tv")
     outdir = None
     for (opt, arg) in opts:
-        if opt == "-t":
-            strip_tags = False
+        if opt == "-c":
+            strip_content = False
+        elif opt == "-i":
+            StripDebug().cmdloop()
+            raise SystemExit(0)
         elif opt == "-l":
             strip_logs = False
-        elif opt == "-c":
-            strip_content = False
         elif opt == "-o":
             outdir = arg
+        elif opt == "-t":
+            strip_tags = False
         elif opt == "-v":
             verbose += 1
 
