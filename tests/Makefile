@@ -38,9 +38,9 @@ fullcheck:
 ,v.dot:
 	$(CVS_FAST_EXPORT) -g $< >$*.dot
 
-test: s_regress m_regress r_regress i_regress t_regress c_regress sporadic
+test: s_regress m_regress r_regress i_regress t_regress c_regress z_regress sporadic
 
-rebuild: s_rebuild m_rebuild r_rebuild i_rebuild t_rebuild # z_rebuild
+rebuild: s_rebuild m_rebuild r_rebuild i_rebuild t_rebuild z_rebuild
 
 testlist:
 	@grep '^##' *.tst *.py *.sh
@@ -156,7 +156,7 @@ z_rebuild:
 		echo "Remaking $${base}.reduced "; \
 		../cvsstrip <$${rtest} >reductions/$${base}.reduced; \
 	done
-#TEST_TARGETS += $(UNSTRIPPED)
+TEST_TARGETS += $(UNSTRIPPED)
 
 SPORADIC = incremental.sh
 sporadic:
@@ -175,6 +175,7 @@ detailcount:
 	@echo "Repo regressions: $(words $(REDUCED))"
 	@echo "Pathological cases: $(words $(PYTESTS))"
 	@echo "Conversion checks: $(words $(CD) $(CT))"
+	@echo "Reduction tests: $(words $(UNSTRIPPED))"
 	@echo "Sporadic tests: $(words $(SPORADIC))"
 	@echo "Total tests: $(words $(TEST_TARGETS))"
 
