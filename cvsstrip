@@ -33,10 +33,10 @@ easier to pass around, faster to process, and not reveal potentially
 sensitive data.
 """
 
-# pylint: disable=line-too-long,invalid-name,missing-function-docstring,no-else-continue,too-many-branches,consider-using-f-string,consider-using-with
+# pylint: disable=line-too-long,invalid-name,missing-function-docstring,no-else-continue,too-many-branches,consider-using-f-string,consider-using-with.raise-missing-from,too-many-instance-attributes,too-many-arguments
 
 # pylint: disable=multiple-imports
-import os, sys, getopt, hashlib, io, shutil, cmd
+import os, sys, getopt, hashlib, io, shutil, cmd, subprocess, time
 
 strip_tags = True
 strip_logs = True
@@ -195,6 +195,143 @@ def skeletonize(inputf, outputf):
         outputf.write(line)
 
 
+class Fatal(Exception):
+    "Unrecoverable error."
+
+    def __init__(self, msg):
+        Exception.__init__(self)
+        self.msg = msg
+
+
+DEBUG_COMMANDS = 1
+
+
+def debug_enable(level):
+    "Hook for debug filtering."
+    return verbose >= level
+
+
+def announce(lvl, msg):
+    if debug_enable(lvl):
+        sys.stdout.write("reposurgeon: %s\n" % msg)
+
+
+def rfc3339(t):
+    "RFC3339 string from Unix time."
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
+def do_or_die(dcmd, legend=""):
+    "Either execute a command or raise a fatal exception."
+    if legend:
+        legend = " " + legend
+    announce(DEBUG_COMMANDS, "executing '%s'%s" % (dcmd, legend))
+    try:
+        retcode = subprocess.call(dcmd, shell=True, stderr=sys.stderr)
+        if retcode < 0:
+            raise Fatal("child was terminated by signal %d." % -retcode)
+        if retcode != 0:
+            raise Fatal("child returned %d." % retcode)
+    except (OSError, IOError) as e:
+        raise Fatal("execution of %s%s failed: %s" % (dcmd, legend, e))
+
+
+class popen_or_die:
+    "Read or write from a subordinate process."
+    # The immediate parameter, if True, causes the process to be
+    # immediately run and the pipe to it opened, instead of waiting
+    # for the context manager protocol; for this use case, some other
+    # context manager (e.g., LineParse) must explicitly close this
+    # object to ensure that the subprocess shuts down cleanly
+    def __init__(
+        self, command, legend="", mode="r", errhandler=None, stderrcapture=False
+    ):
+        assert mode in ("r", "w")
+        self.command = command
+        self.legend = legend
+        self.mode = mode
+        self.errhandler = errhandler
+        self.stdin = subprocess.PIPE if mode == "w" else None
+        self.stdout = subprocess.PIPE if mode == "r" else None
+        self.stderr = subprocess.STDOUT if (stderrcapture and mode == "r") else None
+        if self.legend:
+            self.legend = " " + self.legend
+        self.fp = None
+
+    def open(self):
+        if debug_enable(DEBUG_COMMANDS):
+            if self.mode == "r":
+                sys.stderr.write(
+                    "%s: reading from '%s'%s\n"
+                    % (rfc3339(time.time()), self.command, self.legend)
+                )
+            else:
+                sys.stderr.write(
+                    "%s: writing to '%s'%s\n"
+                    % (rfc3339(time.time()), self.command, self.legend)
+                )
+        try:
+            # NOTE: the I/O streams for the subprocess are always
+            # bytes; this is what we want for some operations, but we
+            # will need to decode to Unicode for others to work in
+            # Python 3; the polystr and make_wrapper functions handle
+            # this
+            self.fp = subprocess.Popen(
+                self.command,
+                shell=True,
+                stdin=self.stdin,
+                stdout=self.stdout,
+                stderr=self.stderr,
+            )
+            # The Python documentation recommends using communicate()
+            # to avoid deadlocks, but this doesn't allow fine control
+            # over reading the data; since we are not trying to both
+            # read from and write to the same process, this should be
+            # OK
+            return self.fp.stdout if self.mode == "r" else self.fp.stdin
+        except (OSError, IOError) as oe:
+            raise Fatal(
+                "execution of %s%s failed: %s" % (self.command, self.legend, oe)
+            )
+
+    def close(self):
+        if self.fp.stdin is not None:
+            self.fp.stdin.close()
+        if self.fp.stdout is not None:
+            # This avoids a deadlock in wait() below if the OS pipe
+            # buffer was filled because we didn't read all of the data
+            # before exiting the context mgr (shouldn't happen but
+            # this makes sure)
+            self.fp.stdout.read()
+        self.fp.wait()
+        if self.fp.returncode != 0:
+            if self.errhandler is None or not self.errhandler(self.fp.returncode):
+                raise Fatal("%s%s returned error." % (self.command, self.legend))
+        self.fp = None
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, extype, value, traceback_unused):
+        if extype:
+            if verbose:
+                raise extype(value)
+            raise Fatal("fatal exception in popen_or_die.")
+        self.close()
+        return False
+
+
+def listing(dirs):
+    "Get a listing of all directories in a specified selection."
+    file_list = []
+    for directory in dirs:
+        if os.path.isdir(directory):
+            for root, _, files in os.walk(directory):
+                for file in files:
+                    file_list.append(os.path.join(root, file))
+    return file_list
+
+
 class StripDebug(cmd.Cmd):
     "Interactive strip debugger"
     intro = "Welcome to the strip debugger. Ctrl-D to exit, ? for a command summary."
@@ -203,6 +340,7 @@ class StripDebug(cmd.Cmd):
     def __init__(self):
         cmd.Cmd.__init__(self)
         self.pwd = os.getcwd()
+        self.selection = "."
 
     def emptyline(self):
         pass
