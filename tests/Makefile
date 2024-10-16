@@ -38,9 +38,9 @@ fullcheck:
 ,v.dot:
 	$(CVS_FAST_EXPORT) -g $< >$*.dot
 
-test: s_regress m_regress r_regress i_regress t_regress c_regress z_regress sporadic
+test: s_regress m_regress r_regress i_regress t_regress c_regress sporadic #  z_regress
 
-rebuild: s_rebuild m_rebuild r_rebuild i_rebuild t_rebuild z_rebuild
+rebuild: s_rebuild m_rebuild r_rebuild i_rebuild t_rebuild # z_rebuild
 
 testlist:
 	@grep '^##' *.tst *.py *.sh
@@ -143,6 +143,15 @@ c_regress:
 	@for cd in $(CD); do cvsconvert -q -n -t $$cd; done
 TEST_TARGETS += $(CD) $(CT)
 
+SPORADIC = incremental.sh
+sporadic:
+	@echo "# Sporadic tests"
+	@for x in $(SPORADIC); do sh $${x}; done
+TEST_TARGETS += $(SPORADIC)
+
+# These tests can't be part of normal regressions because we don't seem
+# to be able to control when a stripped master will get a new modification
+# timestamp.
 UNSTRIPPED = $(shell ls issue22.txt,v t9601.testrepo/module/* at.repo/module/*)
 z_regress:
 	@echo "# Reductions"
@@ -156,13 +165,7 @@ z_rebuild:
 		echo "Remaking $${base}.reduced "; \
 		../cvsstrip <$${rtest} >reductions/$${base}.reduced; \
 	done
-TEST_TARGETS += $(UNSTRIPPED)
-
-SPORADIC = incremental.sh
-sporadic:
-	@echo "# Sporadic tests"
-	@for x in $(SPORADIC); do sh $${x}; done
-TEST_TARGETS += $(SPORADIC)
+#TEST_TARGETS += $(UNSTRIPPED)
 
 clean:
 	rm -fr neutralize.map *.checkout *.repo *.pyc *.dot *.git *.git.fi __pycache__
@@ -175,8 +178,8 @@ detailcount:
 	@echo "Repo regressions: $(words $(REDUCED))"
 	@echo "Pathological cases: $(words $(PYTESTS))"
 	@echo "Conversion checks: $(words $(CD) $(CT))"
-	@echo "Reduction tests: $(words $(UNSTRIPPED))"
 	@echo "Sporadic tests: $(words $(SPORADIC))"
+	#@echo "Reduction tests: $(words $(UNSTRIPPED))"
 	@echo "Total tests: $(words $(TEST_TARGETS))"
 
 
