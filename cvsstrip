@@ -45,7 +45,7 @@ verbose = 0
 # Any encoding that preserves 0x80...0x8f through round-tripping from byte
 # streams to Unicode and back would do, latin-1 is the best known of these.
 
-binary_encoding = 'latin-1'
+binary_encoding = "latin-1"
 
 if str is bytes:  # Python 2
 
@@ -90,58 +90,67 @@ else:  # Python 3
 
         # newline="\n" ensures that Python 3 won't mangle line breaks
         # line_buffering=True ensures that interactive command sessions work as expected
-        return io.TextIOWrapper(stream.buffer, encoding=binary_encoding, newline="\n", line_buffering=True)
+        return io.TextIOWrapper(
+            stream.buffer, encoding=binary_encoding, newline="\n", line_buffering=True
+        )
 
     sys.stdin = make_std_wrapper(sys.stdin)
     sys.stdout = make_std_wrapper(sys.stdout)
     sys.stderr = make_std_wrapper(sys.stderr)
 
+
 def replace_escaped_text(inputf, replacement, outputf):
     "Replace text between @ delimiters with a specified string."
     leader = polystr(inputf.read(1))
-    if leader != '@':
+    if leader != "@":
         sys.stderr.write("cvsstrip: fatal error, @ leader not where expected.\n")
         sys.exit(1)
     else:
-        outputf.write(polybytes('@' + replacement.replace("@", r'@@')))
+        outputf.write(polybytes("@" + replacement.replace("@", r"@@")))
     while True:
         nxt = polystr(inputf.read(1))
-        if nxt == '@':
+        if nxt == "@":
             nxt2 = polystr(inputf.read(1))
-            if nxt2 == '@':
+            if nxt2 == "@":
                 continue
             else:
                 break
-    if nxt2 == '\n':
+    if nxt2 == "\n":
         outputf.write(polybytes("@\n"))
     else:
-        sys.stderr.write("cvsstrip: fatal error, @ trailer not followed by newline (%s).\n" % nxt2)
+        sys.stderr.write(
+            "cvsstrip: fatal error, @ trailer not followed by newline (%s).\n" % nxt2
+        )
         sys.exit(1)
+
 
 def hash_escaped_text(inputf, outputf):
     "Replace text between @ delimiters with its MD5 hash."
     leader = polystr(inputf.read(1))
-    if leader != '@':
+    if leader != "@":
         sys.stderr.write("cvsstrip: fatal error, @ leader not where expected.\n")
         sys.exit(1)
     txt = ""
     while True:
         nxt = polystr(inputf.read(1))
-        if nxt == '@':
+        if nxt == "@":
             nxt2 = polystr(inputf.read(1))
-            if nxt2 == '@':
+            if nxt2 == "@":
                 txt += "@"
                 continue
             else:
                 break
         txt += nxt
-    if nxt2 == '\n':
+    if nxt2 == "\n":
         m = hashlib.md5()
         m.update(polybytes(txt))
         outputf.write(polybytes("@%s\n@\n" % m.hexdigest()))
     else:
-        sys.stderr.write("cvsstrip: fatal error, @ trailer not followed by newline (%s).\n" % nxt2)
+        sys.stderr.write(
+            "cvsstrip: fatal error, @ trailer not followed by newline (%s).\n" % nxt2
+        )
         sys.exit(1)
+
 
 def skeletonize(inputf, outputf):
     "Skeletonize a CVS master, discarding content but leaving metadata."
@@ -156,7 +165,7 @@ def skeletonize(inputf, outputf):
             break
         if verbose > 1:
             sys.stderr.write(b"%s: %s\n" % (state, line.strip()))
-        if state == 'ini':
+        if state == "ini":
             if line.startswith("symbols"):
                 state = "sym"
             elif line[0].isdigit():
@@ -176,27 +185,28 @@ def skeletonize(inputf, outputf):
                     replace_escaped_text(inputf, txt, outputf)
                     continue
         elif state == "sym":
-            if not line[0] in (' ', '\t') or line.strip() == ';':
+            if not line[0] in (" ", "\t") or line.strip() == ";":
                 state = "ini"
-            elif strip_tags and '0' not in line.split(":")[1]:
+            elif strip_tags and "0" not in line.split(":")[1]:
                 if line.endswith(";\n"):
                     outputf.write(polybytes("\t;\n"))
                 continue
         outputf.write(polybytes(line))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     (opts, arguments) = getopt.getopt(sys.argv[1:], "ctlo:v")
     outdir = None
     for (opt, arg) in opts:
-        if opt == '-t':
+        if opt == "-t":
             strip_tags = False
-        elif opt == '-l':
+        elif opt == "-l":
             strip_logs = False
-        elif opt == '-c':
+        elif opt == "-c":
             strip_content = False
-        elif opt == '-o':
+        elif opt == "-o":
             outdir = arg
-        elif opt == '-v':
+        elif opt == "-v":
             verbose += 1
 
     if not arguments:
@@ -219,7 +229,7 @@ if __name__ == '__main__':
         path_parts.pop(0)
         newparts = [outdir] + path_parts
         for i in range(len(newparts)):
-            newdir = os.path.join(*newparts[:i+1])
+            newdir = os.path.join(*newparts[: i + 1])
             if not os.path.exists(newdir):
                 if verbose:
                     print("Directory creation: %s" % newdir)
@@ -229,8 +239,8 @@ if __name__ == '__main__':
             newpath = newparts + [fname]
             newname = os.path.join(*newpath)
             if verbose > 0:
-                print('%s -> %s' % (oldname, newname))
-            if oldname.endswith(',v'):
+                print("%s -> %s" % (oldname, newname))
+            if oldname.endswith(",v"):
                 old = open(oldname, "rb")
                 new = open(newname, "wb")
                 skeletonize(old, new)
