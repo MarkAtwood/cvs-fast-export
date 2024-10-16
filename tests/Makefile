@@ -148,15 +148,16 @@ z_regress:
 	@echo "# Reductions"
 	@for rtest in $(UNSTRIPPED); do \
 		base=`basename $${rtest}`; \
-		echo "  $${base}"; \
-		cvsstrip <$${rtest} | $(DIFF) reductions/$${base}.reduced -; \
+		../cvsstrip <$${rtest} | tapdiffer "cvsstrip test of $${rtest}" reductions/$${base}.reduced -; \
 	done
 z_rebuild:
 	@for rtest in $(UNSTRIPPED); do \
 		base=`basename $${rtest}`; \
 		echo "Remaking $${base}.reduced "; \
-		cvsstrip <$${rtest} >reductions/$${base}.reduced; \
+		../cvsstrip <$${rtest} >reductions/$${base}.reduced; \
 	done
+#TEST_TARGETS += $(UNSTRIPPED)
+
 SPORADIC = incremental.sh
 sporadic:
 	@echo "# Sporadic tests"
