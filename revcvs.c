@@ -42,7 +42,7 @@ static const char *fileop_name(const char *rectified) {
 }
 
 static const char *dir_name(const char *filename) {
-	char *slash = strrchr(filename, '/');
+	const char *slash = strrchr(filename, '/');
 	if (slash) {
 		char buf[PATH_MAX];
 		strncpy(buf, filename, slash - filename);
@@ -142,7 +142,7 @@ static cvs_commit *cvs_master_find_revision(cvs_master *cm,
 	return NULL;
 }
 
-static rev_master *build_rev_master(cvs_file *cvs, rev_master *master) {
+static rev_master *build_rev_master(const cvs_file *cvs, rev_master *master) {
 	master->name = cvs->export_name;
 	master->fileop_name = fileop_name(cvs->export_name);
 	master->dir = atom_dir(dir_name(master->name));
@@ -174,8 +174,8 @@ static cvs_commit *cvs_master_branch_build(cvs_file *cvs, rev_master *master,
 	n.n[n.c - 1] = -1;
 	atom_n = atom_cvs_number(n);
 	for (node = cvs_find_version(cvs, atom_n); node; node = node->next) {
-		cvs_version *v = node->version;
-		cvs_patch *patch = node->patch;
+		const cvs_version *v = node->version;
+		const cvs_patch *patch = node->patch;
 		cvs_commit *commit;
 		if (!v) {
 			continue;
@@ -391,7 +391,7 @@ static bool cvs_master_patch_vendor_branch(cvs_master *cm) {
 }
 
 /* turn disconnected branches into a tree by grafting roots to parents */
-static void cvs_master_graft_branches(cvs_master *cm, cvs_file *cvs) {
+static void cvs_master_graft_branches(cvs_master *cm, const cvs_file *cvs) {
 	rev_ref *h;
 	cvs_commit *c;
 	cvs_version *cv;
@@ -737,7 +737,7 @@ static cvs_symbol *cvs_find_symbol(cvs_file *cvs, const char *name) {
 /* comparison function used for topological sorting */
 static int rev_ref_compare(cvs_file *cvs, const rev_ref *r1,
                            const rev_ref *r2) {
-	cvs_symbol *s1, *s2;
+	const cvs_symbol *s1, *s2;
 	s1 = cvs_find_symbol(cvs, r1->ref_name);
 	s2 = cvs_find_symbol(cvs, r2->ref_name);
 	if (!s1) {

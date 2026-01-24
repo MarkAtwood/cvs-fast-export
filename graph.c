@@ -108,7 +108,7 @@ static void dot_commit_graph(git_commit *c, const rev_ref *branch) {
 		}
 		rev_diff_free(diff);
 	} else {
-		cvs_commit *f;
+		const cvs_commit *f;
 		revdir_iter *r = revdir_iter_alloc(&c->revdir);
 		while ((f = revdir_iter_next(r))) {
 			dump_number(f->master->name, f->number);
@@ -345,7 +345,7 @@ void dump_rev_graph(git_repo *rl, const char *title)
 	dot_rev_graph_end();
 }
 
-static char *version_content(cvs_version *cv, int verbose) {
+static char *version_content(const cvs_version *cv, int verbose) {
 	static char content[256];
 	cvs_number_string(cv->number, content, sizeof(content) - 1);
 	if (verbose > 0) {

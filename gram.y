@@ -9,7 +9,7 @@
 #include "gram.h"
 #include "lex.h"
 
-extern void yyerror(yyscan_t, cvs_file *, const char *);
+extern void yyerror(yyscan_t, const cvs_file *, const char *);
 
 extern YY_DECL;	/* FIXME: once the Bison bug requiring this is fixed */
 %}
@@ -312,7 +312,7 @@ strings		: IGNORED strings
 		;
 %%
 
-void yyerror(yyscan_t scanner, cvs_file *cvs, const char *msg)
+void yyerror(yyscan_t scanner, const cvs_file *cvs, const char *msg)
 {
     progress_interrupt();
     fprintf(stderr, "%s:%d: cvs-fast-export %s on token %s\n",

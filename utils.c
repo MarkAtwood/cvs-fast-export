@@ -78,7 +78,7 @@ void *xrealloc(void *ptr, size_t size, char const *legend) {
 char *cvstime2rfc3339(const cvstime_t date) {
 	static char timestr[23];
 	time_t udate = RCS_EPOCH + date;
-	struct tm *tm = localtime(&udate);
+	const struct tm *tm = localtime(&udate);
 
 	(void)strftime(timestr, sizeof(timestr), "%Y-%m-%dT%H:%M:%SZ", tm);
 	return timestr;
@@ -109,7 +109,7 @@ static void _progress_print(bool /*newline*/, const char * /*format*/, va_list)
 void progress_begin(const char *msg, const int max) {
 	static char timestr[128];
 	time_t now = time(NULL);
-	struct tm *tm = localtime(&now);
+	const struct tm *tm = localtime(&now);
 
 	if (!progress) {
 		return;

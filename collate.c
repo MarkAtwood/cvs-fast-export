@@ -79,7 +79,7 @@ static bool parents_in_revlist(const char *child_name, rev_ref *rev_list,
                                cvs_master *source, size_t nsource) {
 	cvs_master *cm;
 	for (cm = source; cm < source + nsource; cm++) {
-		rev_ref *head = rev_find_head(cm, child_name);
+		const rev_ref *head = rev_find_head(cm, child_name);
 		if (head) {
 			if (head->parent &&
 			    !rev_ref_find_name(rev_list,
@@ -100,7 +100,8 @@ static rev_ref *rev_ref_tsort(rev_ref *git_branches, cvs_master *masters,
 
 	while (git_branches) {
 		/* search the remaining input list */
-		for (prev = &git_branches; (r = *prev); prev = &(*prev)->next) {
+		for (prev = &git_branches; *prev; prev = &(*prev)->next) {
+			r = *prev;
 			/*
 			 * Find a branch where we've already sorted its parents.
 			 * Toposorting with this relation will put the
@@ -312,7 +313,7 @@ static void git_commit_cleanup(void)
 }
 
 /* build a changeset commit from a clique of CVS revisions */
-static git_commit *git_commit_build(revision_t *revisions,
+static git_commit *git_commit_build(const revision_t *revisions,
                                     const cvs_commit *leader,
                                     const int nrevisions) {
 	git_commit *commit;
@@ -455,7 +456,7 @@ static cvstime_t cvs_commit_first_date(cvs_commit *commit) {
 
 /* collate a set of per-CVS-master branches into a gitspace DAG branch */
 static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
-                             git_repo *gl) {
+                             const git_repo *gl) {
 	int nlive;
 	int n;
 	git_commit *prev = NULL;
@@ -740,7 +741,7 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 		                branch->parent, REVISIONS(present)))) {
 			if (prev &&
 			    time_compare((*tail)->date, prev->date) > 0) {
-				cvs_commit *first;
+				const cvs_commit *first;
 				warn("warning - branch point %s -> %s later "
 				     "than branch\n",
 				     branch->ref_name,
@@ -837,7 +838,7 @@ static bool git_commit_contains_revs(git_commit *g, cvs_commit **revs,
 {
 	revdir_iter *it = revdir_iter_alloc(&g->revdir);
 	size_t i = 0;
-	cvs_commit *c = NULL;
+	const cvs_commit *c = NULL;
 	static bool n_init = false;
 	static const cvs_number *n1 = NULL;
 	static const cvs_number *n2 = NULL;
@@ -1022,7 +1023,7 @@ static void rev_ref_set_parent(git_repo *gl, rev_ref *dest, cvs_master *source,
 
 	max = NULL;
 	for (s = source; s < source + nmasters; s++) {
-		rev_ref *sh;
+		const rev_ref *sh;
 		sh = rev_find_head(s, dest->ref_name);
 		if (!sh) {
 			continue;

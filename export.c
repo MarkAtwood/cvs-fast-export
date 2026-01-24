@@ -165,7 +165,7 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 	export_stats.snapsize += len;
 
 	char *cbuf = (char *)buf;
-	size_t clen = len;
+	size_t write_len = len;
 	if (is_ignore) {
 		if (!noignores) {
 			extralen = sizeof(CVS_IGNORES) - 1;
@@ -185,7 +185,7 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 		    cbuf[1] == '\n') {
 			extralen = 0;
 			cbuf += 2;
-			clen -= 2;
+			write_len -= 2;
 		}
 	}
 
@@ -206,11 +206,12 @@ static void export_blob(node_t *node, void *buf, const size_t len,
 		fatal_error("blobfile open of %s: %s (%d)", path,
 		            strerror(errno), errno);
 	} else {
-		fprintf(wfp, "data %lu\n", (unsigned long)(len + extralen));
+		fprintf(wfp, "data %lu\n",
+		        (unsigned long)(write_len + extralen));
 		if (extralen > 0) {
 			fwrite(CVS_IGNORES, extralen, sizeof(char), wfp);
 		}
-		for (char *cp = cbuf; cp < cbuf + len; cp++) {
+		for (char *cp = cbuf; cp < cbuf + write_len; cp++) {
 			// CVS .cvsignores don't have hash-led comments. so if
 			// we see one it needs to be escaped.
 			if (is_ignore && cp[0] == '#' &&
@@ -241,10 +242,10 @@ static void cleanup(void) {
 
 static const char *utc_offset_timestamp(const time_t *timep, const char *tz) {
 	static char outbuf[BUFSIZ];
-	struct tm *tm;
+	const struct tm *tm;
 	char tzbuf[BUFSIZ];
 	/* coverity[tainted_string_return_content] */
-	char *oldtz = getenv("TZ");
+	const char *oldtz = getenv("TZ");
 
 	// make a copy in case original is clobbered
 	if (oldtz != NULL) {
@@ -333,7 +334,7 @@ static void build_modify_op(cvs_commit *c, struct fileop *op) {
 }
 
 /* append file information if requested */
-static void append_revpair(cvs_commit *c, const export_options_t *opts,
+static void append_revpair(const cvs_commit *c, const export_options_t *opts,
                            char **revpairs, size_t *revpairsize) {
 	if (opts->revision_map || opts->reposurgeon || opts->embed_ids) {
 		const char *cvs_leader = "CVS-ID: ";
@@ -541,10 +542,10 @@ static void export_commit(git_commit *commit, const char *branch,
 		// printf("author %s <%s> %s\n", full, email, ts);
 		printf("committer %s <%s> %s\n", full, email, ts);
 		if (!opts->embed_ids) {
-			printf("data %zd\n%s", (ssize_t)strlen(commit->log),
+			printf("data %zu\n%s", strlen(commit->log),
 			       commit->log);
 		} else {
-			printf("data %zd\n%s\n%s",
+			printf("data %zu\n%s\n%s",
 			       strlen(commit->log) + strlen(revpairs) + 1,
 			       commit->log, revpairs);
 		}
@@ -713,7 +714,7 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 	 */
 	for (hp = history + 1; hp < history + export_stats.export_total_commits;
 	     hp++) {
-		struct commit_seq sc, *tp, *bp = hp;
+		struct commit_seq *tp, *bp = hp;
 #define is_parent_of(x, y)                                                     \
 	(((struct commit_seq *)x)->commit ==                                   \
 	 ((struct commit_seq *)y)->commit->parent)
@@ -729,7 +730,7 @@ static struct commit_seq *canonicalize(git_repo *rl) {
 		}
 		if (bp < hp) {
 			/* shift commits up and put *hp where *bp was */
-			sc = *hp;
+			struct commit_seq sc = *hp;
 			for (tp = hp; tp > bp; tp--) {
 				tp[0] = tp[-1];
 			}
@@ -782,7 +783,7 @@ void export_commits(forest_t *forest, export_options_t *opts,
 	git_repo *rl = forest->git;
 	generator_t *gp;
 	int recount = 0;
-	char *tmp = getenv("TMPDIR");
+	const char *tmp = getenv("TMPDIR");
 
 	if (tmp == NULL) {
 		tmp = "/tmp";

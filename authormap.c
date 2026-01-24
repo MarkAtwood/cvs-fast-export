@@ -49,7 +49,7 @@ bool load_author_map(const char *filename) {
 	char line[10240];
 	char *equal;
 	char *angle;
-	char *email;
+	const char *email;
 	const char *name;
 	char *full;
 	FILE *f;

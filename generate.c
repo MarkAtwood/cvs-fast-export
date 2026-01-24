@@ -218,7 +218,7 @@ enum expand_mode expand_override(char const *s) {
 	if (s != NULL) {
 		/* Don't modify this without syncing the EXPAND constants in
 		 * cvs.h */
-		char *const expand_names[] = {"kv", "kvl", "k", "v", "o", "b"};
+	const char *const expand_names[] = {"kv", "kvl", "k", "v", "o", "b"};
 		int i;
 		for (i = 0; i < 6; ++i) {
 			if (strcmp(s, expand_names[i]) == 0) {
@@ -946,7 +946,7 @@ static void process_delta(editbuffer_t *eb, const node_t *const node,
 }
 
 static void expandedit(editbuffer_t *eb) {
-	editline_t *p, *lim, *l = Gline(eb);
+	const editline_t *p, *lim, *l = Gline(eb);
 
 	for (p = l, lim = l + Ggap(eb); p < lim;) {
 		in_buffer_init(eb, (*p++).ptr, false);
@@ -973,7 +973,7 @@ static void snapshotline(editbuffer_t *eb, register uchar *l) {
 	register int c;
 #ifdef FASTOUT
 	struct out_buffer_type *ob = eb->Goutbuf;
-	uchar *start = l;
+	const uchar *start = l;
 #endif
 	do {
 #ifndef FASTOUT
@@ -1012,7 +1012,7 @@ static void snapshotline(editbuffer_t *eb, register uchar *l) {
 #endif /* FASTOUT */
 }
 
-static void snapshotline_nodelim(editbuffer_t *eb, editline_t *l) {
+static void snapshotline_nodelim(editbuffer_t *eb, const editline_t *l) {
 	struct out_buffer_type *ob = eb->Goutbuf;
 	size_t chars_read = l->length;
 	if (chars_read != 0) {
@@ -1026,7 +1026,7 @@ static void snapshotline_nodelim(editbuffer_t *eb, editline_t *l) {
 }
 
 static void snapshotedit(editbuffer_t *eb) {
-	editline_t *p, *lim, *l = Gline(eb);
+	const editline_t *p, *lim, *l = Gline(eb);
 
 	for (p = l, lim = l + Ggap(eb); p < lim;) {
 		if (p->has_stringdelim) {

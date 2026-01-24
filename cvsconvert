@@ -19,7 +19,7 @@ Will produce spurious errors if any CVS branch name had to be sanitized.
 # This is the only wqy to prevent spurious pylint failures on earlier versions.
 # pylint: disable=useless-option-value
 
-# pylint: disable=line-too-long,invalid-name,missing-class-docstring,useless-object-inheritance,missing-function-docstring,redefined-outer-name,consider-using-f-string,too-many-statements,arguments-renamed
+# pylint: disable=line-too-long,invalid-name,missing-class-docstring,useless-object-inheritance,missing-function-docstring,redefined-outer-name,consider-using-f-string,too-many-statements,arguments-renamed,deprecated-module,used-before-assignment
 
 # pylint: disable=multiple-imports
 import sys, os, shutil, subprocess, time, filecmp

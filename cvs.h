@@ -530,8 +530,8 @@ typedef struct _export_stats {
 	double snapsize;
 } export_stats_t;
 
-void analyze_masters(int argc, const char *argv[0], import_options_t *options,
-                     forest_t *forest);
+void analyze_masters(int argc, const char *argv[0],
+                     const import_options_t *options, forest_t *forest);
 
 enum expand_mode expand_override(char const *s);
 

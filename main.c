@@ -283,7 +283,11 @@ int main(int argc, char **argv) {
 			nowarn = true;
 			break;
 		case 'V':
+#ifdef VERSION
 			printf("%s: version " VERSION "\n", argv[0]);
+#else
+			printf("%s: version unknown\n", argv[0]);
+#endif
 			return 0;
 		case 'w':
 			assert(optarg);

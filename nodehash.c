@@ -43,7 +43,7 @@ static node_t *node_for_cvs_number(nodehash_t *context,
 }
 
 /* find the parent node of the specified prefix of a release number */
-static node_t *find_parent(nodehash_t *context, const cvs_number *const n,
+static node_t *find_parent(const nodehash_t *context, const cvs_number *const n,
                            const int depth) {
 	cvs_number key;
 	const cvs_number *k;
@@ -124,7 +124,8 @@ void clean_hash(nodehash_t *context) {
 
 /* total ordering of nodes by associated CVS revision number */
 static int compare(const void *a, const void *b) {
-	node_t *x = *(node_t *const *)a, *y = *(node_t *const *)b;
+	node_t *x = *(node_t *const *)a;
+	const node_t *y = *(node_t *const *)b;
 	int n, i;
 	n = x->number->c;
 	if (n < y->number->c) {

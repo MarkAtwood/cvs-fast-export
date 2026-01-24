@@ -325,8 +325,8 @@ static bool has_suffix(const char *str, const char *suffix) {
 }
 
 /* main entry point; collect and parse CVS masters */
-void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
-                     forest_t *forest) {
+void analyze_masters(int argc, const char *argv[],
+                     const import_options_t *analyzer, forest_t *forest) {
 	char name[PATH_MAX];
 	const char *last = NULL;
 	char *file;
@@ -374,7 +374,7 @@ void analyze_masters(int argc, const char *argv[], import_options_t *analyzer,
 			}
 			continue;
 		} else if (!analyzer->promiscuous) {
-			char *end = file + strlen(file);
+			const char *end = file + strlen(file);
 			if (end - file < 2 || end[-1] != 'v' ||
 			    end[-2] != ',') {
 				continue;
