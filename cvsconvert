@@ -25,9 +25,9 @@ Will produce spurious errors if any CVS branch name had to be sanitized.
 import sys, os, shutil, subprocess, time, filecmp
 
 try:
-    from pipes import quote
-except ImportError:
     from shlex import quote
+except ImportError:
+    from pipes import quote  # Deprecated, to be removed in 3.13.
 
 DEBUG_STEPS = 1
 DEBUG_COMMANDS = 2
@@ -382,6 +382,7 @@ class ConvertComparison(object):
     "Compare a CVS repository and its conversion for equality."
     # Needs to stay synchronized with reposurgeon's generic conversion makefile
     SUFFIX = "-git"
+
     # pylint: disable=too-many-arguments
     def __init__(
         self,
@@ -479,7 +480,7 @@ class ConvertComparison(object):
             if path.replace(CVSCheckout.SUFFIX + "/", ConvertComparison.SUFFIX + "/")
             in gitpaths
         ]
-        for (a, b) in common:
+        for a, b in common:
             if not filecmp.cmp(a, b, shallow=False):
                 success = False
                 if success_expected:
@@ -548,7 +549,7 @@ if __name__ == "__main__":
     tap_output = False
     err_leader = ""
     whole_repo = True
-    for (opt, arg) in opts:
+    for opt, arg in opts:
         if opt == "-v":
             verbose += 1
         elif opt == "-n":
