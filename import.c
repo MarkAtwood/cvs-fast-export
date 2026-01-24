@@ -357,6 +357,9 @@ void analyze_masters(int argc, const char *argv[],
 			int l = strlen(name);
 			if (name[l - 1] == '\n') {
 				name[l - 1] = '\0';
+			} else {
+				fprintf(stderr, "cvs-fast-export:filename '%s' too long!\n", name);
+				exit(1);
 			}
 			file = name;
 		} else {
