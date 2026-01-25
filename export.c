@@ -250,6 +250,7 @@ static const char *utc_offset_timestamp(const time_t *timep, const char *tz) {
 	// make a copy in case original is clobbered
 	if (oldtz != NULL) {
 		strncpy(tzbuf, oldtz, sizeof(tzbuf) - 1);
+		tzbuf[sizeof(tzbuf) - 1] = '\0';
 	}
 
 	setenv("TZ", tz, 1);

@@ -368,6 +368,7 @@ int main(int argc, char **argv) {
 			break;
 		case 'd':
 			strncpy(debugopts, optarg, sizeof(debugopts) - 1);
+			debugopts[sizeof(debugopts) - 1] = '\0';
 			break;
 		default: /* error message already emitted */
 			announce("try `%s --help' for more information.\n",

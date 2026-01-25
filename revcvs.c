@@ -29,9 +29,12 @@ static pthread_mutex_t root_dir_mutex = PTHREAD_MUTEX_INITIALIZER;
 static const char *fileop_name(const char *rectified) {
 	size_t rlen = strlen(rectified);
 
+	if (rlen >= PATH_MAX) {
+		fatal_error("File name %s\n too long\n", rectified);
+	}
 	if (rlen >= 10 && strcmp(rectified + rlen - 10, ".cvsignore") == 0) {
 		char path[PATH_MAX];
-		strncpy(path, rectified, PATH_MAX - 1);
+		memcpy(path, rectified, rlen + 1);
 		path[rlen - 9] = 'g';
 		path[rlen - 8] = 'i';
 		path[rlen - 7] = 't';
@@ -45,8 +48,12 @@ static const char *dir_name(const char *filename) {
 	const char *slash = strrchr(filename, '/');
 	if (slash) {
 		char buf[PATH_MAX];
-		strncpy(buf, filename, slash - filename);
-		buf[slash - filename] = '\0';
+		size_t len = (size_t)(slash - filename);
+		if (len >= PATH_MAX) {
+			fatal_error("File name %s\n too long\n", filename);
+		}
+		memcpy(buf, filename, len);
+		buf[len] = '\0';
 		return atom(buf);
 	} else {
 		return atom("\0");
