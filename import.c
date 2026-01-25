@@ -354,11 +354,16 @@ void analyze_masters(int argc, const char *argv[],
 			if (fgets(name, sizeof(name), stdin) == NULL) {
 				break;
 			}
-			int l = strlen(name);
+			size_t l = strlen(name);
+			if (l == 0) {
+				continue;
+			}
 			if (name[l - 1] == '\n') {
 				name[l - 1] = '\0';
-			} else {
-				fprintf(stderr, "cvs-fast-export:filename '%s' too long!\n", name);
+			} else if (l == sizeof(name) - 1) {
+				fprintf(stderr,
+				        "cvs-fast-export:filename '%s' too long!\n",
+				        name);
 				exit(1);
 			}
 			file = name;
@@ -366,6 +371,12 @@ void analyze_masters(int argc, const char *argv[],
 			file = (char *)argv[j++];
 			if (!file) {
 				break;
+			}
+			if (strlen(file) >= sizeof(name)) {
+				fprintf(stderr,
+				        "cvs-fast-export:filename '%s' too long!\n",
+				        file);
+				exit(1);
 			}
 		}
 

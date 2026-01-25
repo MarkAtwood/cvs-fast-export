@@ -111,7 +111,7 @@ r_regress: neutralize.map
 	done
 TEST_TARGETS += $(REDUCED)
 
-PYTESTS=t9601 t9602 t9603 t9604 t9605
+PYTESTS=t9601 t9602 t9603 t9604 t9605 t9606
 PATHSTRIP = sed -e '/\/.*tests/s//tests/'
 t_regress:
 	@echo "# Pathological cases"
