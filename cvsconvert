@@ -542,7 +542,7 @@ class ConvertComparison(object):
 if __name__ == "__main__":
     import getopt
 
-    (opts, arguments) = getopt.getopt(sys.argv[1:], "npqtvwA:")
+    (opts, arguments) = getopt.getopt(sys.argv[1:], "npqs:tvwA:")
     retain = True
     engine_opts = ""
     quiet = False
@@ -558,6 +558,8 @@ if __name__ == "__main__":
             engine_opts += " -p"
         elif opt == "-q":
             engine_opts += " -q"
+        elif opt =="-s":
+            engine_opts += " -s " + arg
         elif opt == "-t":
             tap_output = True
             err_leader = "not ok - "

@@ -5,7 +5,7 @@
 cvsconvert - perform a Git conversion and test against the CVS original
 
 == SYNOPSIS ==
-*cvsconvert* [-n] [-p] [-q] [-t] [-v] [-w] [-A 'authormap'] {repo | repo/module}+
+*cvsconvert* [-n] [-p] [-q] [-s prefix] [-t] [-v] [-w] [-A 'authormap'] {repo | repo/module}+
 
 == DESCRIPTION ==
 cvsconvert performs a conversion of one or more CVS repositories to Git and
@@ -98,6 +98,9 @@ more likely.
 
 -q::
     Tell cvs-fast-export to run quietly.
+
+- s::
+    Pass a strip prefix to cvs-fast-export.
     
 -t::
     Ship diagnostics in TAP format.
