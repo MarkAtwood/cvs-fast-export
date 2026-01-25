@@ -79,6 +79,9 @@ char *cvstime2rfc3339(const cvstime_t date) {
 	static char timestr[23];
 	time_t udate = RCS_EPOCH + date;
 	const struct tm *tm = localtime(&udate);
+	if (tm == NULL) {
+		fatal_error("malformed timestamp: %ld\n", (long)udate);
+	}
 
 	(void)strftime(timestr, sizeof(timestr), "%Y-%m-%dT%H:%M:%SZ", tm);
 	return timestr;
@@ -110,6 +113,9 @@ void progress_begin(const char *msg, const int max) {
 	static char timestr[128];
 	time_t now = time(NULL);
 	const struct tm *tm = localtime(&now);
+	if (tm == NULL) {
+		fatal_error("malformed timestamp: %ld\n", (long)now);
+	}
 
 	if (!progress) {
 		return;

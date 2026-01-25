@@ -257,6 +257,10 @@ static const char *utc_offset_timestamp(const time_t *timep, const char *tz) {
 	tzset(); // just in case ...
 
 	tm = localtime(timep);
+	if (tm == NULL) {
+		fatal_error("malformed timestamp: %ld\n", (long)*timep);
+		return outbuf;
+	}
 #ifndef __CYGWIN__
 	strftime(outbuf, sizeof(outbuf), "%s %z", tm);
 #else
