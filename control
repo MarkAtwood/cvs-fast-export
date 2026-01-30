@@ -18,6 +18,8 @@ Description: Export an RCS or CVS history as a fast-import stream.
 
 Homepage: http://www.catb.org/~esr/cvs-fast-export
 
+XBS-Packaged-As: cvs-fast-export
+
 XBS-Destination: Anthony Fok <foka@debian.org>
 
 XBS-HTML-Target: index.html
@@ -35,4 +37,3 @@ XBS-VC-Tag-Template: %(version)s
 XBS-Validate: make cleancheck
 
 XBS-IRC-Channel: irc://chat.freenode.net/#reposurgeon
-

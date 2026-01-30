@@ -54,3 +54,8 @@ the internals in `hacking.adoc`.
 
 If you find this code useful, please 
 https://www.patreon.com/esr[support me on Patreon.]
+
+This code is commonly packaged as "cvs-fast-export".
+
+image:https://repology.org/badge/vertical-allrepos/cvs-fast-export.svg[Repology
+package status]
