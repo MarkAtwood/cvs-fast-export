@@ -28,8 +28,6 @@ XBS-Logo: cfe-logo.png
 
 XBS-OpenHub-URL: https://www.ohloh.net/p/cvs-fast-export
 
-XBS-Debian-Packages: cvs-fast-export
-
 XBS-VC-Tag-Template: %(version)s
 
 XBS-Validate: make cleancheck
