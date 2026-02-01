@@ -158,7 +158,7 @@ fixme:
 	fi
 
 spellcheck: *.adoc
-	@batchspell local.dic *.adoc
+	@spellcheck local.dic *.adoc
 
 install: install-bin install-man
 install-bin: cvs-fast-export cvssync cvsconvert
