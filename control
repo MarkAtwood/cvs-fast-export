@@ -20,8 +20,6 @@ Homepage: http://www.catb.org/~esr/cvs-fast-export
 
 XBS-Packaged-As: cvs-fast-export
 
-XBS-Destinations: mailto:Anthony Fok <foka@debian.org>, mailto:alpine@jjtc.eu, mailto:alpine@jjtc.eu, mailto:alpine@jjtc.eu, mailto:alpine@jjtc.eux
-
 XBS-HTML-Target: index.html
 
 XBS-Repository-URL: https://gitlab.com/esr/cvs-fast-export
