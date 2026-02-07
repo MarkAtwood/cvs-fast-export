@@ -1,0 +1,96 @@
+= Go translation plan
+
+The cvs-fast-export codebase is complex to yje point of near
+unmauntainability, and prone to flaky bugs resfrom heap corruption
+and stack-smashing.  One way to address this would be to translate it
+to Go, which has similar syntax and types but handles dynamic
+allcation more gracefully. This might be practical with LLm
+assistance.
+
+Helpfully, we on't have too write most of the first stage, because
+this exists: https://github.com/arran4/golang-rcs
+
+This Golang library offers lossless deserialization of an RCS master into
+the following structures:
+
+----
+type Lock struct {
+	User     string
+	Revision string
+	Strict   bool
+}
+
+type RevisionHead struct {
+	Revision     string
+	Date         time.Time
+	Author       string
+	State        string
+	Branches     []string
+	NextRevision string
+}
+
+type RevisionContent struct {
+	Revision string
+	Log      string
+	Text     string
+}
+
+type File struct {
+	Head             string
+	Branch           string
+	Description      string
+	Comment          string
+	Access           bool
+	Symbols          bool
+	AccessUsers      []string
+	SymbolMap        map[string]string
+	Locks            []*Lock
+	Strict           bool
+	Integrity        string
+	Expand           string
+	RevisionHeads    []*RevisionHead
+	RevisionContents []*RevisionContent
+----
+
+The first question: Given that we can deserialize a tree of masters
+into these structures, is it practucal to translate the later stages
+of cvs-fast-export to Go?
+
+chatGPT 5.2 says:
+
+Yes, it’s practical—with caveats.
+
+Given a reliable RCS parser that yields the File/RevisionHead/RevisionContent
+structures, the later stages of cvs-fast-export are mostly:
+
+  - building per‑file commit chains,
+  - collating revisions into changesets by time/author/log/commitid,
+  - building branch/tag graphs,
+  - emitting fast‑import streams.
+
+Those are algorithmic/data‑structure problems, well within Go’s strengths.
+
+However, there are two important caveats:
+
+  1. Semantic parity risk
+     The collation logic in collate.c, revcvs.c, export.c is full of edge‑case handling
+     and historical CVS weirdness. Porting that logic is feasible, but it’s not a
+     “mechanical” translation; you’ll need strong regression tests. Without those, a Go
+     rewrite will likely introduce subtle behavior differences.
+  2. Data shape mismatch
+     The golang-rcs model gives you log/content as fulltext, not deltas + per‑revision
+     metadata structured exactly like the C pipeline uses. You’ll need to map its
+     RevisionHead/RevisionContent into the internal representations that cvs-fast-export
+     uses (revision number, parent links, branch numbers, commitids, dead/live, expand
+     mode, etc.). That’s doable, but requires careful cross‑checking with the C
+     semantics.
+
+Bottom line:
+It’s practical to translate the later stages to Go once you have a faithful RCS
+deserializer, but only if you invest in a strong test harness (golden fast‑import
+output or reposurgeon equivalence checks). The cost is not in parsing; it’s in
+preserving the CVS edge‑case semantics of changeset collation.
+
+We have a pretty good test suite in tests/.
+
+First step: build the equivlent to the C code's fromnt end.
