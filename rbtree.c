@@ -244,7 +244,7 @@ void rbtree_insert(struct rbtree_node **root, const void *key, void *value,
 			nodep = (struct rbtree_node **)&node->right;
 		} else {
 			fatal_error(
-			    "internal error - duplicate key in red black tree");
+			    "duplicate key in red black tree");
 		}
 	}
 	node =

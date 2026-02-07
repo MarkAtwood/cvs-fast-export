@@ -524,6 +524,11 @@ edit script tried to delete beyond eof::
      Indicates a corrupted RCS file.  An edit line count was wrong,
      possibly due to an integer overflow in an old 32-bit version of RCS.
 
+duplicate key in red black tree::
+     Fatal error: there are two or more definitions of the same symbolic name
+     in an RCS master.  This is not a cvs-fast-export error, the
+     master file has been corrupted by a CVS bug or operator error.
+
 internal error - branch cycle::
      cvs-fast-export found a cycle while topologically sorting commits
      by parent link. This should never happen and indicates either
