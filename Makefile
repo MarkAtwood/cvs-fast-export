@@ -222,3 +222,8 @@ release: cvs-fast-export-$(VERSION).tar.gz html
 
 refresh: html
 	shipper -N -w version=$(VERSION) | sh -e -x
+
+# Experimental Go code
+
+cfe: cfe.go
+	go build -o cfe cfe.go
