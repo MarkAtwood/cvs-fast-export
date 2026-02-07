@@ -331,8 +331,10 @@ class popen_or_die:
 def subset_test(paths, timeout):
     "Run cvs-fast-export on a path list with an optional timeout."
     start = _monotonic()
+    timed_out = False
     devnull = open(os.devnull, "wb")
     try:
+        print("Testing with %s elements" % len(paths))
         proc = subprocess.Popen(
             "cvs-fast-export",
             shell=True,
@@ -353,6 +355,7 @@ def subset_test(paths, timeout):
                 if rc is not None:
                     break
                 if _monotonic() - start >= timeout:
+                    timed_out = True
                     proc.terminate()
                     deadline = _monotonic() + 1.0
                     while _monotonic() < deadline:
@@ -364,7 +367,13 @@ def subset_test(paths, timeout):
                     break
                 time.sleep(0.05)
         elapsed = _monotonic() - start
-        return (proc.returncode, elapsed)
+        if proc.returncode == 0:
+            print("Succeeded.")
+        elif timed_out:
+            print("Hung.")
+        else:
+            print("Ran for %d seconds" % elapsed)
+        return (proc.returncode, elapsed, timed_out)
     finally:
         devnull.close()
 
