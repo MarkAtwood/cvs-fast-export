@@ -243,8 +243,9 @@ void rbtree_insert(struct rbtree_node **root, const void *key, void *value,
 		} else if (compare(node->key, key) > 0) {
 			nodep = (struct rbtree_node **)&node->right;
 		} else {
-			fatal_error(
-			    "duplicate key in red black tree");
+			const char *s = (const char *)key;
+			fatal_error("duplicate key in red black tree: %s",
+			            s ? s : "(null)");
 		}
 	}
 	node =
