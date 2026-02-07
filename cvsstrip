@@ -33,7 +33,7 @@ easier to pass around, faster to process, and not reveal potentially
 sensitive data.
 """
 
-# pylint: disable=line-too-long,invalid-name,missing-function-docstring,no-else-continue,too-many-branches,consider-using-f-string,consider-using-with.raise-missing-from,too-many-instance-attributes,too-many-arguments
+# pylint: disable=line-too-long,invalid-name,missing-function-docstring,no-else-continue,too-many-branches,consider-using-f-string,consider-using-with.raise-missing-from,too-many-instance-attributes,too-many-arguments,too-many-nested-blocks
 
 # pylint: disable=multiple-imports
 import os, sys, getopt, hashlib, io, shutil, cmd, subprocess, time
@@ -378,6 +378,17 @@ def subset_test(paths, timeout):
         devnull.close()
 
 
+def winnow(dirs):
+    """
+    Given a directory, prune it to the smallest subset of paths in it that produces a hang
+    or crash (nonzero exit status) from cvs-fast-export. Uses subset_test().
+
+    Asumes that hangs can be detected because reducing thge number of paths in a
+    subset never increases the processing time.
+    """
+    pass
+
+
 def listing(dirs):
     "Get a listing of all directories in a specified selection."
     file_list = []
@@ -438,8 +449,9 @@ Typing EOT (usually Ctrl-D) will exit quietly.
 
 
 if __name__ == "__main__":
-    (opts, arguments) = getopt.getopt(sys.argv[1:], "cilo:tv")
+    (opts, arguments) = getopt.getopt(sys.argv[1:], "cilo:tvw")
     outdir = None
+    winnow = False
     for opt, arg in opts:
         if opt == "-c":
             strip_content = False
@@ -454,6 +466,8 @@ if __name__ == "__main__":
             strip_tags = False
         elif opt == "-v":
             verbose += 1
+        elif opt == "-w":
+            winnow = True
 
     if not arguments:
         skeletonize(sys.stdin, sys.stdout)
@@ -468,6 +482,10 @@ if __name__ == "__main__":
     if os.path.exists(outdir):
         sys.stderr.write("cvsstrip: refusing to step on %s.\n" % outdir)
         sys.exit(1)
+
+    if winnow:
+        winnow(originals)
+        raise SystemExit(0)
 
     # Directory traversal
     for dirName, subdirList, fileList in os.walk(originals):
