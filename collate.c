@@ -482,7 +482,13 @@ static void collate_branches(rev_ref **branches, int nbranch, rev_ref *branch,
 		 * most recent entry).
 		 */
 		cvs_commit *c = branches[n]->commit;
-		REVISION_T_PACK_INIT(revisions[n], c);
+		if (c) {
+			REVISION_T_PACK_INIT(revisions[n], c);
+		} else {
+			// cppcheck-suppress nullPointer
+			REVISION_T_PACK(revisions[n], (cvs_commit *)NULL);
+			revisions[n].dir = NULL;
+		}
 		/*
 		 * Compute number of CVS branches that are still live - that is,
 		 * have remaining older CVS file commits for this branch.

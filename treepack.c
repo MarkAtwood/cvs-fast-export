@@ -238,6 +238,16 @@ void revdir_pack_add(const cvs_commit *file, const master_dir *dir) {
 			 * inner loop in the application. Avoid dereferencing
 			 * file
 			 */
+			if (nfiles >= sfiles) {
+				size_t newsize = sfiles ? (size_t)sfiles * 2 : 128;
+				if (newsize <= (size_t)nfiles) {
+					newsize = (size_t)nfiles + 1;
+				}
+				files = xrealloc(files,
+				                 newsize * sizeof(cvs_commit *),
+				                 __func__);
+				sfiles = (serial_t)newsize;
+			}
 			files[nfiles++] = file;
 			/* Proper FNV1a is a byte at a time, but this is
 			 * effective with the amount of data we're typically

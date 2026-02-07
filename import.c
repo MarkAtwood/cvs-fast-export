@@ -242,6 +242,7 @@ int path_deep_compare(const void *a, const void *b) {
 	const char *bf = (const char *)b;
 	const char *aslash;
 	const char *bslash;
+	size_t alen, blen;
 	int compar;
 
 	/* short circuit */
@@ -267,6 +268,8 @@ int path_deep_compare(const void *a, const void *b) {
 
 	aslash = strrchr(af, '/');
 	bslash = strrchr(bf, '/');
+	alen = strlen(af);
+	blen = strlen(bf);
 
 	if (!aslash && !bslash) {
 		return compar; /*    ? ~ ?    */
@@ -292,13 +295,15 @@ int path_deep_compare(const void *a, const void *b) {
 	 * prefix (p/p).
 	 */
 	if (aslash - af < bslash - bf) {
-		if (bf[aslash - af] == '/' &&
-		    memcmp(af, bf, aslash - af) == 0) {
+		size_t aidx = (size_t)(aslash - af);
+		if (aidx < blen && bf[aidx] == '/' &&
+		    memcmp(af, bf, aidx) == 0) {
 			return +1; /* p/p/??? > p/p/???/? */
 		}
 	} else {
-		if (af[bslash - bf] == '/' &&
-		    memcmp(af, bf, bslash - bf) == 0) {
+		size_t bidx = (size_t)(bslash - bf);
+		if (bidx < alen && af[bidx] == '/' &&
+		    memcmp(af, bf, bidx) == 0) {
 			return -1; /* ???/???/? ~ ???/??? */
 		}
 	}
