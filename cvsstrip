@@ -386,7 +386,82 @@ def winnow(dirs):
     Asumes that hangs can be detected because reducing thge number of paths in a
     subset never increases the processing time.
     """
-    pass
+    if isinstance(dirs, (list, tuple)):
+        paths = listing(dirs)
+        rootdirs = list(dirs)
+    else:
+        paths = listing([dirs])
+        rootdirs = [dirs]
+    paths.sort()
+    if not paths:
+        print("No paths found.")
+        return
+
+    timeout = int(os.environ.get("CVSSTRIP_TIMEOUT", "60"))
+
+    print("Testing %d paths with timeout=%d..." % (len(paths), timeout))
+    (rc, _elapsed, timed_out) = subset_test(paths, timeout)
+    if rc == 0 and not timed_out:
+        print("No failure detected; nothing to winnow.")
+        return
+
+    def fails(subset):
+        (rc, _elapsed, timed_out) = subset_test(subset, timeout)
+        return rc != 0 or timed_out
+
+    n = 2
+    while len(paths) >= 2:
+        n = min(n, len(paths))
+        chunk = (len(paths) + n - 1) // n
+        reduced = False
+
+        for i in range(0, len(paths), chunk):
+            sub = paths[i : i + chunk]
+            print("Testing subset %d..%d (%d paths)..." % (i, i + len(sub), len(sub)))
+            if fails(sub):
+                paths = sub
+                n = 2
+                reduced = True
+                break
+        if reduced:
+            continue
+
+        for i in range(0, len(paths), chunk):
+            sub = paths[i : i + chunk]
+            if not sub or len(sub) == len(paths):
+                continue
+            comp = paths[:i] + paths[i + chunk :]
+            print(
+                "Testing complement %d..%d (%d paths)..." % (i, i + len(sub), len(comp))
+            )
+            if fails(comp):
+                paths = comp
+                n = max(n - 1, 2)
+                reduced = True
+                break
+        if reduced:
+            continue
+
+        if n >= len(paths):
+            break
+        n = min(len(paths), n * 2)
+
+    keep = set(paths)
+    removed = 0
+    for root, _dirs, files in os.walk(rootdirs[0]):
+        for name in files:
+            fpath = os.path.join(root, name)
+            if fpath not in keep:
+                os.remove(fpath)
+                removed += 1
+    # Remove empty directories (bottom-up), but keep the root.
+    for root, dirs, files in os.walk(rootdirs[0], topdown=False):
+        if root == rootdirs[0]:
+            continue
+        if not dirs and not files:
+            os.rmdir(root)
+
+    print("Winnow complete: kept %d paths, removed %d." % (len(keep), removed))
 
 
 def listing(dirs):
