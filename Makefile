@@ -88,6 +88,10 @@ OBJS=gram.o lex.o rbtree.o main.o import.o dump.o cvsnumber.o \
 	cvsutil.o revdir.o revlist.o atom.o revcvs.o generate.o export.o \
 	nodehash.o tags.o authormap.o graph.o utils.o collate.o hash.o
 
+.PHONY: all msn html clean check cleancheck reflow fixme spellcheck
+.PHONY: install install-bin install-man ninstall uninstall-man uninstall-bin
+.PHONY: version cppcheck pylint distclean dist release refresh
+
 all: cvs-fast-export man html
 
 cvs-fast-export: $(OBJS)
@@ -157,7 +161,7 @@ fixme:
 		find . -type f -exec grep -n FIX''ME {} /dev/null \; | grep -v "[.]git"; \
 	fi
 
-spellcheck: *.adoc
+spellcheck:
 	@spellcheck local.dic *.adoc
 
 install: install-bin install-man
