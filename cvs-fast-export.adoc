@@ -226,6 +226,7 @@ avoids annoyances when running from or above a top-level CVS directory).
 A strict reading of RCS allows masters without the ,v extension.  This
 option sets promiscuous mode, disabling both checks.
 
+// spellcheck: add yy-mm-ddThh
 -i 'date'::
 Enable incremental-dump mode. Only commits with a date after that
 specified by the argument are emitted. Disables inclusion of default

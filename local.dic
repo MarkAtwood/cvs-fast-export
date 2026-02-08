@@ -10,7 +10,7 @@ branchlets
 BRANCHWIDTH
 Bugfix
 bugfixes
-bzr
+bzr-style
 Changelog
 changeset
 changesets
@@ -21,8 +21,9 @@ codebase
 commitid
 commitids
 conformant
-Coverity
+Coverity-clean
 cppcheck
+cv
 cvs
 cvscompare
 cvsignore
@@ -67,7 +68,6 @@ groff
 hardlinks
 hhmm
 Hobson
-hostname
 hostnames
 hotspot
 HOWTO
@@ -102,10 +102,11 @@ patchset
 pathnames
 Patreon
 polymorphically
-pre
+pre-existing
 prepended
 Prepends
 progmodes
+pseudo-hostname
 pylint
 rbtree
 rcs
