@@ -30,6 +30,8 @@ TAR ?= tar
 BISON ?= bison
 FLEX ?= flex
 
+VERSION = $(shell sed -n <NEWS.adoc '/::/s/^\([^:]*\).*/\1/p' | head -1)
+
 GCC_WARNINGS1=-Wall -Wextra -Werror -Wpointer-arith -Wstrict-prototypes
 GCC_WARNINGS3=-Wno-format-zero-length
 GCC_WARNINGS=$(GCC_WARNINGS1) $(GCC_WARNINGS2) $(GCC_WARNINGS3)
@@ -138,7 +140,7 @@ PROFILE: gmon.out
 clean:
 	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export
 	rm -f *.1 *.html gram.output gmon.out
-	rm -f MANIFEST index.html *.tar.gz
+	rm -f index.html *.tar.gz
 	rm -f *.gcno *.gcda
 
 # Validate
@@ -160,8 +162,8 @@ pylint:
 # MirOS patches.  These are carried by Debian Linux and derivatives; you can
 # check by Looking for "MirDebian" in the output of cvs --version.
 check: cvs-fast-export cppcheck
-	-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
-	cd tests >/dev/null; $(MAKE) --quiet
+	@-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
+	@cd tests >/dev/null; $(MAKE) --quiet
 
 # Like check, but forces rebuild of the generated test repositories first
 cleancheck:
@@ -205,8 +207,13 @@ distclean: clean
 SOURCES = Makefile *.[ch] *.[yl] cvssync cvsconvert cvsstrip buildprep
 DOCS = control *.adoc local.dic cfe-logo.png
 ALL =  $(SOURCES) $(DOCS) tests
-cvs-fast-export-$(VERSION).tar.gz: $(ALL)
-	$(TAR) --transform='s:^:cvs-fast-export-$(VERSION)/:' --show-transformed-names -cvzf cvs-fast-export-$(VERSION).tar.gz $(ALL)
+
+cvs-fast-export-$(VERSION).tar.gz: $(SOURCES)
+	mkdir cvs-fast-export-$(VERSION)
+	cp -r $(ALL) cvs-fast-export-$(VERSION)
+	tar -czf cvs-fast-export-$(VERSION).tar.gz cvs-fast-export-$(VERSION)
+	rm -fr cvs-fast-export-$(VERSION)
+	ls -l cvs-fast-export-$(VERSION).tar.gz
 
 dist: distclean cvs-fast-export-$(VERSION).tar.gz
 
