@@ -227,3 +227,6 @@ refresh: html
 
 cfe: cfe.go
 	go build -o cfe cfe.go
+
+rcs-refresh:
+	go get github.com/arran4/golang-rcs

@@ -38,5 +38,6 @@ func main() {
 	}
 
 	// Smoke test to verify that we have in fact read data.
-	fmt.Printf("Files: %d\n", len(files))
+	//fmt.Printf("Files: %d\n", len(files))
+	fmt.Printf("%#v", files)
 }
