@@ -9,6 +9,9 @@ allocation more gracefully.
 Helpfully, we on't have too write most of the first stage, because
 this exists: https://github.com/arran4/golang-rcs
 
+For branch/tag collation and changeset edge cases, see
+link:cvs-collation-spec.adoc[CVS Collation and Symbol Resolution Spec].
+
 This Golang library offers lossless deserialization of an RCS master into
 the following structures:
 
@@ -71,6 +74,9 @@ ChatGPT-5.2 responds:
 
 ----
 Got it. Treating go-plan.adoc as the prompt.
+
+  For branch/tag collation and changeset edge cases, see
+  link:cvs-collation-spec.adoc[CVS Collation and Symbol Resolution Spec].
 
   Here’s a concrete translation plan and the main risk areas, plus a few questions to
   tighten scope. I’ll keep it aligned with the goal: drop‑in Go binary that passes tests/
@@ -370,4 +376,74 @@ to be used for future troubleshooting of edge cases.
   1. Add cross-links from go-plan.adoc or hacking.adoc to cvs-collation-spec.adoc.
   2. Extract a minimal checklist of invariants from the spec for use
      as Go test assertions.
+----
+
+Do both steps, adding the cross-links first
+
+----
+  Cross-links added in both go-plan.adoc (including inside the “ChatGPT-5.2 responds” block)
+  and hacking.adoc. I also added a concise “Minimal invariants for Go tests” checklist to
+  cvs-collation-spec.adoc.
+
+  Updated files:
+
+  - go-plan.adoc
+  - hacking.adoc
+  - cvs-collation-spec.adoc
+
+  Want me to also add a small index line in README.adoc pointing to the new spec, or keep it
+  scoped to the Go plan + hacking guide?
+----
+
+Keep it narrowly scoped. What's the next logical step?
+
+----
+  Given the spec and invariants are now documented, the next logical step is to turn those
+  invariants into a dev harness checklist so we can quickly catch mismatches while porting.
+  Concretely:
+
+  1. Add a cmd/cfe-compare harness that runs C and Go on the same inputs and diffs stdout
+     byte‑for‑byte.
+  2. Build a small test driver that targets the specific edge cases called out in the spec
+     (vendor branch, tag resolution, branch join points), even before the full Go pipeline
+     exists.
+
+  If you want, I can start by creating the harness skeleton and the minimal test driver
+  structure so we can plug in the Go implementation as it grows.
+----
+
+Do that.
+
+====
+  Added a dev harness skeleton plus a focused edge‑case driver.
+
+  What’s in place
+
+  - internal/compare/ provides a shared compare runner and CVS path ordering
+    (path_deep_compare) for deterministic input lists.
+  - cmd/cfe-compare/ compares C vs Go outputs for any input set (roots/files/stdin list).
+  - cmd/cfe-check/ runs a small, curated set of edge‑case repos: vendor branch, tag
+    resolution, branch join points, long revisions. It also auto‑generates tests/
+    neutralize.map and runs .tst generators when needed.
+
+  New/updated paths
+
+  - internal/compare/compare.go
+  - internal/compare/path.go
+  - cmd/cfe-compare/main.go
+  - cmd/cfe-check/main.go
+
+  How to use
+
+  1. go run ./cmd/cfe-compare --c-bin ../cvs-fast-export --go-bin ./cvs-fast-export-go --root
+     tests/vendor.testrepo/module --arg -T --arg -A --arg tests/neutralize.map --arg
+     --reposurgeon
+  2. go run ./cmd/cfe-check --c-bin ../cvs-fast-export --go-bin ./cvs-fast-export-go
+
+  Next logical step
+
+  1. Hook the Go port’s first milestone into cmd/cfe-check (even if it’s a stub that emits
+     empty output) to exercise the diff reporting end‑to‑end.
+  2. Start porting the path ordering and symbol/branch resolution pieces, using the spec
+     invariants as checkpoints.
 ----

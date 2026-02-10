@@ -87,6 +87,10 @@ incomplete tagging can cause interpretation problems as well.
 Now you should read "RCS/CVS LIMITATIONS" in the `cvs-fast-export(1)`
 manual page.
 
+For a focused description of branch/tag collation behavior and edge
+cases (used as compatibility spec for the Go port), see
+link:cvs-collation-spec.adoc[CVS Collation and Symbol Resolution Spec].
+
 == Conformable branch structure ==
 
 Below is a simple example of conformable branch structure involving

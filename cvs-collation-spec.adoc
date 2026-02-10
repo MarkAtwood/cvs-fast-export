@@ -1,5 +1,8 @@
 = CVS Collation and Symbol Resolution Spec (as implemented)
 
+(Base version of this document witten by ChatGPT-5.2
+based on code analysis.)
+
 This document describes the current behavior of cvs-fast-export's CVS
 branch/tag collation and changeset assembly as derived from
 `revcvs.c` and `collate.c`. It is intended as a troubleshooting aid for
@@ -221,3 +224,26 @@ Tags that only point to dead revisions are ignored.
 * Keyword expansion is not required for the Go port (per project scope),
   but branch/tag resolution must remain identical.
 
+== Minimal invariants for Go tests
+
+These are concise, testable invariants distilled from the above rules.
+They are intended as guardrails when refactoring or optimizing the Go
+implementation.
+
+* File ordering for packing and emission uses `path_deep_compare`.
+* Commit coalescing rules:
+  - If commitids exist (and trust is enabled), they must match.
+  - Otherwise author + log must match and timestamps are within
+    `commit_time_window`.
+* Branch grouping across masters is by branch label at tips, not by
+  numeric branch IDs.
+* Branch list order is topologically sorted so parents precede children.
+* Vendor branch patching:
+  - Vendor branches attach to trunk.
+  - If trunk lacks 1.2, trunk tip is replaced with vendor tip and old
+    trunk is spliced into the vendor chain.
+* Date monotonicity on per-branch commit chains is enforced via
+  timestamp adjustments when needed.
+* Dead-only, untagged branches are discarded.
+* Tags resolve to an existing gitspace commit when possible; otherwise
+  a synthetic tag commit is created with the tagged revisions.
