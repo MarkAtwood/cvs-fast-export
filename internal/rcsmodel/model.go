@@ -18,6 +18,7 @@ type Master struct {
 	FileName string
 	Heads    []*symbols.Head
 	Symbols  []symbols.Symbol
+	Tags     []symbols.Tag
 	Versions []symbols.Version
 	Commits  map[string]*symbols.Commit
 	Root     *symbols.Commit
@@ -78,6 +79,10 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 
 	var sym []symbols.Symbol
 	for name, rev := range file.SymbolMap {
+		name = sanitizeSymbolName(name)
+		if name == "" {
+			return nil, fmt.Errorf("symbol name empty after sanitization")
+		}
 		n, err := cvsnum.Parse(rev)
 		if err != nil {
 			return nil, err
@@ -203,6 +208,12 @@ func exportName(source string) string {
 	}
 	path = strings.ReplaceAll(path, "/Attic/", "/")
 	path = strings.ReplaceAll(path, "/RCS/", "/")
+	if strings.HasPrefix(path, "Attic/") {
+		path = strings.TrimPrefix(path, "Attic/")
+	}
+	if strings.HasPrefix(path, "RCS/") {
+		path = strings.TrimPrefix(path, "RCS/")
+	}
 	if strings.HasSuffix(path, ",v") {
 		path = strings.TrimSuffix(path, ",v")
 	}
@@ -210,6 +221,21 @@ func exportName(source string) string {
 		path = strings.TrimSuffix(path, ".cvsignore") + ".gitignore"
 	}
 	return path
+}
+
+func sanitizeSymbolName(s string) string {
+	const bad = "~^\\*?"
+	var b strings.Builder
+	for _, r := range s {
+		if r <= 0x20 || r == 0x7f {
+			continue
+		}
+		if strings.ContainsRune(bad, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) (map[string]string, error) {
@@ -222,19 +248,58 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 	if !ok {
 		return out, nil
 	}
-	current := headContent.Text
-	out[head] = current
+	out[head] = headContent.Text
 
-	next := nextRevisionOf(file, head)
-	for next != "" {
-		delta := contents[next].Text
-		var err error
-		current, err = applyDelta(current, delta)
-		if err != nil {
+	newerOf := make(map[string]string)
+	heads := make(map[string]*rcs.RevisionHead)
+	for _, rh := range file.RevisionHeads {
+		heads[rh.Revision] = rh
+		if rh.NextRevision != "" {
+			newerOf[rh.NextRevision] = rh.Revision
+		}
+	}
+
+	var compute func(string) error
+	compute = func(rev string) error {
+		if _, ok := out[rev]; ok {
+			return nil
+		}
+		rc, ok := contents[rev]
+		if !ok {
+			return nil
+		}
+		if newer := newerOf[rev]; newer != "" {
+			if err := compute(newer); err != nil {
+				return err
+			}
+			base := out[newer]
+			text, err := applyDelta(base, rc.Text)
+			if err != nil {
+				return err
+			}
+			out[rev] = text
+			return nil
+		}
+		if parent := branchParent(rev); parent != "" {
+			if err := compute(parent); err != nil {
+				return err
+			}
+			base := out[parent]
+			text, err := applyDelta(base, rc.Text)
+			if err != nil {
+				return err
+			}
+			out[rev] = text
+			return nil
+		}
+		out[rev] = rc.Text
+		return nil
+	}
+
+	for rev := range contents {
+		if err := compute(rev); err != nil {
 			return nil, err
 		}
-		out[next] = current
-		next = nextRevisionOf(file, next)
 	}
 	return out, nil
 }
@@ -333,6 +398,19 @@ func joinLinesWithTrailing(lines []string, trailing bool) string {
 		out += "\n"
 	}
 	return out
+}
+
+func branchParent(rev string) string {
+	n, err := cvsnum.Parse(rev)
+	if err != nil {
+		return ""
+	}
+	if n.C < 4 {
+		return ""
+	}
+	n.C -= 2
+	n.N = n.N[:n.C]
+	return cvsnum.String(n)
 }
 
 func onBranch(rev, branch cvsnum.Number) bool {

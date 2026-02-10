@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"thyrsus.com/cvs-fast-export/internal/compare"
 	"thyrsus.com/cvs-fast-export/internal/cvsnum"
 	"thyrsus.com/cvs-fast-export/internal/rcsmodel"
 	"thyrsus.com/cvs-fast-export/internal/symbols"
@@ -32,21 +33,31 @@ type GitBranch struct {
 }
 
 type Repo struct {
-	Branches []*GitBranch
+	Branches   []*GitBranch
+	CommitOf   map[*symbols.Commit]*GitCommit
+	ByNumber   map[string]*GitCommit
+	TagTargets map[string][]*symbols.Commit
 }
 
 func Build(masters []*rcsmodel.Master, opts Options) *Repo {
 	byName := collectBranches(masters)
 	branches := toposortBranches(byName, masters)
 
-	repo := &Repo{Branches: branches}
+	repo := &Repo{
+		Branches:   branches,
+		CommitOf:   make(map[*symbols.Commit]*GitCommit),
+		ByNumber:   make(map[string]*GitCommit),
+		TagTargets: make(map[string][]*symbols.Commit),
+	}
 	for _, b := range branches {
 		heads := gatherHeads(masters, b.Name)
 		if len(heads) == 0 {
 			continue
 		}
-		b.Head = collateBranch(heads, opts)
+		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
 	}
+	linkBranchParents(branches, repo.ByNumber)
+	collectTags(masters, repo)
 	return repo
 }
 
@@ -99,36 +110,165 @@ func gatherHeads(masters []*rcsmodel.Master, name string) []*symbols.Head {
 	return heads
 }
 
-func collateBranch(heads []*symbols.Head, opts Options) *GitCommit {
+func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf map[*symbols.Commit]*GitCommit, byNumber map[string]*GitCommit) *GitCommit {
+	seen := make(map[*symbols.Commit]struct{})
 	var commits []*symbols.Commit
 	for _, h := range heads {
 		for c := h.Commit; c != nil; c = c.Parent {
+			if _, ok := seen[c]; ok {
+				continue
+			}
+			seen[c] = struct{}{}
 			commits = append(commits, c)
+			if c.Tail {
+				break
+			}
 		}
 	}
 	sort.Slice(commits, func(i, j int) bool {
+		if !commits[i].Date.Equal(commits[j].Date) {
+			return commits[i].Date.Before(commits[j].Date)
+		}
+		if commits[i].FileName != commits[j].FileName {
+			return compare.PathDeepCompare(commits[i].FileName, commits[j].FileName) < 0
+		}
 		return cvsnum.Compare(commits[i].Number, commits[j].Number) < 0
 	})
 
+	if opts.TrustCommitIDs {
+		group := make(map[string]*GitCommit)
+		var order []*GitCommit
+		for _, c := range commits {
+			if c.CommitID == "" {
+				continue
+			}
+			g := group[c.CommitID]
+			if g == nil {
+				g = &GitCommit{
+					Date:    c.Date,
+					Author:  c.Author,
+					Log:     c.Log,
+					Files:   []*symbols.Commit{c},
+					RefName: branch,
+				}
+				group[c.CommitID] = g
+				order = append(order, g)
+			} else {
+				g.Files = append(g.Files, c)
+				if c.Date.After(g.Date) {
+					g.Date = c.Date
+				}
+			}
+			commitOf[c] = g
+			byNumber[cvsnum.String(c.Number)] = g
+		}
+		sort.Slice(order, func(i, j int) bool {
+			if !order[i].Date.Equal(order[j].Date) {
+				return order[i].Date.Before(order[j].Date)
+			}
+			return order[i].Log < order[j].Log
+		})
+		var prev *GitCommit
+		for _, g := range order {
+			g.Parent = prev
+			prev = g
+		}
+		return prev
+	}
+
 	var prev *GitCommit
 	for _, c := range commits {
-		if c.Dead {
-			continue
-		}
 		if prev != nil && commitsMatch(prev, c, opts) {
 			prev.Files = append(prev.Files, c)
+			commitOf[c] = prev
 			continue
 		}
 		g := &GitCommit{
-			Date:   c.Date,
-			Author: c.Author,
-			Log:    c.Log,
-			Files:  []*symbols.Commit{c},
+			Date:    c.Date,
+			Author:  c.Author,
+			Log:     c.Log,
+			Files:   []*symbols.Commit{c},
+			RefName: branch,
 		}
 		g.Parent = prev
 		prev = g
+		commitOf[c] = g
+		byNumber[cvsnum.String(c.Number)] = g
 	}
 	return prev
+}
+
+func collectTags(masters []*rcsmodel.Master, repo *Repo) {
+	seen := make(map[string]map[*symbols.Commit]struct{})
+	for _, m := range masters {
+		for _, t := range m.Tags {
+			if t.Commit == nil {
+				continue
+			}
+			set := seen[t.Name]
+			if set == nil {
+				set = make(map[*symbols.Commit]struct{})
+				seen[t.Name] = set
+			}
+			set[t.Commit] = struct{}{}
+		}
+	}
+	for name, set := range seen {
+		for c := range set {
+			repo.TagTargets[name] = append(repo.TagTargets[name], c)
+		}
+	}
+}
+
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
+	var master *GitBranch
+	for _, b := range branches {
+		if b.Name == "master" {
+			master = b
+			break
+		}
+	}
+	var masterCommits []*GitCommit
+	if master != nil {
+		for c := master.Head; c != nil; c = c.Parent {
+			masterCommits = append(masterCommits, c)
+		}
+	}
+	for _, b := range branches {
+		if b.Name == "master" || b.Head == nil {
+			continue
+		}
+		// Find oldest commit on branch
+		var tail *GitCommit
+		for c := b.Head; c != nil; c = c.Parent {
+			tail = c
+		}
+		if tail == nil || len(tail.Files) == 0 {
+			continue
+		}
+		base := tail.Files[0].Number
+		if base.C < 4 {
+			continue
+		}
+		base.C -= 2
+		base.N = base.N[:base.C]
+		if len(masterCommits) > 0 {
+			var pick *GitCommit
+			for _, mc := range masterCommits {
+				if !mc.Date.After(tail.Date) {
+					pick = mc
+					break
+				}
+			}
+			if pick != nil {
+				tail.Parent = pick
+				continue
+			}
+		}
+		if gc := byNumber[cvsnum.String(base)]; gc != nil {
+			tail.Parent = gc
+		}
+	}
 }
 
 func commitsMatch(g *GitCommit, c *symbols.Commit, opts Options) bool {

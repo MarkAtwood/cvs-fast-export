@@ -15,10 +15,11 @@ import (
 )
 
 type Emitter struct {
-	w     *bufio.Writer
-	mark  int
-	epoch int64
-	didIg bool
+	w          *bufio.Writer
+	mark       int
+	epoch      int64
+	didIg      bool
+	tagTargets map[string][]*symbols.Commit
 }
 
 func NewEmitter(w io.Writer) *Emitter {
@@ -29,30 +30,67 @@ func NewEmitter(w io.Writer) *Emitter {
 	}
 }
 
+func (e *Emitter) WithTagTargets(tags map[string][]*symbols.Commit) *Emitter {
+	e.tagTargets = tags
+	return e
+}
+
 func (e *Emitter) Flush() error {
 	return e.w.Flush()
 }
 
-// EmitBranch emits a minimal fast-import stream for a single branch.
-// This is a temporary scaffold for output comparisons.
-func (e *Emitter) EmitBranch(branch *collate.GitBranch) error {
-	if branch == nil || branch.Head == nil {
+// EmitRepo emits a fast-import stream for all branches, ordered by commit date.
+func (e *Emitter) EmitRepo(repo *collate.Repo) error {
+	if repo == nil {
 		return nil
 	}
-	commits := collate.CommitsForBranch(branch)
-	var parentMark int
-	for i := len(commits) - 1; i >= 0; i-- {
-		mark, err := e.emitCommit(branch.Name, commits[i], parentMark)
+	commits := collectCommits(repo)
+	markMap := make(map[*collate.GitCommit]int)
+	state := make(map[string]map[string]string)
+	emittedTags := make(map[string]struct{})
+	tagNames := make([]string, 0, len(e.tagTargets))
+	for name := range e.tagTargets {
+		tagNames = append(tagNames, name)
+	}
+	sort.Strings(tagNames)
+	for i, c := range commits {
+		prevState := state[c.RefName]
+		if prevState == nil {
+			prevState = map[string]string{}
+		}
+		parentMark := 0
+		if c.Parent != nil {
+			parentMark = markMap[c.Parent]
+		}
+		first := i == 0
+		ops, next := buildOps(prevState, c.Files)
+		if len(ops) == 0 {
+			state[c.RefName] = next
+			continue
+		}
+		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err
 		}
-		parentMark = mark
+		state[c.RefName] = next
+		markMap[c] = mark
+		for _, name := range tagNames {
+			targets := e.tagTargets[name]
+			if _, ok := emittedTags[name]; ok {
+				continue
+			}
+			if tagMatchesState(targets, next) {
+				fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+				fmt.Fprintf(e.w, "from :%d\n\n", mark)
+				emittedTags[name] = struct{}{}
+			}
+		}
 	}
 	fmt.Fprintln(e.w, "done")
 	return nil
 }
 
-func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int) (int, error) {
+func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int, first bool, ops []*fileOp) (int, error) {
 	ref := branch
 	if ref == "" {
 		ref = "master"
@@ -67,12 +105,10 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 	sort.Slice(files, func(i, j int) bool {
 		return compare.PathDeepCompare(files[i].FileName, files[j].FileName) < 0
 	})
-	blobMarks := make([]int, len(files))
-	for i, f := range files {
-		if f.Dead {
-			continue
+	for _, op := range ops {
+		if op.kind == 'M' {
+			op.mark = e.emitBlob(op.path, op.text)
 		}
-		blobMarks[i] = e.emitBlob(f.Text)
 	}
 
 	mark := e.mark
@@ -88,34 +124,143 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 	if parentMark > 0 {
 		fmt.Fprintf(e.w, "from :%d\n", parentMark)
 	}
-	for i, f := range files {
-		if f.Dead {
-			continue
+	for _, op := range ops {
+		if op.kind == 'M' {
+			fmt.Fprintf(e.w, "M 100644 :%d %s\n", op.mark, op.path)
+		} else if op.kind == 'D' {
+			fmt.Fprintf(e.w, "D %s\n", op.path)
 		}
-		path := f.FileName
-		if path == "" {
-			path = "UNKNOWN"
-		}
-		fmt.Fprintf(e.w, "M 100644 :%d %s\n", blobMarks[i], path)
 	}
-	if !e.didIg {
-		fmt.Fprintln(e.w, "M 100644 inline .gitignore")
-		fmt.Fprintf(e.w, "data %d\n%s\n", len(cvsIgnores), cvsIgnores)
+	if first && !e.didIg {
+		hasGitignore := false
+		for _, f := range files {
+			if f.FileName == ".gitignore" {
+				hasGitignore = true
+				break
+			}
+		}
+		if !hasGitignore {
+			fmt.Fprintln(e.w, "M 100644 inline .gitignore")
+			fmt.Fprintf(e.w, "data %d\n%s\n", len(cvsIgnores), cvsIgnores)
+		}
 		e.didIg = true
 	}
 	fmt.Fprintln(e.w)
 	return mark, nil
 }
 
-func (e *Emitter) emitBlob(text string) int {
+func (e *Emitter) emitBlob(path, text string) int {
 	mark := e.mark
 	e.mark++
 	if text == "" {
 		text = "\n"
 	}
+	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
+		text = cvsIgnores + text
+	}
 	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
 	fmt.Fprintf(e.w, "data %d\n%s\n", len(text), text)
 	return mark
+}
+
+type fileOp struct {
+	kind byte
+	path string
+	text string
+	mark int
+}
+
+func buildOps(prev map[string]string, files []*symbols.Commit) ([]*fileOp, map[string]string) {
+	next := make(map[string]string, len(prev))
+	for k, v := range prev {
+		next[k] = v
+	}
+	for _, f := range files {
+		path := f.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		if f.Dead {
+			delete(next, path)
+			continue
+		}
+		text := f.Text
+		if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
+			text = cvsIgnores + text
+		}
+		next[path] = text
+	}
+
+	var paths []string
+	for k := range prev {
+		paths = append(paths, k)
+	}
+	for k := range next {
+		if _, ok := prev[k]; !ok {
+			paths = append(paths, k)
+		}
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		return compare.PathDeepCompare(paths[i], paths[j]) < 0
+	})
+
+	var ops []*fileOp
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		old, okOld := prev[p]
+		newv, okNew := next[p]
+		switch {
+		case okOld && !okNew:
+			ops = append(ops, &fileOp{kind: 'D', path: p})
+		case !okOld && okNew:
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv})
+		case okOld && okNew && old != newv:
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv})
+		}
+	}
+	return ops, next
+}
+
+func tagMatchesState(targets []*symbols.Commit, state map[string]string) bool {
+	if len(targets) == 0 {
+		return false
+	}
+	for _, t := range targets {
+		path := t.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		want := t.Text
+		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
+			want = cvsIgnores + want
+		}
+		got, ok := state[path]
+		if !ok || got != want {
+			return false
+		}
+	}
+	return true
+}
+
+func collectCommits(repo *collate.Repo) []*collate.GitCommit {
+	var out []*collate.GitCommit
+	for _, b := range repo.Branches {
+		out = append(out, collate.CommitsForBranch(b)...)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Date.Equal(out[j].Date) {
+			return out[i].Date.Before(out[j].Date)
+		}
+		if out[i].RefName != out[j].RefName {
+			return out[i].RefName < out[j].RefName
+		}
+		return out[i].Log < out[j].Log
+	})
+	return out
 }
 
 func formatIdent(name string) string {
