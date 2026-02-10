@@ -516,3 +516,119 @@ Proceed.
   that builder stub on top of golang-rcs, even if it only constructs commit chains and symbol
   maps initially.
 ----
+
+Proceed.
+
+----
+Started wiring in the builder stub and hooked it into the Go binary.
+
+  What’s in place now
+
+  - internal/rcsmodel/model.go: Loads golang-rcs files, builds a minimal per‑file model:
+      - commit map (with parent links via NextRevision)
+      - versions with branch lists
+      - trunk head from File.Head
+      - provisional branch heads from RevisionHead.Branches
+      - symbols from SymbolMap
+  - cmd/cvs-fast-export/main.go: Now parses input files, loads RCS masters, and runs:
+      - PatchVendorBranches
+      - GraftBranches
+      - SetRefs
+        This still emits no stream, but the pipeline now exercises the ordering + symbol
+        logic.
+
+  Files touched/added
+
+  - cmd/cvs-fast-export/main.go
+  - internal/rcsmodel/model.go
+
+  Notes
+
+  - The builder is intentionally minimal: it only uses NextRevision for parent links and does
+    not yet reconstruct full branch chains from nodehash-like traversal. That’s sufficient to
+    start validating symbol/branch resolution logic, but it won’t match C output yet (as
+    expected).
+
+  Next logical step
+
+  1. Add a debug/trace mode to dump the derived head/branch structure for a single file (so
+     we can compare against the C tool’s verbose output).
+  2. Start building proper per-branch chains (the equivalent of cvs_master_branch_build) so
+     we can begin emitting real fast‑import output.
+
+  If you want, I’ll do (1) first to make the symbol/branch logic observable, then proceed
+  with (2).
+-----
+
+Do that.
+
+----
+I added a debug/trace mode and wired the builder stub into the Go binary.
+
+  What’s new
+
+  - cmd/cvs-fast-export now builds a minimal per‑file model using golang-rcs, runs:
+      - vendor-branch patching
+      - branch grafting
+      - symbol resolution
+  - --dump-heads prints the derived head structure to stderr (per master).
+  - internal/rcsmodel now carries the source path so the dump is labeled.
+
+  How to use the trace
+
+  - go run ./cmd/cvs-fast-export --dump-heads path/to/file,v
+  - Or pipe a list: find tests/vendor.testrepo/module -name '*,v' | go run ./cmd/cvs-fast-
+    export --dump-heads
+
+  Files updated
+
+  - cmd/cvs-fast-export/main.go
+  - internal/rcsmodel/model.go
+
+  Next step (as discussed): start building true per‑branch commit chains (the
+  cvs_master_branch_build equivalent). That requires:
+
+  1. A branch iterator that collects all revisions on a given branch in the correct order.
+  2. A way to detect trunk’s earliest revision and then walk the branch chain via parent
+     links.
+
+  If you want me to proceed, I’ll implement the branch chain builder in internal/rcsmodel and
+  adjust the head construction to use it (instead of the current
+  provisional heads).
+----
+
+Continue.
+
+----
+  Implemented a first real branch-chain builder in internal/rcsmodel and wired it into
+  BuildMaster.
+
+  What changed
+
+  - BuildMaster now builds per-branch commit chains instead of using NextRevision directly.
+  - buildBranchHeads:
+      - finds trunk’s earliest revision and builds its chain
+      - builds chains for each distinct branch number seen in RevisionHead.Branches
+  - buildBranchChain:
+      - collects commits on the same branch (using cvsnum.SameBranch)
+      - sorts by CVS number and links Parent accordingly
+      - returns the newest commit as the head
+
+  This gives us a proper per-branch parent chain, which is what vendor patching and branch
+  grafting expect.
+
+  Updated file
+
+  - internal/rcsmodel/model.go
+
+  Next step (needed for correctness)
+
+  - The branch chain builder should ideally mirror cvs_master_branch_build behavior more
+    closely, including:
+      - the “starts” handling for branch roots
+      - the date-order fixups (cvs_master_branch_build’s monotonic timestamp adjustments)
+      - avoiding duplicate commit reuse across branches if SameBranch logic is too permissive
+
+  If you want, I’ll add the date monotonicity fixups next (straight port), then refine branch
+  chain selection to match the nodehash traversal more closely.
+----
