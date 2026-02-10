@@ -16,6 +16,8 @@ type Commit struct {
 	Date     time.Time
 	Author   string
 	Log      string
+	Text     string
+	FileName string
 	Tail     bool
 }
 

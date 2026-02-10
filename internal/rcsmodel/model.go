@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	rcs "github.com/arran4/golang-rcs"
@@ -15,6 +16,7 @@ import (
 
 type Master struct {
 	Source   string
+	FileName string
 	Heads    []*symbols.Head
 	Symbols  []symbols.Symbol
 	Versions []symbols.Version
@@ -28,14 +30,17 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 	for _, rc := range file.RevisionContents {
 		contents[rc.Revision] = rc
 	}
+	fileName := exportName(source)
 	for _, rh := range file.RevisionHeads {
 		num, err := cvsnum.Parse(rh.Revision)
 		if err != nil {
 			return nil, err
 		}
 		var log string
+		var text string
 		if rc, ok := contents[rh.Revision]; ok {
 			log = rc.Log
+			text = rc.Text
 		}
 		commits[rh.Revision] = &symbols.Commit{
 			Number:   num,
@@ -44,6 +49,8 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 			Date:     rh.Date,
 			Author:   rh.Author,
 			Log:      log,
+			Text:     text,
+			FileName: fileName,
 		}
 	}
 
@@ -77,6 +84,7 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 
 	return &Master{
 		Source:   source,
+		FileName: fileName,
 		Heads:    branchHeads,
 		Symbols:  sym,
 		Versions: versions,
@@ -183,6 +191,22 @@ func lastCommit(head *symbols.Commit) *symbols.Commit {
 		c = c.Parent
 	}
 	return c
+}
+
+func exportName(source string) string {
+	path := source
+	if idx := strings.Index(path, "/module/"); idx >= 0 {
+		path = path[idx+len("/module/"):]
+	}
+	path = strings.ReplaceAll(path, "/Attic/", "/")
+	path = strings.ReplaceAll(path, "/RCS/", "/")
+	if strings.HasSuffix(path, ",v") {
+		path = strings.TrimSuffix(path, ",v")
+	}
+	if strings.HasSuffix(path, ".cvsignore") {
+		path = strings.TrimSuffix(path, ".cvsignore") + ".gitignore"
+	}
+	return path
 }
 
 func onBranch(rev, branch cvsnum.Number) bool {

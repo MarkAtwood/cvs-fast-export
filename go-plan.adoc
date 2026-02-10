@@ -787,3 +787,62 @@ I added commit metadata wiring and a minimal collation skeleton, then integrated
     (e.g., tests/basic.repo).
 ----
 
+Do that.
+
+----
+  Added a minimal fast‑import emitter and wired it to emit commits for a single branch (first
+  branch in the repo list). This lets us start producing output for diffing.
+
+  What’s new
+
+  - internal/export/fastimport.go: minimal emitter that outputs commit headers, author/
+    committer, and message. No file ops/blobs yet.
+  - internal/collate.CommitsForBranch: helper to flatten commits newest→oldest.
+  - cmd/cvs-fast-export now builds the repo and emits the first branch to stdout.
+
+  Files added/updated
+
+  - internal/export/fastimport.go
+  - internal/collate/collate.go
+  - cmd/cvs-fast-export/main.go
+
+  Note: This is still incomplete; it intentionally doesn’t emit file operations. It’s enough
+  to validate commit ordering and coalescing behavior.
+
+  If you want, I can target tests/basic.repo next and add minimal file ops (e.g., fake M 644
+  inline or placeholder blobs) to validate ordering against the C
+  output.
+----
+
+Do that.
+
+----
+dded minimal file‑ops emission to the fast‑import output, wired content and file paths
+  into the commit model, and added a basic path normalization that should work for tests/
+  basic.repo.
+
+  What’s new
+
+  - symbols.Commit now carries Text and FileName.
+  - rcsmodel.BuildMaster populates Text from RevisionContents and computes an export name:
+      - strips /module/ prefix if present
+      - removes /Attic/ and /RCS/
+      - strips trailing ,v
+      - renames .cvsignore → .gitignore
+  - internal/export now emits:
+      - blob for each file commit
+      - M 100644 :<blob> <path> in the commit body
+  - Logs and blob data use byte length, with minimal defaults when empty.
+
+  Files updated
+
+  - internal/symbols/resolve.go
+  - internal/rcsmodel/model.go
+  - internal/export/fastimport.go
+
+  This should let you run a small test case (e.g., tests/basic.tst / basic.repo) and get a
+  non‑empty stream to start comparing with the C output.
+
+  If you want, I can run tests/basic.tst and show the Go output vs the C output using cmd/
+  cfe-compare, or just leave it for you to run.
+----

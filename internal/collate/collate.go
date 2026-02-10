@@ -50,6 +50,15 @@ func Build(masters []*rcsmodel.Master, opts Options) *Repo {
 	return repo
 }
 
+// CommitsForBranch flattens commits from newest to oldest for a branch.
+func CommitsForBranch(branch *GitBranch) []*GitCommit {
+	var out []*GitCommit
+	for c := branch.Head; c != nil; c = c.Parent {
+		out = append(out, c)
+	}
+	return out
+}
+
 func collectBranches(masters []*rcsmodel.Master) map[string]*GitBranch {
 	byName := make(map[string]*GitBranch)
 	for _, m := range masters {
