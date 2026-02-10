@@ -46,17 +46,34 @@ func (e *Emitter) EmitRepo(repo *collate.Repo) error {
 	}
 	commits := collectCommits(repo)
 	markMap := make(map[*collate.GitCommit]int)
-	state := make(map[string]map[string]string)
+	state := make(map[string]map[string]fileState)
 	emittedTags := make(map[string]struct{})
-	tagNames := make([]string, 0, len(e.tagTargets))
-	for name := range e.tagTargets {
-		tagNames = append(tagNames, name)
+	tagNames := append([]string(nil), repo.TagOrder...)
+	if len(tagNames) == 0 {
+		tagNames = make([]string, 0, len(e.tagTargets))
+		for name := range e.tagTargets {
+			tagNames = append(tagNames, name)
+		}
+		sort.Strings(tagNames)
+	} else if len(tagNames) != len(e.tagTargets) {
+		seen := make(map[string]struct{}, len(tagNames))
+		for _, name := range tagNames {
+			seen[name] = struct{}{}
+		}
+		var extra []string
+		for name := range e.tagTargets {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			extra = append(extra, name)
+		}
+		sort.Strings(extra)
+		tagNames = append(tagNames, extra...)
 	}
-	sort.Strings(tagNames)
 	for i, c := range commits {
 		prevState := state[c.RefName]
 		if prevState == nil {
-			prevState = map[string]string{}
+			prevState = map[string]fileState{}
 		}
 		parentMark := 0
 		if c.Parent != nil {
@@ -126,7 +143,7 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 	}
 	for _, op := range ops {
 		if op.kind == 'M' {
-			fmt.Fprintf(e.w, "M 100644 :%d %s\n", op.mark, op.path)
+			fmt.Fprintf(e.w, "M 100%o :%d %s\n", op.mode, op.mark, op.path)
 		} else if op.kind == 'D' {
 			fmt.Fprintf(e.w, "D %s\n", op.path)
 		}
@@ -168,10 +185,16 @@ type fileOp struct {
 	path string
 	text string
 	mark int
+	mode int
 }
 
-func buildOps(prev map[string]string, files []*symbols.Commit) ([]*fileOp, map[string]string) {
-	next := make(map[string]string, len(prev))
+type fileState struct {
+	text string
+	mode int
+}
+
+func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, map[string]fileState) {
+	next := make(map[string]fileState, len(prev))
 	for k, v := range prev {
 		next[k] = v
 	}
@@ -188,7 +211,11 @@ func buildOps(prev map[string]string, files []*symbols.Commit) ([]*fileOp, map[s
 		if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
 			text = cvsIgnores + text
 		}
-		next[path] = text
+		mode := f.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		next[path] = fileState{text: text, mode: mode}
 	}
 
 	var paths []string
@@ -217,15 +244,15 @@ func buildOps(prev map[string]string, files []*symbols.Commit) ([]*fileOp, map[s
 		case okOld && !okNew:
 			ops = append(ops, &fileOp{kind: 'D', path: p})
 		case !okOld && okNew:
-			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv})
-		case okOld && okNew && old != newv:
-			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv})
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode})
+		case okOld && okNew && (old.text != newv.text || old.mode != newv.mode):
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode})
 		}
 	}
 	return ops, next
 }
 
-func tagMatchesState(targets []*symbols.Commit, state map[string]string) bool {
+func tagMatchesState(targets []*symbols.Commit, state map[string]fileState) bool {
 	if len(targets) == 0 {
 		return false
 	}
@@ -239,7 +266,14 @@ func tagMatchesState(targets []*symbols.Commit, state map[string]string) bool {
 			want = cvsIgnores + want
 		}
 		got, ok := state[path]
-		if !ok || got != want {
+		if !ok {
+			return false
+		}
+		mode := t.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		if got.text != want || got.mode != mode {
 			return false
 		}
 	}

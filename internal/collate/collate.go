@@ -37,6 +37,7 @@ type Repo struct {
 	CommitOf   map[*symbols.Commit]*GitCommit
 	ByNumber   map[string]*GitCommit
 	TagTargets map[string][]*symbols.Commit
+	TagOrder   []string
 }
 
 func Build(masters []*rcsmodel.Master, opts Options) *Repo {
@@ -138,8 +139,10 @@ func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf 
 	if opts.TrustCommitIDs {
 		group := make(map[string]*GitCommit)
 		var order []*GitCommit
+		var noID []*symbols.Commit
 		for _, c := range commits {
 			if c.CommitID == "" {
+				noID = append(noID, c)
 				continue
 			}
 			g := group[c.CommitID]
@@ -161,6 +164,37 @@ func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf 
 			}
 			commitOf[c] = g
 			byNumber[cvsnum.String(c.Number)] = g
+		}
+		if len(noID) > 0 {
+			sort.Slice(noID, func(i, j int) bool {
+				if !noID[i].Date.Equal(noID[j].Date) {
+					return noID[i].Date.Before(noID[j].Date)
+				}
+				if noID[i].FileName != noID[j].FileName {
+					return compare.PathDeepCompare(noID[i].FileName, noID[j].FileName) < 0
+				}
+				return cvsnum.Compare(noID[i].Number, noID[j].Number) < 0
+			})
+			var prev *GitCommit
+			for _, c := range noID {
+				if prev != nil && commitsMatch(prev, c, opts) {
+					prev.Files = append(prev.Files, c)
+					commitOf[c] = prev
+					byNumber[cvsnum.String(c.Number)] = prev
+					continue
+				}
+				g := &GitCommit{
+					Date:    c.Date,
+					Author:  c.Author,
+					Log:     c.Log,
+					Files:   []*symbols.Commit{c},
+					RefName: branch,
+				}
+				prev = g
+				order = append(order, g)
+				commitOf[c] = g
+				byNumber[cvsnum.String(c.Number)] = g
+			}
 		}
 		sort.Slice(order, func(i, j int) bool {
 			if !order[i].Date.Equal(order[j].Date) {
@@ -200,10 +234,15 @@ func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf 
 
 func collectTags(masters []*rcsmodel.Master, repo *Repo) {
 	seen := make(map[string]map[*symbols.Commit]struct{})
+	seenOrder := make(map[string]struct{})
 	for _, m := range masters {
 		for _, t := range m.Tags {
 			if t.Commit == nil {
 				continue
+			}
+			if _, ok := seenOrder[t.Name]; !ok {
+				repo.TagOrder = append([]string{t.Name}, repo.TagOrder...)
+				seenOrder[t.Name] = struct{}{}
 			}
 			set := seen[t.Name]
 			if set == nil {

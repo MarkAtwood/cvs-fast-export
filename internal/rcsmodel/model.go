@@ -2,6 +2,7 @@
 package rcsmodel
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"sort"
@@ -24,13 +25,21 @@ type Master struct {
 	Root     *symbols.Commit
 }
 
-func BuildMaster(source string, file *rcs.File) (*Master, error) {
+func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
+	info, err := os.Stat(source)
+	if err != nil {
+		return nil, err
+	}
+	fileMode := 0644
+	if info.Mode()&0100 != 0 {
+		fileMode = 0755
+	}
 	commits := make(map[string]*symbols.Commit, len(file.RevisionHeads))
 	contents := make(map[string]*rcs.RevisionContent, len(file.RevisionContents))
 	for _, rc := range file.RevisionContents {
 		contents[rc.Revision] = rc
 	}
-	fileName := exportName(source)
+	fileName := exportName(source, striplen)
 	fulltext, err := reconstructTexts(file, contents)
 	if err != nil {
 		return nil, err
@@ -43,7 +52,7 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 		var log string
 		var text string
 		if rc, ok := contents[rh.Revision]; ok {
-			log = rc.Log
+			log = normalizeLog(rc.Log, file.Description)
 			text = fulltext[rh.Revision]
 		}
 		commits[rh.Revision] = &symbols.Commit{
@@ -55,6 +64,7 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 			Log:      log,
 			Text:     text,
 			FileName: fileName,
+			Mode:     fileMode,
 		}
 	}
 
@@ -78,7 +88,33 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 	branchHeads, root := buildBranchHeads(commits, versions)
 
 	var sym []symbols.Symbol
+	seen := make(map[string]struct{}, len(file.SymbolMap))
+	if len(symbolOrder) > 0 {
+		for i := len(symbolOrder) - 1; i >= 0; i-- {
+			name := symbolOrder[i]
+			rev, ok := file.SymbolMap[name]
+			if !ok {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			name = sanitizeSymbolName(name)
+			if name == "" {
+				return nil, fmt.Errorf("symbol name empty after sanitization")
+			}
+			n, err := cvsnum.Parse(rev)
+			if err != nil {
+				return nil, err
+			}
+			sym = append(sym, symbols.Symbol{Name: name, Number: n})
+		}
+	}
 	for name, rev := range file.SymbolMap {
+		if _, ok := seen[name]; ok {
+			continue
+		}
 		name = sanitizeSymbolName(name)
 		if name == "" {
 			return nil, fmt.Errorf("symbol name empty after sanitization")
@@ -201,26 +237,39 @@ func lastCommit(head *symbols.Commit) *symbols.Commit {
 	return c
 }
 
-func exportName(source string) string {
+func exportName(source string, striplen int) string {
 	path := source
-	if idx := strings.Index(path, "/module/"); idx >= 0 {
-		path = path[idx+len("/module/"):]
+	if striplen > 0 && striplen < len(path) {
+		path = path[striplen:]
+	} else if striplen >= len(path) {
+		path = ""
 	}
-	path = strings.ReplaceAll(path, "/Attic/", "/")
-	path = strings.ReplaceAll(path, "/RCS/", "/")
-	if strings.HasPrefix(path, "Attic/") {
-		path = strings.TrimPrefix(path, "Attic/")
+	parts := strings.Split(path, "/")
+	cleaned := make([]string, 0, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		isLast := i == len(parts)-1
+		if !isLast {
+			if part == "Attic" || part == "RCS" {
+				continue
+			}
+		} else {
+			if strings.HasSuffix(part, ",v") {
+				part = strings.TrimSuffix(part, ",v")
+			}
+			if strings.HasSuffix(part, ".cvsignore") {
+				part = strings.TrimSuffix(part, ".cvsignore") + ".gitignore"
+			}
+		}
+		cleaned = append(cleaned, part)
 	}
-	if strings.HasPrefix(path, "RCS/") {
-		path = strings.TrimPrefix(path, "RCS/")
-	}
-	if strings.HasSuffix(path, ",v") {
-		path = strings.TrimSuffix(path, ",v")
-	}
-	if strings.HasSuffix(path, ".cvsignore") {
-		path = strings.TrimSuffix(path, ".cvsignore") + ".gitignore"
-	}
-	return path
+	return strings.Join(cleaned, "/")
+}
+
+func ExportName(source string, striplen int) string {
+	return exportName(source, striplen)
 }
 
 func sanitizeSymbolName(s string) string {
@@ -317,8 +366,14 @@ func nextRevisionOf(file *rcs.File, rev string) string {
 func applyDelta(text, delta string) (string, error) {
 	lines, trailing := splitLinesForDelta(text)
 	commands := splitLines(delta)
-	i := 0
-	for i < len(commands) {
+	type deltaOp struct {
+		op    byte
+		start int
+		count int
+		lines []string
+	}
+	var ops []deltaOp
+	for i := 0; i < len(commands); {
 		cmd := commands[i]
 		if cmd == "" {
 			i++
@@ -335,25 +390,34 @@ func applyDelta(text, delta string) (string, error) {
 		}
 		switch op {
 		case 'd':
-			if start < 1 || start-1+count > len(lines) {
-				return "", fmt.Errorf("delta delete out of range")
-			}
-			lines = append(lines[:start-1], lines[start-1+count:]...)
+			ops = append(ops, deltaOp{op: 'd', start: start, count: count})
 			i++
 		case 'a':
-			if start < 0 {
-				return "", fmt.Errorf("delta add out of range")
-			}
-			if start > len(lines) {
-				start = len(lines)
-			}
 			if i+count >= len(commands) {
 				return "", fmt.Errorf("delta add missing lines")
 			}
 			add := commands[i+1 : i+1+count]
-			pos := start
-			lines = append(lines[:pos], append(add, lines[pos:]...)...)
+			ops = append(ops, deltaOp{op: 'a', start: start, count: count, lines: add})
 			i += 1 + count
+		}
+	}
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		switch op.op {
+		case 'd':
+			if op.start < 1 || op.start-1+op.count > len(lines) {
+				return "", fmt.Errorf("delta delete out of range")
+			}
+			lines = append(lines[:op.start-1], lines[op.start-1+op.count:]...)
+		case 'a':
+			if op.start < 0 {
+				return "", fmt.Errorf("delta add out of range")
+			}
+			pos := op.start
+			if pos > len(lines) {
+				pos = len(lines)
+			}
+			lines = append(lines[:pos], append(op.lines, lines[pos:]...)...)
 		}
 	}
 	return joinLinesWithTrailing(lines, trailing), nil
@@ -400,6 +464,16 @@ func joinLinesWithTrailing(lines []string, trailing bool) string {
 	return out
 }
 
+func normalizeLog(log, desc string) string {
+	if log != "Initial revision\n" {
+		return log
+	}
+	if len(desc) == 0 {
+		return "*** empty log message ***\n"
+	}
+	return desc
+}
+
 func branchParent(rev string) string {
 	n, err := cvsnum.Parse(rev)
 	if err != nil {
@@ -437,15 +511,56 @@ func normalizeBranch(n cvsnum.Number) cvsnum.Number {
 	return n
 }
 
-func LoadFile(path string) (*rcs.File, error) {
-	f, err := os.Open(path)
+func LoadFile(path string) (*rcs.File, []string, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer f.Close()
-	rcsFile, err := rcs.ParseFile(f)
+	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return rcsFile, nil
+	return rcsFile, parseSymbolOrder(string(data)), nil
+}
+
+func parseSymbolOrder(data string) []string {
+	lines := strings.Split(data, "\n")
+	inSymbols := false
+	var names []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inSymbols {
+			if strings.HasPrefix(trimmed, "symbols") {
+				rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "symbols"))
+				if rest != "" {
+					names = append(names, parseSymbolTokens(rest)...)
+					if strings.Contains(rest, ";") {
+						break
+					}
+					inSymbols = true
+					continue
+				}
+				inSymbols = true
+			}
+			continue
+		}
+		names = append(names, parseSymbolTokens(trimmed)...)
+		if strings.Contains(line, ";") {
+			break
+		}
+	}
+	return names
+}
+
+func parseSymbolTokens(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ';'
+	})
+	var names []string
+	for _, f := range fields {
+		if idx := strings.IndexByte(f, ':'); idx > 0 {
+			names = append(names, f[:idx])
+		}
+	}
+	return names
 }
