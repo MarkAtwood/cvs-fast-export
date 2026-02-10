@@ -3,6 +3,7 @@ package symbols
 
 import (
 	"fmt"
+	"time"
 
 	"thyrsus.com/cvs-fast-export/internal/cvsnum"
 )
@@ -12,6 +13,9 @@ type Commit struct {
 	Parent   *Commit
 	Dead     bool
 	CommitID string
+	Date     time.Time
+	Author   string
+	Log      string
 	Tail     bool
 }
 

@@ -632,3 +632,158 @@ Continue.
   If you want, I’ll add the date monotonicity fixups next (straight port), then refine branch
   chain selection to match the nodehash traversal more closely.
 ----
+
+Continue.
+
+----
+Added the per-branch date monotonicity adjustment (ported from cvs_master_branch_build) and
+  wired commit timestamps into the model.
+
+  Changes
+
+  - internal/rcsmodel now copies RevisionHead.Date into each commit.
+  - buildBranchChain now calls adjustDates to enforce monotonic timestamps.
+  - symbols.Commit now carries Date for the adjustment logic.
+
+  Files updated
+
+  - internal/rcsmodel/model.go
+  - internal/symbols/resolve.go
+
+  Next step
+
+  - Tighten branch-chain selection to match the C nodehash traversal more closely (the
+    current SameBranch scan may include commits that the C code would skip). That likely
+    needs an explicit branch iteration based on CVS numbering (e.g., walking branch suffixes)
+    rather than SameBranch alone.
+----
+
+Continue,
+
+----
+  Tightened branch-chain selection to more closely match the branch‑specific traversal:
+  buildBranchChain now uses an explicit onBranch predicate instead of SameBranch, using
+  normalized branch numbers (even-length) and comparing all but the final component.
+
+  Updated file
+
+  - internal/rcsmodel/model.go
+
+  This narrows branch membership, reducing the risk of pulling in revisions from sibling
+  branches.
+
+  Next step
+
+  - Add a quick self-check (maybe behind --dump-heads) that logs the computed branch chain
+    lengths and head numbers for a known test repo (e.g. tests/twobranch.repo) to compare
+    with the C tool’s verbose output.
+----
+
+Proceed.
+
+----
+  Added chain-length dumping under --dump-heads. It now prints both head info and chain
+  lengths for each head to help compare with the C tool’s verbose output.
+
+  Updated file
+
+  - cmd/cvs-fast-export/main.go
+
+  Example
+
+  - find tests/twobranch.repo/module -name '*,v' | go run ./cmd/cvs-fast-export --dump-heads
+
+  Next step: If you want, I can add a --dump-branches mode that prints the actual per-branch
+  CVS numbers in order (not just length) for tighter diffs with the C tool.
+----
+
+Do that.
+
+----
+Added --dump-branches to print the full per-branch revision chain (newest to oldest) for
+  each head.
+
+  Updated file
+
+  - cmd/cvs-fast-export/main.go
+
+  Usage
+
+  - go run ./cmd/cvs-fast-export --dump-branches path/to/file,v
+  - Or pipe a list: find tests/twobranch.repo/module -name '*,v' | go run ./cmd/cvs-fast-
+    export --dump-branches
+
+  Want me to make the output order deterministic across heads (e.g., sort by head name)
+  before printing?
+----
+
+Yes.
+
+----
+Made --dump-branches deterministic by sorting heads by RefName before printing.
+
+  Updated file
+
+  - cmd/cvs-fast-export/main.go
+
+  Anything else you want dumped (e.g., parent head name + number per
+  branch line)?
+----
+
+Let's see how the code works before adding more instrumentation.
+What is the next implementation step?
+
+----
+Next step is to build the real CVS changeset collation pipeline so we can start emitting
+  fast‑import and comparing output. Concretely:
+
+  1. Implement a minimal in‑memory model of per‑file commits with author/log/date (from
+     golang-rcs) and feed that into a Go port of collate.c:
+      - commit matching rules (commitid / author+log+time window)
+      - branch grouping by label across masters
+      - gitspace commit construction
+  2. Add a thin fast‑import emitter (blobs + commits, no tags yet) just to start producing
+     stream output for comparison.
+
+  Once the skeleton is in, we can run cmd/cfe-check and iteratively align output.
+
+  If you want me to proceed, I’ll start by adding commit metadata and log text to the model,
+  then stub the collate package with the commit‑matching logic and a
+  basic DAG builder.
+----
+
+Do it.
+
+----
+I added commit metadata wiring and a minimal collation skeleton, then integrated it into
+  the Go binary.
+
+  What’s new
+
+  - symbols.Commit now carries Author and Log.
+  - rcsmodel.BuildMaster populates Author, Log, and tracks a Root commit.
+  - Added internal/collate with a minimal Build:
+      - branch collection by label
+      - simple per-branch commit coalescing using commitid or (author+log+time window)
+  - cmd/cvs-fast-export now builds masters and runs collate.Build (still emits no fast‑import
+    yet).
+
+  Files added/updated
+
+  - internal/collate/collate.go
+  - internal/rcsmodel/model.go
+  - internal/symbols/resolve.go
+  - cmd/cvs-fast-export/main.go
+
+  Notes
+
+  - This is a skeleton; it doesn’t yet implement the full branch parent toposort or exact
+    clique logic, but it’s enough to start threading commits through the pipeline.
+
+  Next step
+
+  - Add a minimal fast‑import emitter for blobs/commits, even if limited to a single branch,
+    so we can start comparing output with C for a tiny test case
+    (e.g., tests/basic.repo).
+----
+
