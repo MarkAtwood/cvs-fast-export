@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
 	rcs "github.com/arran4/golang-rcs"
 
@@ -31,6 +30,10 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 		contents[rc.Revision] = rc
 	}
 	fileName := exportName(source)
+	fulltext, err := reconstructTexts(file, contents)
+	if err != nil {
+		return nil, err
+	}
 	for _, rh := range file.RevisionHeads {
 		num, err := cvsnum.Parse(rh.Revision)
 		if err != nil {
@@ -40,7 +43,7 @@ func BuildMaster(source string, file *rcs.File) (*Master, error) {
 		var text string
 		if rc, ok := contents[rh.Revision]; ok {
 			log = rc.Log
-			text = rc.Text
+			text = fulltext[rh.Revision]
 		}
 		commits[rh.Revision] = &symbols.Commit{
 			Number:   num,
@@ -207,6 +210,129 @@ func exportName(source string) string {
 		path = strings.TrimSuffix(path, ".cvsignore") + ".gitignore"
 	}
 	return path
+}
+
+func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) (map[string]string, error) {
+	out := make(map[string]string, len(contents))
+	if file.Head == "" {
+		return out, nil
+	}
+	head := file.Head
+	headContent, ok := contents[head]
+	if !ok {
+		return out, nil
+	}
+	current := headContent.Text
+	out[head] = current
+
+	next := nextRevisionOf(file, head)
+	for next != "" {
+		delta := contents[next].Text
+		var err error
+		current, err = applyDelta(current, delta)
+		if err != nil {
+			return nil, err
+		}
+		out[next] = current
+		next = nextRevisionOf(file, next)
+	}
+	return out, nil
+}
+
+func nextRevisionOf(file *rcs.File, rev string) string {
+	for _, rh := range file.RevisionHeads {
+		if rh.Revision == rev {
+			return rh.NextRevision
+		}
+	}
+	return ""
+}
+
+// applyDelta applies an RCS reverse delta to the newer text, producing older text.
+func applyDelta(text, delta string) (string, error) {
+	lines, trailing := splitLinesForDelta(text)
+	commands := splitLines(delta)
+	i := 0
+	for i < len(commands) {
+		cmd := commands[i]
+		if cmd == "" {
+			i++
+			continue
+		}
+		if cmd[0] != 'a' && cmd[0] != 'd' {
+			return "", fmt.Errorf("invalid delta command: %q", cmd)
+		}
+		var start, count int
+		var op byte
+		_, err := fmt.Sscanf(cmd, "%c%d %d", &op, &start, &count)
+		if err != nil {
+			return "", fmt.Errorf("parse delta %q: %w", cmd, err)
+		}
+		switch op {
+		case 'd':
+			if start < 1 || start-1+count > len(lines) {
+				return "", fmt.Errorf("delta delete out of range")
+			}
+			lines = append(lines[:start-1], lines[start-1+count:]...)
+			i++
+		case 'a':
+			if start < 0 {
+				return "", fmt.Errorf("delta add out of range")
+			}
+			if start > len(lines) {
+				start = len(lines)
+			}
+			if i+count >= len(commands) {
+				return "", fmt.Errorf("delta add missing lines")
+			}
+			add := commands[i+1 : i+1+count]
+			pos := start
+			lines = append(lines[:pos], append(add, lines[pos:]...)...)
+			i += 1 + count
+		}
+	}
+	return joinLinesWithTrailing(lines, trailing), nil
+}
+
+func splitLines(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, "\n")
+	// Preserve trailing empty line if original ended with newline.
+	if strings.HasSuffix(s, "\n") {
+		return parts
+	}
+	return parts
+}
+
+func joinLines(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+
+func splitLinesForDelta(s string) ([]string, bool) {
+	trailing := strings.HasSuffix(s, "\n")
+	if trailing {
+		s = strings.TrimSuffix(s, "\n")
+	}
+	if s == "" {
+		return []string{}, trailing
+	}
+	return strings.Split(s, "\n"), trailing
+}
+
+func joinLinesWithTrailing(lines []string, trailing bool) string {
+	if len(lines) == 0 {
+		if trailing {
+			return "\n"
+		}
+		return ""
+	}
+	out := strings.Join(lines, "\n")
+	if trailing {
+		out += "\n"
+	}
+	return out
 }
 
 func onBranch(rev, branch cvsnum.Number) bool {

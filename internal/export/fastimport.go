@@ -5,15 +5,20 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"time"
 
 	"thyrsus.com/cvs-fast-export/internal/collate"
+	"thyrsus.com/cvs-fast-export/internal/compare"
+	"thyrsus.com/cvs-fast-export/internal/symbols"
 )
 
 type Emitter struct {
 	w     *bufio.Writer
 	mark  int
 	epoch int64
+	didIg bool
 }
 
 func NewEmitter(w io.Writer) *Emitter {
@@ -35,17 +40,19 @@ func (e *Emitter) EmitBranch(branch *collate.GitBranch) error {
 		return nil
 	}
 	commits := collate.CommitsForBranch(branch)
+	var parentMark int
 	for i := len(commits) - 1; i >= 0; i-- {
-		if err := e.emitCommit(branch.Name, commits[i]); err != nil {
+		mark, err := e.emitCommit(branch.Name, commits[i], parentMark)
+		if err != nil {
 			return err
 		}
+		parentMark = mark
 	}
+	fmt.Fprintln(e.w, "done")
 	return nil
 }
 
-func (e *Emitter) emitCommit(branch string, c *collate.GitCommit) error {
-	mark := e.mark
-	e.mark++
+func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int) (int, error) {
 	ref := branch
 	if ref == "" {
 		ref = "master"
@@ -56,29 +63,48 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit) error {
 		when = e.epoch
 	}
 
-	fmt.Fprintf(e.w, "commit refs/heads/%s\n", ref)
-	fmt.Fprintf(e.w, "mark :%d\n", mark)
-	if c.Author == "" {
-		c.Author = "cvs-fast-export <unknown>"
-	}
-	fmt.Fprintf(e.w, "author %s %d +0000\n", c.Author, when)
-	fmt.Fprintf(e.w, "committer %s %d +0000\n", c.Author, when)
-	if c.Log == "" {
-		c.Log = "import\n"
-	}
-	fmt.Fprintf(e.w, "data %d\n%s\n", len(c.Log), c.Log)
-	for _, f := range c.Files {
+	files := append([]*symbols.Commit(nil), c.Files...)
+	sort.Slice(files, func(i, j int) bool {
+		return compare.PathDeepCompare(files[i].FileName, files[j].FileName) < 0
+	})
+	blobMarks := make([]int, len(files))
+	for i, f := range files {
 		if f.Dead {
 			continue
 		}
-		blobMark := e.emitBlob(f.Text)
+		blobMarks[i] = e.emitBlob(f.Text)
+	}
+
+	mark := e.mark
+	e.mark++
+	fmt.Fprintf(e.w, "commit refs/heads/%s\n", ref)
+	fmt.Fprintf(e.w, "mark :%d\n", mark)
+	ident := formatIdent(c.Author)
+	fmt.Fprintf(e.w, "committer %s %d +0000\n", ident, when)
+	if c.Log == "" {
+		c.Log = "import\n"
+	}
+	fmt.Fprintf(e.w, "data %d\n%s", len(c.Log), c.Log)
+	if parentMark > 0 {
+		fmt.Fprintf(e.w, "from :%d\n", parentMark)
+	}
+	for i, f := range files {
+		if f.Dead {
+			continue
+		}
 		path := f.FileName
 		if path == "" {
 			path = "UNKNOWN"
 		}
-		fmt.Fprintf(e.w, "M 100644 :%d %s\n", blobMark, path)
+		fmt.Fprintf(e.w, "M 100644 :%d %s\n", blobMarks[i], path)
 	}
-	return nil
+	if !e.didIg {
+		fmt.Fprintln(e.w, "M 100644 inline .gitignore")
+		fmt.Fprintf(e.w, "data %d\n%s\n", len(cvsIgnores), cvsIgnores)
+		e.didIg = true
+	}
+	fmt.Fprintln(e.w)
+	return mark, nil
 }
 
 func (e *Emitter) emitBlob(text string) int {
@@ -91,3 +117,43 @@ func (e *Emitter) emitBlob(text string) int {
 	fmt.Fprintf(e.w, "data %d\n%s\n", len(text), text)
 	return mark
 }
+
+func formatIdent(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "cvs-fast-export <unknown>"
+	}
+	if strings.Contains(name, "<") {
+		return name
+	}
+	return fmt.Sprintf("%s <%s>", name, name)
+}
+
+const cvsIgnores = "# CVS default ignores begin\n" +
+	"tags\n" +
+	"TAGS\n" +
+	".make.state\n" +
+	".nse_depinfo\n" +
+	"*~\n" +
+	"\\#*\n" +
+	".#*\n" +
+	",*\n" +
+	"_$*\n" +
+	"*$\n" +
+	"*.old\n" +
+	"*.bak\n" +
+	"*.BAK\n" +
+	"*.orig\n" +
+	"*.rej\n" +
+	".del-*\n" +
+	"*.a\n" +
+	"*.olb\n" +
+	"*.o\n" +
+	"*.obj\n" +
+	"*.so\n" +
+	"*.exe\n" +
+	"*.Z\n" +
+	"*.elc\n" +
+	"*.ln\n" +
+	"core\n" +
+	"# CVS default ignores end\n"

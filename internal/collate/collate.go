@@ -107,10 +107,9 @@ func collateBranch(heads []*symbols.Head, opts Options) *GitCommit {
 		}
 	}
 	sort.Slice(commits, func(i, j int) bool {
-		return cvsnum.Compare(commits[i].Number, commits[j].Number) > 0
+		return cvsnum.Compare(commits[i].Number, commits[j].Number) < 0
 	})
 
-	var ghead *GitCommit
 	var prev *GitCommit
 	for _, c := range commits {
 		if c.Dead {
@@ -126,11 +125,10 @@ func collateBranch(heads []*symbols.Head, opts Options) *GitCommit {
 			Log:    c.Log,
 			Files:  []*symbols.Commit{c},
 		}
-		g.Parent = ghead
-		ghead = g
+		g.Parent = prev
 		prev = g
 	}
-	return ghead
+	return prev
 }
 
 func commitsMatch(g *GitCommit, c *symbols.Commit, opts Options) bool {
