@@ -1,11 +1,10 @@
 = Go translation plan
 
-The cvs-fast-export codebase is complex to yje point of near
-unmauntainability, and prone to flaky bugs resfrom heap corruption
+The cvs-fast-export codebase is complex to the point of near
+unmaintainability, and prone to flaky bugs from heap corruption
 and stack-smashing.  One way to address this would be to translate it
 to Go, which has similar syntax and types but handles dynamic
-allcation more gracefully. This might be practical with LLm
-assistance.
+allocation more gracefully.
 
 Helpfully, we on't have too write most of the first stage, because
 this exists: https://github.com/arran4/golang-rcs
@@ -27,6 +26,7 @@ type RevisionHead struct {
 	State        string
 	Branches     []string
 	NextRevision string
+	CommitID     string
 }
 
 type RevisionContent struct {
@@ -52,45 +52,322 @@ type File struct {
 	RevisionContents []*RevisionContent
 ----
 
-The first question: Given that we can deserialize a tree of masters
-into these structures, is it practucal to translate the later stages
-of cvs-fast-export to Go?
+Read the rcs-fast-export code. Assume that we have reliable
+deserialization of RCS masters into these structures (we don't, yet,
+but I've sent the maintainer my test suite).
 
-chatGPT 5.2 says:
+Notice that the deserialization does revision assembly from deltas.
+Also notice that we have a good set of test loads in my suite.
 
-Yes, it’s practical—with caveats.
+Develop a plan for translating the rest of cvs-fast-export into Go
+code. The objective will be met when I can set CVS_FAST_EXPORT
+in tests/Makefile to the name of a Go binary and the tests pass.
 
-Given a reliable RCS parser that yields the File/RevisionHead/RevisionContent
-structures, the later stages of cvs-fast-export are mostly:
+You are not required to one-shot this, and should ask me
+questions if you need a tighter specification. Duiscuss
+areas of difficulty.
 
-  - building per‑file commit chains,
-  - collating revisions into changesets by time/author/log/commitid,
-  - building branch/tag graphs,
-  - emitting fast‑import streams.
+ChatGPT-5.2 responds:
 
-Those are algorithmic/data‑structure problems, well within Go’s strengths.
+----
+Got it. Treating go-plan.adoc as the prompt.
 
-However, there are two important caveats:
+  Here’s a concrete translation plan and the main risk areas, plus a few questions to
+  tighten scope. I’ll keep it aligned with the goal: drop‑in Go binary that passes tests/
+  Makefile when CVS_FAST_EXPORT points to it.
 
-  1. Semantic parity risk
-     The collation logic in collate.c, revcvs.c, export.c is full of edge‑case handling
-     and historical CVS weirdness. Porting that logic is feasible, but it’s not a
-     “mechanical” translation; you’ll need strong regression tests. Without those, a Go
-     rewrite will likely introduce subtle behavior differences.
-  2. Data shape mismatch
-     The golang-rcs model gives you log/content as fulltext, not deltas + per‑revision
-     metadata structured exactly like the C pipeline uses. You’ll need to map its
-     RevisionHead/RevisionContent into the internal representations that cvs-fast-export
-     uses (revision number, parent links, branch numbers, commitids, dead/live, expand
-     mode, etc.). That’s doable, but requires careful cross‑checking with the C
-     semantics.
+  Plan
 
-Bottom line:
-It’s practical to translate the later stages to Go once you have a faithful RCS
-deserializer, but only if you invest in a strong test harness (golden fast‑import
-output or reposurgeon equivalence checks). The cost is not in parsing; it’s in
-preserving the CVS edge‑case semantics of changeset collation.
+  1. Map the current C architecture to Go packages
 
-We have a pretty good test suite in tests/.
+  - Identify the C program’s major subsystems: RCS ingestion, repository scan, revision
+    graph assembly, tag/branch handling, fast‑import emitter, and utilities (string pools,
+    hash, rbtree, etc.).
+  - In Go, split into packages: rcs (from golang-rcs), cvs (RCS→CVS model), graph, export,
+    util (hash/index), main (CLI + pipeline).
+  - Keep a minimal main loop matching the C binary’s invocation and output behavior.
 
-First step: build the equivlent to the C code's fromnt end.
+  2. Replace C data structures with Go equivalents
+
+  - Hash tables → map[string]*T and map[Key]Value.
+  - RB trees → slices + sort, or container/heap where order is dynamic.
+  - Object lifetimes → rely on GC; remove manual free logic.
+  - Static globals → package‑level vars or explicit state struct for testability.
+
+  3. Build the pipeline in Go, mirroring C behavior
+
+  - Parse CLI + environment exactly (flags, default values, help text, exit codes).
+  - Load RCS masters using golang-rcs (given in prompt).
+  - Convert to internal CVS graph objects: files, revisions, tags/branches, vendor branches,
+    trunk.
+  - Topologically order commits/changesets in the same way as C.
+  - Emit fast‑import stream matching existing output format.
+
+  4. Port algorithms incrementally with golden tests
+
+  - Stand up a “compatibility harness”: run Go and C on the same test loads, diff output.
+  - Start with smallest test loads to shake out differences in ordering, tagging, and mark
+    allocation.
+  - Gate each subsystem with a test case: symbols, branches, vendor branches, deletions,
+    renames, commit ordering, state handling, and keyword expansion rules if applicable.
+
+  5. Match subtle behavior (the hard part)
+
+  - Revision ordering, date ordering, tie-breaking, and deterministic traversal.
+  - Symbol handling: branch vs tag, use of :branch magic, conflicts.
+  - Merge of vendor branches; stickiness semantics.
+  - Path normalization, directory packing rules, and output quoting.
+  - Exact fast‑import syntax: blobs, commits, marks, and reset usage.
+
+  6. Final integration
+
+  - Make sure tests/Makefile uses the Go binary seamlessly.
+  - Document how to build/run; ensure return codes align with C for failures.
+
+  Areas of difficulty / risk
+
+  - Commit ordering: CVS fast‑export is very sensitive to exact ordering; even stable sort
+    differences can fail golden tests.
+  - Symbol resolution: tags vs branches, conflicts, and magic branches frequently have edge
+    cases.
+  - Tree packing or directory rules: if the C code encodes assumptions about path
+    compression, this is a minefield.
+  - Tree packing or directory rules: if the C code encodes assumptions about path
+    compression, this is a minefield.
+  - Date/time parsing and time zone handling: must be byte‑exact for output order.
+  - Mark allocation: any divergence in mark sequencing changes the stream and breaks
+    comparisons.
+  - Error behavior: tests may expect specific warnings or abort conditions.
+
+  Questions to tighten scope
+
+  1. Do you want strict output byte‑for‑byte parity with the C tool, or is semantic
+     equivalence acceptable if the fast‑import results are the same?
+  2. Should the Go rewrite preserve all CLI flags and diagnostics verbatim, or can we
+     simplify messages as long as exit status and output stream are correct?
+  3. Is it acceptable to reorder internal processing as long as the emitted stream is
+     identical to the C version?
+  4. Are there any C features you’re willing to drop or postpone (e.g., unusual keyword
+     expansion rules or obscure CVS edge cases)?
+
+  If you want, I can start by mapping the C files to subsystem responsibilities and draft a
+  concrete module‑by‑module porting order, then refine after we
+  clarify parity requirements
+----
+
+Answers:
+
+1. Semantic equivalence is acceptable as long as thre output
+fast-import streams are the same.
+
+2. Messages can be simplified as long as exit status and output stream
+are correct.
+
+3. It is acceptable to reorder internal processing and to change
+internal data structures as long as the emitted stream is
+identical to the C version. I would prefer an idiomatic, maintainable
+Go translation to a pedantic mimicry of the C.
+
+4. We need to handle the weirdest CVS edge cases; you can take the
+masters in tests/ as definitive. I might be willing to drop some C
+features if you assess that this is required, let's discuss that case
+byy case. As for keyword expansion, it wil be acceptable for the Go
+port to do none at all.
+
+----
+  Great, thanks. That gives enough to firm up the plan.
+
+  Here’s a tighter, idiomatic Go‑first plan aligned with “output stream identical” and
+  “tests/ masters are definitive.”
+
+  Refined approach
+
+  - Golden‑stream harness: For every test master in tests/, run the C tool to capture the
+    fast‑import stream, then compare the Go output byte‑for‑byte. This is the primary
+    oracle.
+  - Idiomatic core model: Build a Go domain model centered on File, Revision, Branch, Tag,
+    Change with explicit relationships; avoid direct C mimicry.
+  - Deterministic ordering layer: Centralize all ordering decisions (revision order, commit
+    order, path order, tag order) into a single module so we can tune it to match the C
+    outputs.
+  - Symbol/branch resolver: Implement symbol handling as its own unit; treat the tests’
+    masters as normative for all edge cases.
+  - Emission layer: Keep fast‑import writer logic separated and deterministic; guard against
+    non‑stable iteration on maps.
+
+  Likely drops / simplifications (aligned with your note)
+
+  - Keyword expansion: Skip entirely unless a test master proves it matters.
+  - Diagnostics parity: Reduced/simplified log output is fine as long as exit code and
+    stream match.
+
+  Risk hotspots to focus early
+
+  - Symbol conflict resolution rules and magic branches.
+  - Vendor branch handling and default branch selection.
+  - Ordering ties: timestamps, author, path, and branch order.
+
+  Suggested next step
+  I can produce a concrete module‑by‑module port order and a “compatibility harness” layout
+  (Makefile or Go test runner) that uses the C binary to generate golden streams.
+
+ Two quick clarifications to remove ambiguity:
+
+  1. Do you want the golden comparison built into tests/Makefile, or is a separate Go test
+     harness acceptable during development?
+  2. Should we aim to fully replicate the C tool’s exit codes on all errors, or just
+     “success vs failure” with the same exit status?
+----
+
+You have accurately identified the risk hotspots.
+Those are all things that show up in my bug reports.
+
+1. A separate Go test harness us acceptable during development.
+2. I only see 0 and 1 as exit codes in the C. Success vs, failure
+   will be fine.
+
+----
+  Great. I’ll proceed with a development plan that uses a separate Go harness and only 0/1
+  exit codes. Here’s a concrete port order and harness layout, tuned to the hotspots.
+
+  Port order (tight loop on output parity)
+
+  1. Fast‑import emitter (Go)
+      - Implement a minimal, deterministic writer: blob, commit, tag, reset, mark, file ops.
+      - Ensure no map iteration in emission paths; sort slices everywhere.
+  2. RCS ingest adapter (Go)
+      - Wrap golang-rcs structs into internal RCSFile and normalize times, authors, states.
+      - Create a deterministic list of revisions with their content/log from RevisionHeads +
+        RevisionContents.
+  3. Domain model + ordering layer (Go)
+      - Create internal Revision, Branch, Tag, ChangeSet, File.
+      - Centralize ordering decisions in a order.go module: time, path, branch, tie‑breaks.
+  4. Symbol/branch resolver (Go)
+      - Map SymbolMap + Branch fields into branch/tag graph.
+      - Implement magic branches and vendor branches as per tests.
+      - Ensure symbol conflict resolution is stable and deterministic.
+  5. ChangeSet assembly (Go)
+      - Group revisions into commits according to CVS semantics.
+      - This is where ordering is most likely to diverge—gate with goldens.
+  6. Main pipeline + CLI
+      - Flags/env parsing to match C behavior only where it affects output.
+      - Simple stderr logging and 0/1 exit codes.
+
+  Golden‑stream harness (dev‑only)
+
+  - A Go test runner (or cmd/compare) that:
+      - Invokes the C binary on each test master to capture stdout.
+      - Runs the Go binary and compares byte‑for‑byte.
+      - Prints first diff offset and a small hexdump window to speed debugging.
+
+  Compatibility strategy
+
+  - Once a test case passes, lock that behavior by adding it to a “known good” suite.
+  - For mismatches, adjust only the ordering layer or symbol resolver first; avoid ad‑hoc
+    changes elsewhere.
+
+  What I’ll do next (if you want me to start)
+
+  1. Inventory the C code into subsystems and map to Go packages.
+  2. Draft the Go module layout, including the compare harness.
+  3. Identify exactly where in the C code the ordering and symbol rules live, so we can
+     mirror intent, not structure.
+
+  If you want me to proceed, I’ll start by scanning the C files and tests/ to build the
+  subsystem map and an initial Go package skeleton.
+----
+
+Proceed.
+
+----
+I scanned the C code, tests, and the existing Go stub. Here’s the subsystem map plus an
+  idiomatic Go package layout and the dev harness plan.
+
+  Subsystem map (C → responsibility)
+
+  - CLI + options + date parsing + env: main.c
+  - File list ingestion, strip logic, path ordering, master analysis entry: import.c
+    (notably path_deep_compare)
+  - RCS parser (lex/yacc): lex.l, gram.y (Go will replace with golang-rcs)
+  - Master digest and per-file commit chain: revcvs.c, nodehash.c
+  - Delta expansion + keyword expansion: generate.c (Go will skip keyword expansion; use
+    assembled text from lib)
+  - Changeset collation and branch resolution: collate.c, revlist.c
+  - Tag handling and dedupe: tags.c
+  - Fast‑import emission and blob/mark handling: export.c
+  - Directory packing for tree snapshots: revdir.c, dirpack.c
+  - Author map: authormap.c
+  - Utilities + progress + time format: utils.c, cvsutil.c
+  - Graphviz output (optional): graph.c
+
+  Existing Go stub
+
+  - cfe.go is a smoke‑test reader of RCS files. We can replace or move this into a proper
+    cmd/cvs-fast-export entrypoint. go.mod already pins github.com/arran4/golang-rcs.
+
+  Proposed Go layout (idiomatic, deterministic)
+
+  - cmd/cvs-fast-export
+    CLI, flags, env, logging, exit codes, wiring of pipeline.
+  - cmd/cfe-compare
+    Dev harness: run C and Go on the same inputs, compare streams.
+  - internal/rcs
+    Adapter around golang-rcs: normalize data, expose revision list with full text/log.
+  - internal/cvsnum
+    CVS revision number parsing/comparison/branch math (port from revcvs.c + helpers).
+  - internal/model
+    Core types: File, Revision, Branch, Tag, Change, Commit.
+  - internal/order
+    All sorting logic in one place: path_deep_compare, commit ordering, tie‑breakers.
+  - internal/symbols
+    Symbol resolution (tags vs branches, magic branches, vendor branch logic).
+  - internal/collate
+    Build change sets / gitspace DAG (port collate.c).
+  - internal/export
+    Fast‑import emitter, mark allocation, blob handling.
+  - internal/progress
+    Optional progress messages; no need for parity.
+
+  Golden‑stream harness plan
+
+  - Reuse tests/ data, but run outside tests/Makefile.
+  - For each case, run C with the same options used in tests:
+      - -T -A neutralize.map --reposurgeon for most *.tst cases.
+      - Include incremental cases (-i $(THRESHOLD)) and pathological t960*.
+  - Compare stdout byte‑for‑byte. Print the first diff offset + short hexdump window.
+  - No need to match stderr text as long as exit codes and stdout match.
+
+  Key compatibility rules we must preserve
+
+  - path_deep_compare ordering from import.c (affects commit packing and file op order).
+  - Deterministic ordering in every map/slice iteration (sort everywhere).
+  - Symbol resolution rules and vendor branch handling from collate.c/revcvs.c.
+  - Mark allocation and blob emission order from export.c.
+
+  If you want me to proceed into implementation, I’ll start by:
+
+  1. Creating the Go package skeleton and moving/replacing cfe.go into cmd/cvs-fast-export.
+  2. Building the compare harness in cmd/cfe-compare.
+  3. Porting path_deep_compare + CVS number utilities first (to lock ordering).
+
+ Next steps (pick one)
+
+  1. I start scaffolding the Go packages and harness.
+  2. I do a deeper read of collate.c and revcvs.c to extract the symbol/branch rules into a
+     written spec before coding.
+----
+
+Do the deeper read. That spec should become part of the documentation,
+to be used for future troubleshooting of edge cases.
+
+----
+  Created a spec doc from a deep read of revcvs.c and collate.c: cvs-collation-spec.adoc. It
+  captures the branch/parent logic, vendor-branch patching, commit-matching rules, ordering,
+  and tag resolution, plus edge-case warnings.
+
+  If you want tweaks, tell me what to add/clarify. Suggested next steps:
+
+  1. Add cross-links from go-plan.adoc or hacking.adoc to cvs-collation-spec.adoc.
+  2. Extract a minimal checklist of invariants from the spec for use
+     as Go test assertions.
+----

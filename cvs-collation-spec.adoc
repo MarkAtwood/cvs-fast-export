@@ -1,0 +1,223 @@
+= CVS Collation and Symbol Resolution Spec (as implemented)
+
+This document describes the current behavior of cvs-fast-export's CVS
+branch/tag collation and changeset assembly as derived from
+`revcvs.c` and `collate.c`. It is intended as a troubleshooting aid for
+edge cases and as a target spec for the Go translation.
+
+The guiding rule is: reproduce the emitted fast-import stream produced
+by the C implementation. The behaviors below are implementation-defined
+and must be preserved for compatibility unless explicitly revised with
+new tests.
+
+== Terms
+
+* *CVS master* = one `,v` file (one logical file's history).
+* *CVS commit* = one delta in a CVS master (per-file revision).
+* *Gitspace commit* = a changeset composed of matching CVS commits across
+  files.
+* *Head reference* = a named branch head (`rev_ref`) in a CVS master.
+* *Trunk* = the "master" branch (the default branch head).
+
+== Input assumptions
+
+* CVS masters have already been parsed into `cvs_file` structures,
+  including:
+  - Versions and patches (per-file deltas)
+  - Symbols (tags/branch labels)
+  - The "default branch" marker, if any
+* RCS revision texts have already been reconstructed; collation operates
+  strictly on metadata (numbers, dates, authors, logs, commitids).
+
+== Per-master branch construction (revcvs.c)
+
+=== Trunk discovery and build
+
+1. Find the earliest trunk revision number (lowest numeric CVS revision
+   on trunk). If none exists, default to `1.1`.
+2. Build the trunk commit chain by walking deltas on that branch.
+3. Create a head reference:
+   - name: `master`
+   - degree: 2
+   - number: trunk revision number
+
+=== Non-trunk branch construction
+
+For every branch number reachable from any version:
+
+1. Build a commit chain for that branch.
+2. Add a head reference with no name initially.
+
+=== Vendor branch patching
+
+Vendor branches are identified by their numbering pattern (1.1.{odd}.n).
+Behavior:
+
+* Each vendor branch is attached to trunk as its parent.
+* If a vendor branch has no symbolic name, a synthetic name is created:
+  `import-<branch-number>`.
+* If there is a vendor branch and trunk has no 1.2 (i.e., trunk has no
+  parent past its tip), then:
+  - Trunk head is re-pointed to the newest vendor branch tip.
+  - The old trunk tip is spliced into the vendor chain as the oldest
+    commit (so trunk remains connected).
+  - The vendor head reference is removed from the master list.
+
+This is a compatibility hack for CVS default-branch behavior when
+vendor imports precede the first trunk commit.
+
+=== Grafting branches onto parents
+
+For each non-trunk branch head:
+
+1. Find its last commit (root of branch chain).
+2. Search the version tree for the branch creation point by matching
+   branch numbers.
+3. Once found, set the branch root's parent pointer to the matching
+   trunk (or vendor) revision and mark that root as a tail.
+
+Notes:
+
+* Vendor branches can shift the actual branch point outward; the search
+  intentionally walks the full version tree.
+* Branches with already-set tail are skipped.
+
+=== Symbol resolution (tags vs branches)
+
+For each CVS symbol:
+
+* If the symbol points to a head (branch head number):
+  - If an existing head in this master matches the branch, name it.
+  - Otherwise create a new head referencing the corresponding commit.
+* If the symbol points to a non-head (revision):
+  - Tag the specific commit.
+
+Unnamed heads are then repaired:
+
+* If a head has no name, derive a synthetic branch number from its first
+  live (non-dead) commit.
+* If all commits on the branch are dead and untagged:
+  - Discard the branch (mark with 0 revision and drop from list).
+  - Emit a warning indicating the dead, untagged branch was discarded.
+
+=== Parent linkage and synthetic names
+
+After all heads are numbered:
+
+* Each head with `number.c >= 4` gets a parent by stripping two digits
+  off its CVS number and locating the corresponding branch head.
+* Non-vendor branches without a parent emit a warning.
+* If a branch has a parent but no name, a synthetic name is created:
+  - `<parent-name>-UNNAMED-BRANCH-<commitid>` if commitid exists
+  - `<parent-name>-UNNAMED-BRANCH` otherwise
+
+=== Head sorting (within a master)
+
+Heads are sorted by the CVS revision numbers of their symbolic labels
+so that parents precede children and trunk appears first. This uses a
+stable list sort with `cvs_number_compare` on the symbols' numbers.
+
+== Changeset collation (collate.c)
+
+=== Commit matching (clique formation)
+
+Two CVS commits are eligible to merge into a single gitspace commit if:
+
+* If both have commitids and `trust_commitids` is enabled:
+  - Commitids must match exactly.
+* Otherwise:
+  - timestamps are within `commit_time_window` (default 300s)
+  - authors match
+  - log messages match (pointer identity, i.e., atomized strings)
+
+=== Branch ordering across masters
+
+To build gitspace branches:
+
+1. Collect all named heads across all masters (by label).
+2. Create a gitspace head for each unique label.
+3. Topologically sort gitspace heads so parents precede children.
+   Parent relationships are inferred by comparing *labels across masters*,
+   not by revision numbers within a single master.
+
+This is critical: branch grouping is by label at the tips, because
+branch numbers can differ across masters.
+
+=== Per-branch collation algorithm
+
+Given N CVS branch heads sharing the same label:
+
+1. Initialize a `revisions[]` array with the head commit of each branch.
+2. Track the earliest timestamp across all commits on the branch set
+   (the branch "birth" time).
+3. Sanity check: if any branch head appears older than the computed
+   birth time and is not dead, emit a warning and drop that head.
+
+Loop while any branch has remaining live commits:
+
+* Select the latest (newest timestamp) non-tailed commit as the *leader*.
+* Build a gitspace commit from all current revisions (excluding dead).
+  - This commit is a snapshot of the per-file states at that point.
+* For each branch revision:
+  - If it matches the leader (commit-match rules), advance it to parent.
+  - Otherwise leave it in place.
+  - Special cases handle "tailed" commits (branch roots) to prevent
+    false merges for independently added files.
+
+After the loop:
+
+* The remaining revisions list is sorted by date (newest first), with
+  tie-breaking by address to stabilize order.
+* If the branch has a parent, the algorithm attempts to locate the
+  correct join point on the parent branch:
+  - First by commit matching
+  - Fallback by date
+  - Otherwise emit warnings and fabricate a join commit
+
+=== Time ordering correction
+
+Within each CVS branch, if parent dates are newer than child dates,
+the dates are adjusted to enforce monotonic order. The code attempts to
+localize the fix to the outlier when possible; otherwise it shifts the
+parent. Warnings are emitted for the adjustment.
+
+=== Tag location resolution
+
+For each tag (potentially a clique across masters):
+
+1. Pick the newest non-dead CVS commit in the tag set as the anchor.
+2. If its gitspace commit contains exactly the same revision set, use it.
+3. Else search the entire gitspace DAG (with pruning by date) for a
+   commit containing the same set of revisions.
+4. If none found, create a synthetic branch:
+   - Add a commit with the tagged revisions
+   - Parent it at the anchor gitspace commit
+   - Use author `cvs-fast-export`
+   - Log: `Synthetic commit for incomplete tag <tag>`
+
+Tags that only point to dead revisions are ignored.
+
+== Ordering rules to preserve
+
+* File ordering for revdir packing and output uses `path_deep_compare`
+  (see `import.c`).
+* Commit ordering is newest-first with stable tie-breaking by address.
+* Branch list order is topologically sorted by parent relationships.
+
+== Warnings and edge cases to keep
+
+* Branch heads older than imputed branch birth time.
+* Non-vendor branch with no parent.
+* Unnamed branches (synthetic naming).
+* Discarded dead-only untagged branches.
+* Branch join point not found (warning + fallback).
+* Tag pointing at commit with no gitspace link.
+
+== Notes for the Go translation
+
+* Preserve all ordering decisions deterministically.
+* Keep commit matching semantics and `commit_time_window`.
+* Vendor branch patching behavior is compatibility-critical.
+* Keyword expansion is not required for the Go port (per project scope),
+  but branch/tag resolution must remain identical.
+
