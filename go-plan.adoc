@@ -447,3 +447,72 @@ Do that.
   2. Start porting the path ordering and symbol/branch resolution pieces, using the spec
      invariants as checkpoints.
 ----
+
+Do those.
+
+----
+  Hooked up the initial Go binary and started porting the ordering + symbol resolution
+  pieces.
+
+  What I added
+
+  - Minimal Go entrypoint: cmd/cvs-fast-export/main.go
+    Reads stdin (if no file args), accepts the common flags, and exits 0. This lets cfe-check
+    exercise diffing end‑to‑end immediately.
+  - CVS number port: internal/cvsnum/number.go
+    Implements parse, compare, branch tests, head detection, vendor detection, and
+    stringification.
+  - Symbol/branch resolution starter: internal/symbols/resolve.go
+    Ports the core of cvs_master_set_refs logic: head naming from symbols, tag extraction,
+    unnamed head repair, parent linking, and synthetic naming.
+
+  Paths touched/added
+
+  - cmd/cvs-fast-export/main.go
+  - internal/cvsnum/number.go
+  - internal/symbols/resolve.go
+
+  Notes on the port
+
+  - The symbol resolver is structured to mirror revcvs.c behavior and uses cvsnum for
+    correctness. Vendor-branch patching and grafting are not yet wired into it; that’s the
+    next step in this area.
+
+  Next steps (natural follow‑ons)
+
+  1. Implement vendor-branch patching + branch grafting in internal/symbols (ported from
+     cvs_master_patch_vendor_branch + cvs_master_graft_branches).
+  2. Replace the placeholder cmd/cvs-fast-export with a first real pipeline stage (read RCS
+     masters via golang-rcs, build commit chains, then run the symbol resolver).
+
+  If you want me to proceed, I’ll start with vendor-branch patching and grafting.
+----
+
+Proceed.
+
+----
+  Vendor-branch patching and branch grafting are now implemented in internal/symbols/
+  resolve.go.
+
+  What’s new
+
+  - PatchVendorBranches mirrors cvs_master_patch_vendor_branch, including:
+      - vendor branch detection by numbering
+      - synthetic import-<branch> naming
+      - attaching vendor branches to trunk
+      - trunk tip replacement + splice when trunk lacks 1.2
+      - removal of the vendor head after splice
+  - GraftBranches mirrors cvs_master_graft_branches, using the version list’s branch info to
+    attach branch roots to their parents.
+  - Commit now carries Tail for grafting behavior.
+  - Added a minimal Version struct to support grafting logic.
+
+  Updated file
+
+  - internal/symbols/resolve.go
+
+  Next logical step: wire these functions into the Go pipeline once the RCS→CVS model builder
+  exists (so we can supply heads, versions, and findRevision). If you want, I can now draft
+  that builder stub on top of golang-rcs, even if it only constructs commit chains and symbol
+  maps initially.
+----
