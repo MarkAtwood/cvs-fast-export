@@ -1509,3 +1509,40 @@ commend briefly describing its semantics.
   I didn’t run tests. If you want, I can rebuild and run a targeted
   test pass next.
 ----
+
+You are generating Go code accoding to the consensus style, kots
+of small modules in a bushy directory tree. This is usually good
+practice, reflecting Google's working pattern of projects with
+many contributors that must avoid merge conflicts. It also reflects
+historical C practice in which compilation units were kept small
+to reduce the memory footprint of compilations.
+
+It has the drawback that it makes the code more difficult to browse.
+It is less appropriate for solo projects in which the potential
+for merge conflicts is lower,
+
+Experimentally, merge all the cvs-fast-export into one big file, Try
+to follow a natural ordering in which references follow definitions.
+
+-----
+ Merged the Go implementation into a single file and removed the old split packages.
+
+  What I changed
+
+  - Created the monolith at cmd/cvs-fast-export/monolith.go with a natural ordering (cvsnum → compare
+    → authormap → symbols → rcsmodel → collate → export → main).
+  - Removed the old internal packages and cmd/cvs-fast-export/main.go.
+  - Updated cmd/cfe-check/main.go and cmd/cfe-compare/main.go to embed the compare/path helpers they
+    depended on.
+
+  Notes
+
+  - cmd/cvs-fast-export is ignored by .gitignore (pattern cvs-fast-export), so I had to force-add cmd/
+    cvs-fast-export/monolith.go.
+
+  Next steps (pick one)
+
+  1. Run go build ./cmd/cvs-fast-export (I can do this if you want me to request escalation for the Go
+     build cache).
+  2. Update .gitignore so cmd/cvs-fast-export/* is no longer ignored.
+-----

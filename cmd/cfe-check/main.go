@@ -2,6 +2,8 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,8 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"thyrsus.com/cvs-fast-export/internal/compare"
 )
 
 // testCase defines a named comparison fixture.
@@ -83,7 +83,7 @@ func main() {
 			continue
 		}
 
-		res, err := compare.Run(cBin, goBin, tc.Args, inputs)
+		res, err := Run(cBin, goBin, tc.Args, inputs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cfe-check: %s: %v\n", tc.Name, err)
 			failures++
@@ -196,7 +196,191 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	}
 
 	sort.Slice(out, func(i, j int) bool {
-		return compare.PathDeepCompare(out[i], out[j]) < 0
+		return PathDeepCompare(out[i], out[j]) < 0
 	})
 	return out, nil
+}
+
+// PathDeepCompare mirrors import.c:path_deep_compare to sort by depth.
+func PathDeepCompare(a, b string) int {
+	if a == b {
+		return 0
+	}
+	compar := strings.Compare(a, b)
+	if compar == 0 {
+		return 0
+	}
+
+	aslash := strings.LastIndexByte(a, '/')
+	bslash := strings.LastIndexByte(b, '/')
+
+	if aslash == -1 && bslash == -1 {
+		return compar
+	}
+	if aslash == -1 {
+		return 1
+	}
+	if bslash == -1 {
+		return -1
+	}
+
+	alen := len(a)
+	blen := len(b)
+
+	if aslash == -1 || bslash == -1 {
+		return compar
+	}
+
+	if aslash < bslash {
+		aidx := aslash
+		if aidx < blen && b[aidx] == '/' && strings.HasPrefix(a, b[:aidx]) {
+			return 1
+		}
+	} else {
+		bidx := bslash
+		if bidx < alen && a[bidx] == '/' && strings.HasPrefix(b, a[:bidx]) {
+			return -1
+		}
+	}
+	return compar
+}
+
+// Result captures paired execution output for C vs Go comparisons.
+type Result struct {
+	Match      bool
+	CExit      int
+	GoExit     int
+	DiffOffset int
+	Context    string
+	CStdout    []byte
+	GoStdout   []byte
+	CStderr    []byte
+	GoStderr   []byte
+}
+
+// Run executes both binaries with identical stdin and compares outputs.
+func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
+	stdin := []byte(joinLines(inputs))
+	cOut, cErr, cExit, err := runOnce(cBin, args, stdin)
+	if err != nil {
+		return nil, err
+	}
+	goOut, goErr, goExit, err := runOnce(goBin, args, stdin)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &Result{
+		CExit:    cExit,
+		GoExit:   goExit,
+		CStdout:  append([]byte(nil), cOut...),
+		GoStdout: append([]byte(nil), goOut...),
+		CStderr:  append([]byte(nil), cErr...),
+		GoStderr: append([]byte(nil), goErr...),
+	}
+
+	if cExit != goExit {
+		res.Match = false
+		res.DiffOffset = -1
+		return res, nil
+	}
+	if bytes.Equal(cOut, goOut) {
+		res.Match = true
+		res.DiffOffset = -1
+		return res, nil
+	}
+
+	off := firstDiffOffset(cOut, goOut)
+	res.DiffOffset = off
+	res.Context = diffContext(cOut, goOut, off)
+	return res, nil
+}
+
+// joinLines builds a newline-terminated stdin payload from path lines.
+func joinLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	var b bytes.Buffer
+	for _, line := range lines {
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// runOnce executes a command with provided stdin and captures output and exit code.
+func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if err == nil {
+		return outBuf.Bytes(), errBuf.Bytes(), 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return outBuf.Bytes(), errBuf.Bytes(), exitErr.ExitCode(), nil
+	}
+	return nil, nil, 0, fmt.Errorf("run %s: %w", bin, err)
+}
+
+// firstDiffOffset returns the first differing byte offset or -1 if equal.
+func firstDiffOffset(a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	if len(a) != len(b) {
+		return n
+	}
+	return -1
+}
+
+// diffContext provides a small hex window around the first mismatch.
+func diffContext(a, b []byte, off int) string {
+	if off < 0 {
+		return ""
+	}
+	const window = 64
+	start := off - window
+	if start < 0 {
+		start = 0
+	}
+	end := off + window
+	if end > len(a) {
+		end = len(a)
+	}
+	if end < len(b) {
+		if off+window <= len(b) {
+			end = off + window
+		} else {
+			end = len(b)
+		}
+	}
+	aSeg := a[start:end]
+	bSeg := b[start:end]
+	return fmt.Sprintf("offset %d\nC: %s\nG: %s\n", off, hexDump(aSeg), hexDump(bSeg))
+}
+
+// hexDump renders bytes as compact hex for diff context.
+func hexDump(b []byte) string {
+	if len(b) == 0 {
+		return "(empty)"
+	}
+	var buf bytes.Buffer
+	for i, v := range b {
+		if i > 0 && i%16 == 0 {
+			buf.WriteString(" ")
+		}
+		fmt.Fprintf(&buf, "%02x", v)
+	}
+	return buf.String()
 }

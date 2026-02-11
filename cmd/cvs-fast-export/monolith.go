@@ -1,0 +1,2545 @@
+// SPDX-License-Identifier: GPL-2.0+
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	rcs "github.com/arran4/golang-rcs"
+)
+
+
+// Number represents a CVS revision number split into components.
+type Number struct {
+	C int
+	N []int
+}
+
+// Zero is the sentinel for an empty CVS revision number.
+var Zero = Number{C: 0, N: nil}
+
+// Parse converts a dotted CVS revision string into a Number.
+func Parse(s string) (Number, error) {
+	if s == "" {
+		return Zero, fmt.Errorf("empty CVS number")
+	}
+	parts := strings.Split(s, ".")
+	n := Number{C: len(parts), N: make([]int, len(parts))}
+	for i, p := range parts {
+		if p == "" {
+			return Zero, fmt.Errorf("invalid CVS number %q", s)
+		}
+		v, err := strconv.Atoi(p)
+		if err != nil {
+			return Zero, fmt.Errorf("invalid CVS number %q", s)
+		}
+		n.N[i] = v
+	}
+	return n, nil
+}
+
+// IsHead reports whether the revision is a branch head marker.
+func IsHead(n Number) bool {
+	if n.C <= 2 || (n.C&1) != 0 {
+		return false
+	}
+	return n.N[n.C-2] == 0
+}
+
+// SameBranch reports whether two revisions reside on the same branch.
+func SameBranch(a, b Number) bool {
+	if a.C&1 == 1 {
+		a = appendZero(a)
+	}
+	if b.C&1 == 1 {
+		b = appendZero(b)
+	}
+	if a.C != b.C {
+		return false
+	}
+	if a.C == 2 {
+		return true
+	}
+	for i := 0; i < a.C-1; i++ {
+		an := a.N[i]
+		bn := b.N[i]
+		if i == a.C-2 {
+			if an == 0 {
+				an = a.N[i+1]
+			}
+			if bn == 0 {
+				bn = b.N[i+1]
+			}
+		}
+		if an != bn {
+			return false
+		}
+	}
+	return true
+}
+
+// Equal reports whether two numbers are identical component-wise.
+func Equal(a, b Number) bool {
+	if a.C != b.C {
+		return false
+	}
+	for i := 0; i < a.C; i++ {
+		if a.N[i] != b.N[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Compare gives a total ordering; parent always < child.
+func Compare(a, b Number) int {
+	n := min(a.C, b.C)
+	for i := 0; i < n; i++ {
+		if a.N[i] < b.N[i] {
+			return -1
+		}
+		if a.N[i] > b.N[i] {
+			return 1
+		}
+	}
+	if a.C < b.C {
+		return -1
+	}
+	if a.C > b.C {
+		return 1
+	}
+	return 0
+}
+
+// Degree reports the effective branch depth for a revision.
+func Degree(n Number) int {
+	if n.C < 4 {
+		return n.C
+	}
+	four := n
+	four.C = 4
+	four.N = append([]int(nil), n.N[:4]...)
+	if IsVendor(four) {
+		return n.C - 1
+	}
+	return n.C
+}
+
+// IsTrunk reports whether a revision is on trunk.
+func IsTrunk(n Number) bool { return n.C == 2 }
+
+// Vendor branches are 1.1.x with odd x.
+func IsVendor(n Number) bool {
+	if n.C != 4 {
+		return false
+	}
+	return n.N[0] == 1 && n.N[1] == 1 && (n.N[2]&1) == 1
+}
+
+// String formats a CVS revision number back to dotted text.
+func String(n Number) string {
+	if n.C == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i := 0; i < n.C; i++ {
+		if i > 0 {
+			b.WriteByte('.')
+		}
+		b.WriteString(strconv.Itoa(n.N[i]))
+	}
+	return b.String()
+}
+
+// AppendZero appends a zero to make odd-length revisions comparable.
+func AppendZero(n Number) Number {
+	return appendZero(n)
+}
+
+// appendZero returns a new Number with an extra trailing zero.
+func appendZero(n Number) Number {
+	out := Number{C: n.C + 1, N: make([]int, n.C+1)}
+	copy(out.N, n.N)
+	out.N[n.C] = 0
+	return out
+}
+
+// min returns the smaller of two integers.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+
+
+// PathDeepCompare mirrors import.c:path_deep_compare to sort by depth.
+func PathDeepCompare(a, b string) int {
+	if a == b {
+		return 0
+	}
+	compar := strings.Compare(a, b)
+	if compar == 0 {
+		return 0
+	}
+
+	aslash := strings.LastIndexByte(a, '/')
+	bslash := strings.LastIndexByte(b, '/')
+
+	if aslash == -1 && bslash == -1 {
+		return compar
+	}
+	if aslash == -1 {
+		return 1
+	}
+	if bslash == -1 {
+		return -1
+	}
+
+	alen := len(a)
+	blen := len(b)
+
+	if aslash == -1 || bslash == -1 {
+		return compar
+	}
+
+	if aslash < bslash {
+		aidx := aslash
+		if aidx < blen && b[aidx] == '/' && strings.HasPrefix(a, b[:aidx]) {
+			return 1
+		}
+	} else {
+		bidx := bslash
+		if bidx < alen && a[bidx] == '/' && strings.HasPrefix(b, a[:bidx]) {
+			return -1
+		}
+	}
+	return compar
+}
+
+
+
+// Result captures paired execution output for C vs Go comparisons.
+type Result struct {
+	Match      bool
+	CExit      int
+	GoExit     int
+	DiffOffset int
+	Context    string
+	CStdout    []byte
+	GoStdout   []byte
+	CStderr    []byte
+	GoStderr   []byte
+}
+
+// Run executes both binaries with identical stdin and compares outputs.
+func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
+	stdin := []byte(joinLines(inputs))
+	cOut, cErr, cExit, err := runOnce(cBin, args, stdin)
+	if err != nil {
+		return nil, err
+	}
+	goOut, goErr, goExit, err := runOnce(goBin, args, stdin)
+	if err != nil {
+		return nil, err
+	}
+
+	res := &Result{
+		CExit:    cExit,
+		GoExit:   goExit,
+		CStdout:  append([]byte(nil), cOut...),
+		GoStdout: append([]byte(nil), goOut...),
+		CStderr:  append([]byte(nil), cErr...),
+		GoStderr: append([]byte(nil), goErr...),
+	}
+
+	if cExit != goExit {
+		res.Match = false
+		res.DiffOffset = -1
+		return res, nil
+	}
+	if bytes.Equal(cOut, goOut) {
+		res.Match = true
+		res.DiffOffset = -1
+		return res, nil
+	}
+
+	off := firstDiffOffset(cOut, goOut)
+	res.DiffOffset = off
+	res.Context = diffContext(cOut, goOut, off)
+	return res, nil
+}
+
+// joinLines builds a newline-terminated stdin payload from path lines.
+func joinLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	var b bytes.Buffer
+	for _, line := range lines {
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// runOnce executes a command with provided stdin and captures output and exit code.
+func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin = bytes.NewReader(stdin)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if err == nil {
+		return outBuf.Bytes(), errBuf.Bytes(), 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return outBuf.Bytes(), errBuf.Bytes(), exitErr.ExitCode(), nil
+	}
+	return nil, nil, 0, fmt.Errorf("run %s: %w", bin, err)
+}
+
+// firstDiffOffset returns the first differing byte offset or -1 if equal.
+func firstDiffOffset(a, b []byte) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	if len(a) != len(b) {
+		return n
+	}
+	return -1
+}
+
+// diffContext provides a small hex window around the first mismatch.
+func diffContext(a, b []byte, off int) string {
+	if off < 0 {
+		return ""
+	}
+	const window = 64
+	start := off - window
+	if start < 0 {
+		start = 0
+	}
+	end := off + window
+	if end > len(a) {
+		end = len(a)
+	}
+	if end < len(b) {
+		// extend to match longer buffer where possible
+		if off+window <= len(b) {
+			end = off + window
+		} else {
+			end = len(b)
+		}
+	}
+	aSeg := a[start:end]
+	bSeg := b[start:end]
+	return fmt.Sprintf("offset %d\nC: %s\nG: %s\n", off, hexDump(aSeg), hexDump(bSeg))
+}
+
+// hexDump renders bytes as compact hex for diff context.
+func hexDump(b []byte) string {
+	if len(b) == 0 {
+		return "(empty)"
+	}
+	var buf bytes.Buffer
+	for i, v := range b {
+		if i > 0 && i%16 == 0 {
+			buf.WriteString(" ")
+		}
+		fmt.Fprintf(&buf, "%02x", v)
+	}
+	return buf.String()
+}
+
+
+
+// Author describes a resolved author identity from an authormap file.
+type Author struct {
+	Full     string
+	Email    string
+	Timezone string
+}
+
+// Load parses an authormap file into a username-to-author map.
+func Load(path string) (map[string]Author, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	m := make(map[string]Author)
+	scanner := bufio.NewScanner(f)
+	lineno := 0
+	for scanner.Scan() {
+		lineno++
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
+			continue
+		}
+		eq := strings.IndexByte(line, '=')
+		if eq < 0 {
+			return nil, fmt.Errorf("%s:%d: missing '='", path, lineno)
+		}
+		name := strings.TrimSpace(line[:eq])
+		if name == "" {
+			return nil, fmt.Errorf("%s:%d: empty username", path, lineno)
+		}
+		if _, ok := m[name]; ok {
+			return nil, fmt.Errorf("%s:%d: duplicate username '%s'", path, lineno, name)
+		}
+		fullPart := strings.TrimSpace(line[eq+1:])
+		lt := strings.IndexByte(fullPart, '<')
+		if lt < 0 {
+			return nil, fmt.Errorf("%s:%d: missing email address '%s'", path, lineno, name)
+		}
+		full := strings.TrimSpace(fullPart[:lt])
+		emailPart := fullPart[lt+1:]
+		gt := strings.IndexByte(emailPart, '>')
+		if gt < 0 {
+			return nil, fmt.Errorf("%s:%d: malformed email address '%s'", path, lineno, name)
+		}
+		email := emailPart[:gt]
+		tz := strings.TrimSpace(emailPart[gt+1:])
+		m[name] = Author{Full: full, Email: email, Timezone: tz}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+
+
+// Commit represents a CVS revision with resolved content and metadata.
+type Commit struct {
+	Number   Number
+	Parent   *Commit
+	Dead     bool
+	CommitID string
+	Date     time.Time
+	Author   string
+	Log      string
+	Text     string
+	FileName string
+	OrigName string
+	Mode     int
+	Tail     bool
+}
+
+// Head represents a named branch tip and its metadata.
+type Head struct {
+	RefName string
+	Number  Number
+	Commit  *Commit
+	Parent  *Head
+	Degree  int
+	Tail    bool
+}
+
+// Symbol associates a symbolic name with a CVS revision number.
+type Symbol struct {
+	Name   string
+	Number Number
+}
+
+// Tag records a lightweight tag name bound to a commit.
+type Tag struct {
+	Name   string
+	Commit *Commit
+}
+
+// Version captures a revision number and its child branches.
+type Version struct {
+	Number   Number
+	Branches []Number
+}
+
+// SetRefs applies symbol names to heads and extracts tags.
+// This mirrors the core of revcvs.c:cvs_master_set_refs.
+func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit) ([]*Head, []Tag) {
+	var tags []Tag
+	for _, s := range symbols {
+		if IsHead(s.Number) {
+			h := findHeadByBranch(heads, s.Number)
+			if h != nil {
+				if h.RefName == "" {
+					h.RefName = s.Name
+					h.Degree = Degree(s.Number)
+				} else {
+					h = &Head{
+						RefName: s.Name,
+						Commit:  h.Commit,
+						Degree:  Degree(s.Number),
+					}
+					heads = append(heads, h)
+				}
+			} else {
+				n := s.Number
+				for n.C >= 4 {
+					n.C -= 2
+					n.N = n.N[:n.C]
+					c := findRevision(n)
+					if c != nil {
+						h = &Head{
+							RefName: s.Name,
+							Commit:  c,
+							Degree:  Degree(s.Number),
+						}
+						heads = append(heads, h)
+						break
+					}
+				}
+			}
+			if h != nil {
+				h.Number = s.Number
+			}
+		} else {
+			if c := findRevision(s.Number); c != nil {
+				tags = append(tags, Tag{Name: s.Name, Commit: c})
+			}
+		}
+	}
+
+	heads = fixUnnamedHeads(heads)
+	heads = discardZeroHeads(heads)
+	linkParents(heads)
+	return heads, tags
+}
+
+// PatchVendorBranches mirrors cvs_master_patch_vendor_branch.
+// It mutates heads in place and returns whether any vendor branch was found.
+func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
+	trunk := findHeadByName(heads, "master")
+	if trunk == nil {
+		return heads, false
+	}
+
+	var nvendor *Head
+	foundVendor := false
+	for _, vendor := range heads {
+		if vendor.Commit == nil || !IsVendor(vendor.Commit.Number) {
+			continue
+		}
+		foundVendor = true
+		nvendor = vendor
+
+		if vendor.RefName == "" {
+			vlast := vendor.Commit
+			for vlast != nil && vlast.Parent != nil {
+				vlast = vlast.Parent
+			}
+			if vlast != nil {
+				branch := cloneNumber(vlast.Number)
+				if branch.C > 0 {
+					branch.C--
+					branch.N = branch.N[:branch.C]
+				}
+				name := fmt.Sprintf("import-%s", String(branch))
+				vendor.RefName = name
+			}
+		}
+		vendor.Parent = trunk
+		vendor.Degree = vendor.Commit.Number.C
+		vendor.Number = vendor.Commit.Number
+	}
+
+	if nvendor != nil && trunk.Commit != nil && trunk.Commit.Parent == nil {
+		oldtip := trunk.Commit
+		trunk.Commit = nvendor.Commit
+		trunk.Degree = nvendor.Commit.Number.C
+		trunk.Number = nvendor.Commit.Number
+		vlast := trunk.Commit
+		for vlast != nil && vlast.Parent != nil {
+			vlast = vlast.Parent
+		}
+		if vlast != nil {
+			vlast.Parent = oldtip
+		}
+		heads = removeHead(heads, nvendor)
+	}
+
+	return heads, foundVendor
+}
+
+// GraftBranches mirrors cvs_master_graft_branches.
+// GraftBranches links branch tips to their trunk parents.
+func GraftBranches(heads []*Head, versions []Version, findRevision func(Number) *Commit) {
+	trunk := findHeadByName(heads, "master")
+	for _, h := range heads {
+		if h == trunk || h.Tail {
+			continue
+		}
+		c := h.Commit
+		for c != nil && c.Parent != nil {
+			if c.Tail {
+				c = nil
+				break
+			}
+			c = c.Parent
+		}
+		if c == nil {
+			continue
+		}
+		for _, cv := range versions {
+			for _, cb := range cv.Branches {
+				if Compare(cb, c.Number) == 0 {
+					c.Parent = findRevision(cv.Number)
+					c.Tail = true
+					break
+				}
+			}
+			if c.Parent != nil {
+				break
+			}
+		}
+	}
+}
+
+// fixUnnamedHeads synthesizes branch numbers for unnamed heads.
+func fixUnnamedHeads(heads []*Head) []*Head {
+	for _, h := range heads {
+		if h.RefName != "" {
+			continue
+		}
+		c := firstLiveCommit(h.Commit)
+		if c == nil {
+			h.Number = Zero
+			continue
+		}
+		n := c.Number
+		if n.C >= 2 {
+			n = cloneNumber(n)
+			n.N[n.C-1] = n.N[n.C-2]
+			n.N[n.C-2] = 0
+		}
+		h.Number = n
+		h.Degree = Degree(n)
+	}
+	return heads
+}
+
+// discardZeroHeads removes heads that couldn't be assigned a number.
+func discardZeroHeads(heads []*Head) []*Head {
+	out := heads[:0]
+	for _, h := range heads {
+		if !Equal(h.Number, Zero) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// linkParents attaches parent heads based on CVS branch numbering.
+func linkParents(heads []*Head) {
+	for _, h := range heads {
+		if h.Number.C < 4 {
+			continue
+		}
+		n := cloneNumber(h.Number)
+		n.C -= 2
+		n.N = n.N[:n.C]
+		p := findBranch(heads, n)
+		h.Parent = p
+		if p != nil && h.RefName == "" {
+			if h.Commit != nil && h.Commit.CommitID != "" {
+				h.RefName = fmt.Sprintf("%s-UNNAMED-BRANCH-%s", p.RefName, h.Commit.CommitID)
+			} else {
+				h.RefName = fmt.Sprintf("%s-UNNAMED-BRANCH", p.RefName)
+			}
+		}
+	}
+}
+
+// findHeadByBranch locates the head whose commits share a branch.
+func findHeadByBranch(heads []*Head, number Number) *Head {
+	for _, h := range heads {
+		if h.Commit != nil && SameBranch(h.Commit.Number, number) {
+			return h
+		}
+	}
+	return nil
+}
+
+// findBranch walks up the branch number to find a matching head.
+func findBranch(heads []*Head, number Number) *Head {
+	n := cloneNumber(number)
+	for n.C >= 2 {
+		for _, h := range heads {
+			if SameBranch(h.Number, n) {
+				return h
+			}
+		}
+		n.C -= 2
+		if n.C > 0 {
+			n.N = n.N[:n.C]
+		}
+	}
+	return nil
+}
+
+// firstLiveCommit returns the first non-dead commit in a chain.
+func firstLiveCommit(c *Commit) *Commit {
+	for c != nil {
+		if !c.Dead {
+			return c
+		}
+		c = c.Parent
+	}
+	return nil
+}
+
+// cloneNumber copies a CVS number to avoid aliasing.
+func cloneNumber(n Number) Number {
+	out := Number{C: n.C, N: make([]int, n.C)}
+	copy(out.N, n.N[:n.C])
+	return out
+}
+
+// findHeadByName locates a head by its reference name.
+func findHeadByName(heads []*Head, name string) *Head {
+	for _, h := range heads {
+		if h.RefName == name {
+			return h
+		}
+	}
+	return nil
+}
+
+// removeHead removes a specific head from the slice.
+func removeHead(heads []*Head, target *Head) []*Head {
+	out := heads[:0]
+	for _, h := range heads {
+		if h != target {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+
+
+// Master represents one parsed RCS file with resolved commits and 
+type Master struct {
+	Source   string
+	FileName string
+	Heads    []*Head
+	Symbols  []Symbol
+	Tags     []Tag
+	Versions []Version
+	Commits  map[string]*Commit
+	Root     *Commit
+}
+
+// BuildMaster converts a parsed RCS file into a CVS master model.
+func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
+	info, err := os.Stat(source)
+	if err != nil {
+		return nil, err
+	}
+	fileMode := 0644
+	if info.Mode()&0100 != 0 {
+		fileMode = 0755
+	}
+	commits := make(map[string]*Commit, len(file.RevisionHeads))
+	contents := make(map[string]*rcs.RevisionContent, len(file.RevisionContents))
+	for _, rc := range file.RevisionContents {
+		contents[rc.Revision] = rc
+	}
+	rectified := exportName(source, striplen)
+	fileName := fileopName(rectified)
+	fulltext, err := reconstructTexts(file, contents)
+	if err != nil {
+		return nil, err
+	}
+	for _, rh := range file.RevisionHeads {
+		num, err := Parse(rh.Revision)
+		if err != nil {
+			return nil, err
+		}
+		var log string
+		var text string
+		if rc, ok := contents[rh.Revision]; ok {
+			log = normalizeLog(rc.Log, file.Description)
+			text = fulltext[rh.Revision]
+		}
+		commits[rh.Revision] = &Commit{
+			Number:   num,
+			Dead:     rh.State == "dead",
+			CommitID: rh.CommitID,
+			Date:     rh.Date,
+			Author:   rh.Author,
+			Log:      log,
+			Text:     text,
+			FileName: fileName,
+			OrigName: rectified,
+			Mode:     fileMode,
+		}
+	}
+
+	var versions []Version
+	for _, rh := range file.RevisionHeads {
+		num, err := Parse(rh.Revision)
+		if err != nil {
+			return nil, err
+		}
+		ver := Version{Number: num}
+		for _, br := range rh.Branches {
+			bn, err := Parse(br)
+			if err != nil {
+				return nil, err
+			}
+			ver.Branches = append(ver.Branches, bn)
+		}
+		versions = append(versions, ver)
+	}
+
+	branchHeads, root := buildBranchHeads(commits, versions)
+
+	var sym []Symbol
+	seen := make(map[string]struct{}, len(file.SymbolMap))
+	if len(symbolOrder) > 0 {
+		for i := len(symbolOrder) - 1; i >= 0; i-- {
+			name := symbolOrder[i]
+			rev, ok := file.SymbolMap[name]
+			if !ok {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			name = sanitizeSymbolName(name)
+			if name == "" {
+				return nil, fmt.Errorf("symbol name empty after sanitization")
+			}
+			n, err := Parse(rev)
+			if err != nil {
+				return nil, err
+			}
+			sym = append(sym, Symbol{Name: name, Number: n})
+		}
+	}
+	for name, rev := range file.SymbolMap {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		name = sanitizeSymbolName(name)
+		if name == "" {
+			return nil, fmt.Errorf("symbol name empty after sanitization")
+		}
+		n, err := Parse(rev)
+		if err != nil {
+			return nil, err
+		}
+		sym = append(sym, Symbol{Name: name, Number: n})
+	}
+
+	return &Master{
+		Source:   source,
+		FileName: fileName,
+		Heads:    branchHeads,
+		Symbols:  sym,
+		Versions: versions,
+		Commits:  commits,
+		Root:     root,
+	}, nil
+}
+
+// buildBranchHeads constructs branch head links and returns the trunk root.
+func buildBranchHeads(commits map[string]*Commit, versions []Version) ([]*Head, *Commit) {
+	trunkNum, ok := findTrunkStart(commits)
+	var heads []*Head
+	var root *Commit
+	if ok {
+		trunk := buildBranchChain(commits, trunkNum)
+		if trunk != nil {
+			root = lastCommit(trunk)
+			heads = append(heads, &Head{
+				RefName: "master",
+				Commit:  trunk,
+				Number:  trunk.Number,
+				Degree:  2,
+			})
+		}
+	}
+
+	seen := make(map[string]struct{})
+	for _, ver := range versions {
+		for _, br := range ver.Branches {
+			key := String(br)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			head := buildBranchChain(commits, br)
+			if head == nil {
+				continue
+			}
+			heads = append(heads, &Head{Commit: head})
+		}
+	}
+	return heads, root
+}
+
+// findTrunkStart finds the smallest trunk revision number present.
+func findTrunkStart(commits map[string]*Commit) (Number, bool) {
+	var min Number
+	found := false
+	for _, c := range commits {
+		if !IsTrunk(c.Number) {
+			continue
+		}
+		if !found || Compare(c.Number, min) < 0 {
+			min = c.Number
+			found = true
+		}
+	}
+	return min, found
+}
+
+// buildBranchChain orders commits on a branch and links parents.
+func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
+	var chain []*Commit
+	for _, c := range commits {
+		if onBranch(c.Number, branch) {
+			chain = append(chain, c)
+		}
+	}
+	if len(chain) == 0 {
+		return nil
+	}
+	sort.Slice(chain, func(i, j int) bool {
+		return Compare(chain[i].Number, chain[j].Number) < 0
+	})
+	for i := len(chain) - 1; i > 0; i-- {
+		chain[i].Parent = chain[i-1]
+	}
+	adjustDates(chain)
+	return chain[len(chain)-1]
+}
+
+// adjustDates enforces monotonically non-decreasing dates within a chain.
+func adjustDates(chain []*Commit) {
+	if len(chain) < 2 {
+		return
+	}
+	var gc *Commit
+	for i := len(chain) - 1; i > 0; i-- {
+		c := chain[i]
+		p := chain[i-1]
+		if p.Date.After(c.Date) {
+			if gc != nil && !p.Date.After(gc.Date) {
+				c.Date = p.Date
+			} else {
+				p.Date = c.Date
+			}
+		}
+		gc = c
+	}
+}
+
+// lastCommit returns the oldest commit reachable from a head.
+func lastCommit(head *Commit) *Commit {
+	if head == nil {
+		return nil
+	}
+	c := head
+	for c.Parent != nil {
+		c = c.Parent
+	}
+	return c
+}
+
+// exportName normalizes a master path to an RCS export name.
+func exportName(source string, striplen int) string {
+	path := source
+	if striplen > 0 && striplen < len(path) {
+		path = path[striplen:]
+	} else if striplen >= len(path) {
+		path = ""
+	}
+	parts := strings.Split(path, "/")
+	cleaned := make([]string, 0, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		isLast := i == len(parts)-1
+		if !isLast {
+			if part == "Attic" || part == "RCS" {
+				continue
+			}
+		} else {
+			if strings.HasSuffix(part, ",v") {
+				part = strings.TrimSuffix(part, ",v")
+			}
+		}
+		cleaned = append(cleaned, part)
+	}
+	return strings.Join(cleaned, "/")
+}
+
+// ExportName is a public wrapper for exportName.
+func ExportName(source string, striplen int) string {
+	return exportName(source, striplen)
+}
+
+// fileopName applies .cvsignore to .gitignore mapping for output paths.
+func fileopName(rectified string) string {
+	if strings.HasSuffix(rectified, ".cvsignore") {
+		return strings.TrimSuffix(rectified, ".cvsignore") + ".gitignore"
+	}
+	return rectified
+}
+
+// sanitizeSymbolName removes invalid characters from tag names.
+func sanitizeSymbolName(s string) string {
+	const bad = "~^\\*?"
+	var b strings.Builder
+	for _, r := range s {
+		if r <= 0x20 || r == 0x7f {
+			continue
+		}
+		if strings.ContainsRune(bad, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// reconstructTexts reconstructs full texts for all revisions via deltas.
+func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) (map[string]string, error) {
+	out := make(map[string]string, len(contents))
+	if file.Head == "" {
+		return out, nil
+	}
+	head := file.Head
+	headContent, ok := contents[head]
+	if !ok {
+		return out, nil
+	}
+	out[head] = headContent.Text
+
+	newerOf := make(map[string]string)
+	heads := make(map[string]*rcs.RevisionHead)
+	for _, rh := range file.RevisionHeads {
+		heads[rh.Revision] = rh
+		if rh.NextRevision != "" {
+			newerOf[rh.NextRevision] = rh.Revision
+		}
+	}
+
+	var compute func(string) error
+	compute = func(rev string) error {
+		if _, ok := out[rev]; ok {
+			return nil
+		}
+		rc, ok := contents[rev]
+		if !ok {
+			return nil
+		}
+		if newer := newerOf[rev]; newer != "" {
+			if err := compute(newer); err != nil {
+				return err
+			}
+			base := out[newer]
+			text, err := applyDelta(base, rc.Text)
+			if err != nil {
+				return err
+			}
+			out[rev] = text
+			return nil
+		}
+		if parent := branchParent(rev); parent != "" {
+			if err := compute(parent); err != nil {
+				return err
+			}
+			base := out[parent]
+			text, err := applyDelta(base, rc.Text)
+			if err != nil {
+				return err
+			}
+			out[rev] = text
+			return nil
+		}
+		out[rev] = rc.Text
+		return nil
+	}
+
+	for rev := range contents {
+		if err := compute(rev); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// nextRevisionOf returns the NextRevision value for a revision head.
+func nextRevisionOf(file *rcs.File, rev string) string {
+	for _, rh := range file.RevisionHeads {
+		if rh.Revision == rev {
+			return rh.NextRevision
+		}
+	}
+	return ""
+}
+
+// applyDelta applies an RCS reverse delta to the newer text, producing older text.
+// applyDelta applies a reverse delta script to newer text.
+func applyDelta(text, delta string) (string, error) {
+	lines, trailing := splitLinesForDelta(text)
+	commands, deltaTrailing := splitLinesForDelta(delta)
+	type deltaOp struct {
+		op          byte
+		start       int
+		count       int
+		lines       []string
+		addTrailing bool
+	}
+	var ops []deltaOp
+	for i := 0; i < len(commands); {
+		cmd := commands[i]
+		if cmd == "" {
+			i++
+			continue
+		}
+		if cmd[0] != 'a' && cmd[0] != 'd' {
+			return "", fmt.Errorf("invalid delta command: %q", cmd)
+		}
+		var start, count int
+		var op byte
+		_, err := fmt.Sscanf(cmd, "%c%d %d", &op, &start, &count)
+		if err != nil {
+			return "", fmt.Errorf("parse delta %q: %w", cmd, err)
+		}
+		switch op {
+		case 'd':
+			ops = append(ops, deltaOp{op: 'd', start: start, count: count})
+			i++
+		case 'a':
+			if i+count >= len(commands) {
+				return "", fmt.Errorf("delta add missing lines")
+			}
+			end := i + 1 + count
+			addTrailing := end < len(commands) || deltaTrailing
+			add := commands[i+1 : end]
+			ops = append(ops, deltaOp{op: 'a', start: start, count: count, lines: add, addTrailing: addTrailing})
+			i = end
+		}
+	}
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		switch op.op {
+		case 'd':
+			if op.start < 1 || op.start-1+op.count > len(lines) {
+				return "", fmt.Errorf("delta delete out of range")
+			}
+			if op.start-1+op.count == len(lines) {
+				if len(lines) == op.count {
+					trailing = false
+				} else {
+					trailing = true
+				}
+			}
+			lines = append(lines[:op.start-1], lines[op.start-1+op.count:]...)
+		case 'a':
+			if op.start < 0 {
+				return "", fmt.Errorf("delta add out of range")
+			}
+			pos := op.start
+			if pos > len(lines) {
+				pos = len(lines)
+			}
+			if pos == len(lines) {
+				trailing = op.addTrailing
+			}
+			lines = append(lines[:pos], append(op.lines, lines[pos:]...)...)
+		}
+	}
+	return joinLinesWithTrailing(lines, trailing), nil
+}
+
+// splitLines splits on newline, preserving trailing empty line semantics.
+func splitLines(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, "\n")
+	// Preserve trailing empty line if original ended with newline.
+	if strings.HasSuffix(s, "\n") {
+		return parts
+	}
+	return parts
+}
+
+// rcsJoinLines joins lines with newline separators.
+func rcsJoinLines(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+
+// splitLinesForDelta splits lines and reports whether a trailing newline exists.
+func splitLinesForDelta(s string) ([]string, bool) {
+	trailing := strings.HasSuffix(s, "\n")
+	if trailing {
+		s = strings.TrimSuffix(s, "\n")
+	}
+	if s == "" {
+		return []string{}, trailing
+	}
+	return strings.Split(s, "\n"), trailing
+}
+
+// joinLinesWithTrailing joins lines and restores a trailing newline if needed.
+func joinLinesWithTrailing(lines []string, trailing bool) string {
+	if len(lines) == 0 {
+		if trailing {
+			return "\n"
+		}
+		return ""
+	}
+	out := strings.Join(lines, "\n")
+	if trailing {
+		out += "\n"
+	}
+	return out
+}
+
+// normalizeLog applies CVS initial-revision log normalization rules.
+func normalizeLog(log, desc string) string {
+	if log != "Initial revision\n" {
+		return log
+	}
+	if len(desc) == 0 {
+		return "*** empty log message ***\n"
+	}
+	return desc
+}
+
+// branchParent returns the implied parent revision for a branch node.
+func branchParent(rev string) string {
+	n, err := Parse(rev)
+	if err != nil {
+		return ""
+	}
+	if n.C < 4 {
+		return ""
+	}
+	n.C -= 2
+	n.N = n.N[:n.C]
+	return String(n)
+}
+
+// onBranch reports whether a revision lies on a given branch number.
+func onBranch(rev, branch Number) bool {
+	bn := normalizeBranch(branch)
+	rn := normalizeBranch(rev)
+	if bn.C != rn.C {
+		return false
+	}
+	for i := 0; i < bn.C-1; i++ {
+		if bn.N[i] != rn.N[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeBranch ensures a branch number has even component count.
+func normalizeBranch(n Number) Number {
+	if n.C == 0 {
+		return n
+	}
+	if n.C&1 == 1 {
+		n = AppendZero(n)
+	}
+	return n
+}
+
+// LoadFile parses an RCS file, returning the parsed model and symbol order.
+func LoadFile(path string) (*rcs.File, []string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
+	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
+	if err != nil {
+		// Some RCS files omit the extra blank line after desc. Insert one if needed and retry.
+		if bytes.Contains(data, []byte("\ndesc\n@@\n\n1.")) {
+			patched := bytes.ReplaceAll(data, []byte("\ndesc\n@@\n\n1."), []byte("\ndesc\n@@\n\n\n1."))
+			rcsFile, err = rcs.ParseFile(bytes.NewReader(patched))
+			if err == nil {
+				data = patched
+			}
+		}
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return rcsFile, parseSymbolOrder(string(data)), nil
+}
+
+// parseSymbolOrder extracts symbol order from the raw header text.
+func parseSymbolOrder(data string) []string {
+	lines := strings.Split(data, "\n")
+	inSymbols := false
+	var names []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inSymbols {
+			if strings.HasPrefix(trimmed, "symbols") {
+				rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "symbols"))
+				if rest != "" {
+					names = append(names, parseSymbolTokens(rest)...)
+					if strings.Contains(rest, ";") {
+						break
+					}
+					inSymbols = true
+					continue
+				}
+				inSymbols = true
+			}
+			continue
+		}
+		names = append(names, parseSymbolTokens(trimmed)...)
+		if strings.Contains(line, ";") {
+			break
+		}
+	}
+	return names
+}
+
+// parseSymbolTokens parses name:rev entries from a symbols line.
+func parseSymbolTokens(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ';'
+	})
+	var names []string
+	for _, f := range fields {
+		if idx := strings.IndexByte(f, ':'); idx > 0 {
+			names = append(names, f[:idx])
+		}
+	}
+	return names
+}
+
+
+
+// CollateOptions controls commit collation heuristics.
+type CollateOptions struct {
+	CommitTimeWindow time.Duration
+	TrustCommitIDs   bool
+}
+
+// GitCommit groups CVS file revisions into a single fast-import commit.
+type GitCommit struct {
+	Parent  *GitCommit
+	Date    time.Time
+	Author  string
+	Log     string
+	Files   []*Commit
+	RefName string
+}
+
+// GitBranch is a linearized commit chain for a named ref.
+type GitBranch struct {
+	Name   string
+	Head   *GitCommit
+	Parent *GitBranch
+	Depth  int
+}
+
+// Repo holds collated commits and tag targets for 
+type Repo struct {
+	Branches   []*GitBranch
+	CommitOf   map[*Commit]*GitCommit
+	ByNumber   map[string]*GitCommit
+	TagTargets map[string][]*Commit
+	TagOrder   []string
+}
+
+// Build collates CVS commits into fast-import commit groups.
+func Build(masters []*Master, opts CollateOptions) *Repo {
+	byName := collectBranches(masters)
+	branches := toposortBranches(byName, masters)
+
+	repo := &Repo{
+		Branches:   branches,
+		CommitOf:   make(map[*Commit]*GitCommit),
+		ByNumber:   make(map[string]*GitCommit),
+		TagTargets: make(map[string][]*Commit),
+	}
+	for _, b := range branches {
+		heads := gatherHeads(masters, b.Name)
+		if len(heads) == 0 {
+			continue
+		}
+		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
+	}
+	linkBranchParents(branches, repo.ByNumber)
+	collectTags(masters, repo)
+	return repo
+}
+
+// CommitsForBranch flattens commits from newest to oldest for a branch.
+func CommitsForBranch(branch *GitBranch) []*GitCommit {
+	var out []*GitCommit
+	for c := branch.Head; c != nil; c = c.Parent {
+		out = append(out, c)
+	}
+	return out
+}
+
+// collectBranches gathers branch refs from master heads.
+func collectBranches(masters []*Master) map[string]*GitBranch {
+	byName := make(map[string]*GitBranch)
+	for _, m := range masters {
+		for _, h := range m.Heads {
+			name := h.RefName
+			if name == "" {
+				continue
+			}
+			if _, ok := byName[name]; !ok {
+				byName[name] = &GitBranch{Name: name}
+			}
+		}
+	}
+	return byName
+}
+
+// toposortBranches returns a stable ordering for branch processing.
+func toposortBranches(byName map[string]*GitBranch, masters []*Master) []*GitBranch {
+	var branches []*GitBranch
+	for _, b := range byName {
+		branches = append(branches, b)
+	}
+	sort.Slice(branches, func(i, j int) bool {
+		return branches[i].Name < branches[j].Name
+	})
+	// parent relationships are resolved lazily in this minimal skeleton
+	return branches
+}
+
+// gatherHeads collects branch heads with the given ref name.
+func gatherHeads(masters []*Master, name string) []*Head {
+	var heads []*Head
+	for _, m := range masters {
+		for _, h := range m.Heads {
+			if h.RefName == name {
+				heads = append(heads, h)
+			}
+		}
+	}
+	return heads
+}
+
+// collateBranch groups commits for a branch and links them into a chain.
+func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf map[*Commit]*GitCommit, byNumber map[string]*GitCommit) *GitCommit {
+	seen := make(map[*Commit]struct{})
+	var commits []*Commit
+	for _, h := range heads {
+		for c := h.Commit; c != nil; c = c.Parent {
+			if _, ok := seen[c]; ok {
+				continue
+			}
+			seen[c] = struct{}{}
+			commits = append(commits, c)
+			if c.Tail {
+				break
+			}
+		}
+	}
+	sort.Slice(commits, func(i, j int) bool {
+		if !commits[i].Date.Equal(commits[j].Date) {
+			return commits[i].Date.Before(commits[j].Date)
+		}
+		if commits[i].FileName != commits[j].FileName {
+			return PathDeepCompare(commits[i].FileName, commits[j].FileName) < 0
+		}
+		return Compare(commits[i].Number, commits[j].Number) < 0
+	})
+
+	if opts.TrustCommitIDs {
+		group := make(map[string]*GitCommit)
+		var order []*GitCommit
+		var noID []*Commit
+		for _, c := range commits {
+			if c.CommitID == "" {
+				noID = append(noID, c)
+				continue
+			}
+			g := group[c.CommitID]
+			if g == nil {
+				g = &GitCommit{
+					Date:    c.Date,
+					Author:  c.Author,
+					Log:     c.Log,
+					Files:   []*Commit{c},
+					RefName: branch,
+				}
+				group[c.CommitID] = g
+				order = append(order, g)
+			} else {
+				g.Files = append(g.Files, c)
+				if c.Date.After(g.Date) {
+					g.Date = c.Date
+				}
+			}
+			commitOf[c] = g
+			byNumber[String(c.Number)] = g
+		}
+		if len(noID) > 0 {
+			sort.Slice(noID, func(i, j int) bool {
+				if !noID[i].Date.Equal(noID[j].Date) {
+					return noID[i].Date.Before(noID[j].Date)
+				}
+				if noID[i].FileName != noID[j].FileName {
+					return PathDeepCompare(noID[i].FileName, noID[j].FileName) < 0
+				}
+				return Compare(noID[i].Number, noID[j].Number) < 0
+			})
+			var prev *GitCommit
+			for _, c := range noID {
+				if prev != nil && commitsMatch(prev, c, opts) {
+					prev.Files = append(prev.Files, c)
+					commitOf[c] = prev
+					byNumber[String(c.Number)] = prev
+					continue
+				}
+				g := &GitCommit{
+					Date:    c.Date,
+					Author:  c.Author,
+					Log:     c.Log,
+					Files:   []*Commit{c},
+					RefName: branch,
+				}
+				prev = g
+				order = append(order, g)
+				commitOf[c] = g
+				byNumber[String(c.Number)] = g
+			}
+		}
+		sort.Slice(order, func(i, j int) bool {
+			if !order[i].Date.Equal(order[j].Date) {
+				return order[i].Date.Before(order[j].Date)
+			}
+			return order[i].Log < order[j].Log
+		})
+		var prev *GitCommit
+		for _, g := range order {
+			g.Parent = prev
+			prev = g
+		}
+		return prev
+	}
+
+	var prev *GitCommit
+	for _, c := range commits {
+		if prev != nil && commitsMatch(prev, c, opts) {
+			prev.Files = append(prev.Files, c)
+			commitOf[c] = prev
+			continue
+		}
+		g := &GitCommit{
+			Date:    c.Date,
+			Author:  c.Author,
+			Log:     c.Log,
+			Files:   []*Commit{c},
+			RefName: branch,
+		}
+		g.Parent = prev
+		prev = g
+		commitOf[c] = g
+		byNumber[String(c.Number)] = g
+	}
+	return prev
+}
+
+// collectTags records tag targets and preserves a deterministic tag order.
+func collectTags(masters []*Master, repo *Repo) {
+	seen := make(map[string]map[*Commit]struct{})
+	seenOrder := make(map[string]struct{})
+	for _, m := range masters {
+		for _, t := range m.Tags {
+			if t.Commit == nil {
+				continue
+			}
+			if _, ok := seenOrder[t.Name]; !ok {
+				repo.TagOrder = append([]string{t.Name}, repo.TagOrder...)
+				seenOrder[t.Name] = struct{}{}
+			}
+			set := seen[t.Name]
+			if set == nil {
+				set = make(map[*Commit]struct{})
+				seen[t.Name] = set
+			}
+			set[t.Commit] = struct{}{}
+		}
+	}
+	for name, set := range seen {
+		for c := range set {
+			repo.TagTargets[name] = append(repo.TagTargets[name], c)
+		}
+	}
+}
+
+// linkBranchParents attaches branch tails to a master commit when possible.
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
+	var master *GitBranch
+	for _, b := range branches {
+		if b.Name == "master" {
+			master = b
+			break
+		}
+	}
+	var masterCommits []*GitCommit
+	if master != nil {
+		for c := master.Head; c != nil; c = c.Parent {
+			masterCommits = append(masterCommits, c)
+		}
+	}
+	for _, b := range branches {
+		if b.Name == "master" || b.Head == nil {
+			continue
+		}
+		// Find oldest commit on branch
+		var tail *GitCommit
+		for c := b.Head; c != nil; c = c.Parent {
+			tail = c
+		}
+		if tail == nil || len(tail.Files) == 0 {
+			continue
+		}
+		branchFiles := make(map[string]struct{})
+		for _, f := range tail.Files {
+			if f != nil && f.FileName != "" {
+				branchFiles[f.FileName] = struct{}{}
+			}
+		}
+		if len(masterCommits) > 0 && len(branchFiles) > 0 {
+			var pick *GitCommit
+			for _, mc := range masterCommits {
+				if mc.Date.After(tail.Date) {
+					continue
+				}
+				if !commitTouches(mc, branchFiles) {
+					pick = mc
+					break
+				}
+			}
+			if pick != nil {
+				tail.Parent = pick
+				continue
+			}
+		}
+		base := tail.Files[0].Number
+		if base.C < 4 {
+			continue
+		}
+		base.C -= 2
+		base.N = base.N[:base.C]
+		if gc := byNumber[String(base)]; gc != nil {
+			tail.Parent = gc
+			continue
+		}
+		if len(masterCommits) > 0 {
+			var pick *GitCommit
+			for _, mc := range masterCommits {
+				if !mc.Date.After(tail.Date) {
+					pick = mc
+					break
+				}
+			}
+			if pick != nil {
+				tail.Parent = pick
+			}
+		}
+	}
+}
+
+// commitTouches reports whether a commit modifies any of the named files.
+func commitTouches(c *GitCommit, files map[string]struct{}) bool {
+	if c == nil || len(files) == 0 {
+		return false
+	}
+	for _, f := range c.Files {
+		if f == nil {
+			continue
+		}
+		if _, ok := files[f.FileName]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
+func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
+	if opts.TrustCommitIDs && g.Files != nil && len(g.Files) > 0 {
+		if g.Files[0].CommitID != "" || c.CommitID != "" {
+			return g.Files[0].CommitID == c.CommitID && g.Files[0].CommitID != ""
+		}
+	}
+	if g.Author != c.Author {
+		return false
+	}
+	if g.Log != c.Log {
+		return false
+	}
+	delta := g.Date.Sub(c.Date)
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta < opts.CommitTimeWindow
+}
+
+
+
+// Emitter streams git fast-import output with CVS-specific conventions.
+type Emitter struct {
+	w          *bufio.Writer
+	mark       int
+	epoch      int64
+	didIg      bool
+	tagTargets map[string][]*Commit
+	forceDates bool
+	reposurgeon bool
+	commitWindow int64
+	authors    map[string]Author
+	sourceType string
+}
+
+// NewEmitter constructs an emitter with default epoch and mark state.
+func NewEmitter(w io.Writer) *Emitter {
+	return &Emitter{
+		w:     bufio.NewWriter(w),
+		mark:  1,
+		epoch: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
+		commitWindow: 300,
+	}
+}
+
+// ExportOptions configures fast-import emission behavior.
+type ExportOptions struct {
+	ForceDates   bool
+	Reposurgeon  bool
+	CommitWindow time.Duration
+	Authors      map[string]Author
+	SourceType   string
+}
+
+// WithTagTargets provides tag revision sets for reposurgeon tagging.
+func (e *Emitter) WithTagTargets(tags map[string][]*Commit) *Emitter {
+	e.tagTargets = tags
+	return e
+}
+
+// WithOptions applies emitter options such as author maps and date forcing.
+func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
+	e.forceDates = opts.ForceDates
+	e.reposurgeon = opts.Reposurgeon
+	if opts.CommitWindow > 0 {
+		e.commitWindow = int64(opts.CommitWindow.Seconds())
+	}
+	e.authors = opts.Authors
+	e.sourceType = opts.SourceType
+	return e
+}
+
+// Flush forces buffered output to be written.
+func (e *Emitter) Flush() error {
+	return e.w.Flush()
+}
+
+// EmitRepo emits a fast-import stream for all branches, ordered by commit date.
+func (e *Emitter) EmitRepo(repo *Repo) error {
+	if repo == nil {
+		return nil
+	}
+	if e.reposurgeon {
+		st := e.sourceType
+		if st == "" {
+			st = "rcs"
+		}
+		fmt.Fprintf(e.w, "#reposurgeon sourcetype %s\n", st)
+	}
+	commits := collectCommits(repo)
+	markMap := make(map[*GitCommit]int)
+	state := make(map[string]map[string]fileState)
+	emittedTags := make(map[string]struct{})
+	tagNames := append([]string(nil), repo.TagOrder...)
+	if len(tagNames) == 0 {
+		tagNames = make([]string, 0, len(e.tagTargets))
+		for name := range e.tagTargets {
+			tagNames = append(tagNames, name)
+		}
+		sort.Strings(tagNames)
+	} else if len(tagNames) != len(e.tagTargets) {
+		seen := make(map[string]struct{}, len(tagNames))
+		for _, name := range tagNames {
+			seen[name] = struct{}{}
+		}
+		var extra []string
+		for name := range e.tagTargets {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			extra = append(extra, name)
+		}
+		sort.Strings(extra)
+		tagNames = append(tagNames, extra...)
+	}
+	for i, c := range commits {
+		prevState := state[c.RefName]
+		if prevState == nil {
+			prevState = map[string]fileState{}
+		}
+		parentMark := 0
+		if c.Parent != nil {
+			parentMark = markMap[c.Parent]
+		}
+		first := i == 0
+		ops, next := buildOps(prevState, c.Files)
+		if len(ops) == 0 {
+			state[c.RefName] = next
+			continue
+		}
+		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
+		if err != nil {
+			return err
+		}
+		state[c.RefName] = next
+		markMap[c] = mark
+		for _, name := range tagNames {
+			targets := e.tagTargets[name]
+			if _, ok := emittedTags[name]; ok {
+				continue
+			}
+			if tagMatchesState(targets, next) {
+				fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+				fmt.Fprintf(e.w, "from :%d\n\n", mark)
+				emittedTags[name] = struct{}{}
+			}
+		}
+	}
+	fmt.Fprintln(e.w, "done")
+	return nil
+}
+
+// emitCommit writes a single fast-import commit and its file operations.
+func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first bool, ops []*fileOp) (int, error) {
+	ref := branch
+	if ref == "" {
+		ref = "master"
+	}
+
+	files := append([]*Commit(nil), c.Files...)
+	sort.Slice(files, func(i, j int) bool {
+		return PathDeepCompare(files[i].FileName, files[j].FileName) < 0
+	})
+	for _, op := range ops {
+		if op.kind == 'M' {
+			op.mark = e.emitBlob(op.path, op.text)
+		}
+	}
+
+	mark := e.mark
+	e.mark++
+
+	when := c.Date.Unix()
+	if e.forceDates {
+		when = 100000 + int64(mark)*e.commitWindow*2
+	} else if when == 0 {
+		when = e.epoch
+	}
+
+	fmt.Fprintf(e.w, "commit refs/heads/%s\n", ref)
+	fmt.Fprintf(e.w, "mark :%d\n", mark)
+	full, email, tz := resolveAuthor(e.authors, c.Author)
+	if e.forceDates {
+		tz = "+0000"
+	}
+	fmt.Fprintf(e.w, "committer %s <%s> %d %s\n", full, email, when, tz)
+	if c.Log == "" {
+		c.Log = "import\n"
+	}
+	fmt.Fprintf(e.w, "data %d\n%s", len(c.Log), c.Log)
+	if parentMark > 0 {
+		fmt.Fprintf(e.w, "from :%d\n", parentMark)
+	}
+	for _, op := range ops {
+		if op.kind == 'M' {
+			fmt.Fprintf(e.w, "M 100%o :%d %s\n", op.mode, op.mark, op.path)
+		} else if op.kind == 'D' {
+			fmt.Fprintf(e.w, "D %s\n", op.path)
+		}
+	}
+	if first && !e.didIg {
+		hasGitignore := false
+		for _, f := range files {
+			if f.FileName == ".gitignore" {
+				hasGitignore = true
+				break
+			}
+		}
+		if !hasGitignore {
+			fmt.Fprintln(e.w, "M 100644 inline .gitignore")
+			fmt.Fprintf(e.w, "data %d\n%s\n", len(cvsIgnores), cvsIgnores)
+		}
+		e.didIg = true
+	}
+	if e.reposurgeon {
+		revpairs := buildRevpairs(ops)
+		if revpairs != "" {
+			fmt.Fprintf(e.w, "property cvs-revisions %d %s", len(revpairs), revpairs)
+		}
+	}
+	fmt.Fprintln(e.w)
+	return mark, nil
+}
+
+// emitBlob writes a blob object and returns its mark.
+func (e *Emitter) emitBlob(path, text string) int {
+	mark := e.mark
+	e.mark++
+	if text == "" {
+		text = "\n"
+	}
+	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
+		text = normalizeGitignore(text)
+	}
+	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
+	dataLen := len(text)
+	if path == ".gitignore" {
+		dataLen = gitignoreDataLen(text)
+	}
+	fmt.Fprintf(e.w, "data %d\n%s\n", dataLen, text)
+	return mark
+}
+
+// fileOp captures a single file modification or deletion in a commit.
+type fileOp struct {
+	kind byte
+	path string
+	text string
+	mark int
+	mode int
+	commit *Commit
+}
+
+// fileState tracks materialized file content and mode between commits.
+type fileState struct {
+	text string
+	mode int
+}
+
+// buildOps computes file operations needed to transform prev into files.
+func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string]fileState) {
+	next := make(map[string]fileState, len(prev))
+	byPath := make(map[string]*Commit)
+	for k, v := range prev {
+		next[k] = v
+	}
+	for _, f := range files {
+		path := f.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		if f.Dead {
+			delete(next, path)
+			continue
+		}
+		byPath[path] = f
+		text := f.Text
+		if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
+			text = normalizeGitignore(text)
+		}
+		mode := f.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		next[path] = fileState{text: text, mode: mode}
+	}
+
+	var paths []string
+	for k := range prev {
+		paths = append(paths, k)
+	}
+	for k := range next {
+		if _, ok := prev[k]; !ok {
+			paths = append(paths, k)
+		}
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		return PathDeepCompare(paths[i], paths[j]) < 0
+	})
+
+	var ops []*fileOp
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		old, okOld := prev[p]
+		newv, okNew := next[p]
+		switch {
+		case okOld && !okNew:
+			ops = append(ops, &fileOp{kind: 'D', path: p})
+		case !okOld && okNew:
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode, commit: byPath[p]})
+		case okOld && okNew && (old.text != newv.text || old.mode != newv.mode):
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode, commit: byPath[p]})
+		}
+	}
+	return ops, next
+}
+
+// tagMatchesState reports whether a tag target set matches the current state.
+func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
+	if len(targets) == 0 {
+		return false
+	}
+	for _, t := range targets {
+		path := t.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		want := t.Text
+		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
+			want = normalizeGitignore(want)
+		}
+		got, ok := state[path]
+		if !ok {
+			return false
+		}
+		mode := t.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		if got.text != want || got.mode != mode {
+			return false
+		}
+	}
+	return true
+}
+
+// collectCommits flattens all branch commits and sorts them for emission.
+func collectCommits(repo *Repo) []*GitCommit {
+	var out []*GitCommit
+	for _, b := range repo.Branches {
+		out = append(out, CommitsForBranch(b)...)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Date.Equal(out[j].Date) {
+			return out[i].Date.Before(out[j].Date)
+		}
+		if out[i].RefName != out[j].RefName {
+			return out[i].RefName < out[j].RefName
+		}
+		return out[i].Log < out[j].Log
+	})
+	return out
+}
+
+// resolveAuthor maps CVS usernames to full name, email, and timezone.
+func resolveAuthor(authors map[string]Author, name string) (string, string, string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "cvs-fast-export", "unknown", "+0000"
+	}
+	if authors != nil {
+		if a, ok := authors[name]; ok {
+			tz := a.Timezone
+			if tz == "" {
+				tz = "+0000"
+			}
+			return a.Full, a.Email, tz
+		}
+	}
+	return name, name, "+0000"
+}
+
+// buildRevpairs emits CVS revision mapping lines for reposurgeon metadata.
+func buildRevpairs(ops []*fileOp) string {
+	var b strings.Builder
+	for _, op := range ops {
+		if op.kind != 'M' || op.commit == nil {
+			continue
+		}
+		path := op.commit.OrigName
+		if path == "" {
+			path = op.path
+		}
+		b.WriteString(path)
+		b.WriteString(" ")
+		b.WriteString(String(op.commit.Number))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// cvsIgnores is the default CVS ignore list appended to .gitignore exports.
+const cvsIgnores = "# CVS default ignores begin\n" +
+	"tags\n" +
+	"TAGS\n" +
+	".make.state\n" +
+	".nse_depinfo\n" +
+	"*~\n" +
+	"\\#*\n" +
+	".#*\n" +
+	",*\n" +
+	"_$*\n" +
+	"*$\n" +
+	"*.old\n" +
+	"*.bak\n" +
+	"*.BAK\n" +
+	"*.orig\n" +
+	"*.rej\n" +
+	".del-*\n" +
+	"*.a\n" +
+	"*.olb\n" +
+	"*.o\n" +
+	"*.obj\n" +
+	"*.so\n" +
+	"*.exe\n" +
+	"*.Z\n" +
+	"*.elc\n" +
+	"*.ln\n" +
+	"core\n" +
+	"# CVS default ignores end\n"
+
+// normalizeGitignore applies CVS .cvsignore rules and default ignores.
+func normalizeGitignore(text string) string {
+	if text == "" {
+		return cvsIgnores
+	}
+	buf := []byte(text)
+	for i := range buf {
+		if buf[i] == ' ' {
+			buf[i] = '\n'
+		}
+	}
+	suppressDefaults := false
+	if len(buf) >= 2 && buf[0] == '!' && buf[1] == '\n' {
+		suppressDefaults = true
+		buf = buf[2:]
+	}
+	var b strings.Builder
+	if !suppressDefaults {
+		b.WriteString(cvsIgnores)
+	}
+	for i := 0; i < len(buf); i++ {
+		if buf[i] == '#' && (i == 0 || buf[i-1] == '\n') {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(buf[i])
+	}
+	return b.String()
+}
+
+// gitignoreDataLen computes the data length excluding escaped CVS comments.
+func gitignoreDataLen(text string) int {
+	if text == "" {
+		return 0
+	}
+	escapes := 0
+	start := 0
+	if strings.HasPrefix(text, cvsIgnores) {
+		start = len(cvsIgnores)
+	}
+	for i := start; i < len(text)-1; i++ {
+		if text[i] == '\\' && text[i+1] == '#' && (i == start || text[i-1] == '\n') {
+			escapes++
+		}
+	}
+	return len(text) - escapes
+}
+
+
+
+// main executes the cvs-fast-export pipeline over the input masters.
+func main() {
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if len(cfg.Files) == 0 {
+		// Read file list from stdin, as the C tool does.
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			cfg.Files = append(cfg.Files, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
+	cfg.SourceType = detectSourceType(cfg.Files)
+	striplen := computeStriplen(cfg.Files)
+
+	type inputFile struct {
+		path      string
+		rectified string
+	}
+	var inputs []inputFile
+	for _, path := range cfg.Files {
+		if !strings.HasSuffix(path, ",v") {
+			continue
+		}
+		inputs = append(inputs, inputFile{
+			path:      path,
+			rectified: ExportName(path, striplen),
+		})
+	}
+	sort.Slice(inputs, func(i, j int) bool {
+		return PathDeepCompare(inputs[i].rectified, inputs[j].rectified) < 0
+	})
+
+	var masters []*Master
+	for _, in := range inputs {
+		rcsFile, symbolOrder, err := LoadFile(in.path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		master.Heads, _ = PatchVendorBranches(master.Heads)
+		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		})
+		_, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		})
+		master.Tags = tags
+		if cfg.DumpHeads {
+			dumpHeads(master)
+			dumpChains(master)
+		}
+		if cfg.DumpBranches {
+			dumpBranches(master)
+		}
+		masters = append(masters, master)
+	}
+
+	repo := Build(masters, CollateOptions{
+		CommitTimeWindow: cfg.CommitWindow,
+		TrustCommitIDs:   true,
+	})
+
+	if len(repo.Branches) > 0 {
+		em := NewEmitter(os.Stdout).
+			WithTagTargets(repo.TagTargets).
+			WithOptions(ExportOptions{
+				ForceDates:   cfg.ForceDates,
+				Reposurgeon:  cfg.Reposurgeon,
+				CommitWindow: cfg.CommitWindow,
+				Authors:      cfg.Authors,
+				SourceType:   cfg.SourceType,
+			})
+		_ = em.EmitRepo(repo)
+		_ = em.Flush()
+	}
+
+	if skew := skewVulnerable(masters); skew != nil && len(masters) > 1 && !cfg.ForceDates {
+		fmt.Fprintf(os.Stderr, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
+	}
+
+	os.Exit(0)
+}
+
+// config captures parsed CLI settings.
+type config struct {
+	Files        []string
+	DumpHeads    bool
+	DumpBranches bool
+	ForceDates   bool
+	Reposurgeon  bool
+	CommitWindow time.Duration
+	Authors      map[string]Author
+	SourceType   string
+}
+
+// parseArgs interprets CLI flags into a config.
+func parseArgs(args []string) (config, error) {
+	cfg := config{
+		CommitWindow: 300 * time.Second,
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			cfg.Files = append(cfg.Files, args[i+1:]...)
+			break
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			cfg.Files = append(cfg.Files, arg)
+			continue
+		}
+
+		switch {
+		case arg == "-h" || arg == "--help":
+			printHelp()
+			os.Exit(0)
+		case arg == "--dump-heads":
+			cfg.DumpHeads = true
+		case arg == "--dump-branches":
+			cfg.DumpBranches = true
+		case arg == "-V" || arg == "--version":
+			fmt.Println("cvs-fast-export (go)")
+			os.Exit(0)
+		case arg == "-T":
+			cfg.ForceDates = true
+		case arg == "-r" || arg == "--reposurgeon":
+			cfg.Reposurgeon = true
+		case arg == "-t":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			secs, err := parseInt(args[i])
+			if err != nil {
+				return cfg, fmt.Errorf("invalid -t value: %w", err)
+			}
+			cfg.CommitWindow = time.Duration(secs) * time.Second
+		case arg == "-A" || arg == "--authormap":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			authors, err := Load(args[i])
+			if err != nil {
+				return cfg, err
+			}
+			cfg.Authors = authors
+		case arg == "-c", arg == "-g",
+			arg == "-v", arg == "-q", arg == "-a", arg == "-p",
+			arg == "-P", arg == "-E", arg == "-S", arg == "-N":
+			// flags without arguments (ignored for now)
+		case strings.HasPrefix(arg, "--"):
+			// long options with or without =value
+			if strings.Contains(arg, "=") {
+				if strings.HasPrefix(arg, "--authormap=") {
+					authors, err := Load(strings.SplitN(arg, "=", 2)[1])
+					if err != nil {
+						return cfg, err
+					}
+					cfg.Authors = authors
+				}
+				continue
+			}
+			if i+1 < len(args) {
+				switch arg {
+				case "--commit-time-window", "--log", "--revision-map",
+					"--remote", "--strip", "--incremental",
+					"--threads", "--debug", "--authormap":
+					if arg == "--authormap" {
+						authors, err := Load(args[i+1])
+						if err != nil {
+							return cfg, err
+						}
+						cfg.Authors = authors
+					} else if arg == "--commit-time-window" {
+						secs, err := parseInt(args[i+1])
+						if err != nil {
+							return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
+						}
+						cfg.CommitWindow = time.Duration(secs) * time.Second
+					}
+					i++
+				default:
+					// unknown long option; ignore
+				}
+			}
+		default:
+			// short options with arguments
+			if i+1 < len(args) {
+				switch arg {
+				case "-w", "-l", "-R", "-e", "-s", "-i", "-d":
+					i++
+				default:
+					// unknown short option; ignore
+				}
+			}
+		}
+	}
+	return cfg, nil
+}
+
+// parseInt parses a decimal string into an int64.
+func parseInt(s string) (int64, error) {
+	var v int64
+	_, err := fmt.Sscanf(strings.TrimSpace(s), "%d", &v)
+	if err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
+// detectSourceType guesses CVS vs RCS based on input paths.
+func detectSourceType(files []string) string {
+	for _, file := range files {
+		if strings.Contains(file, "CVSROOT") || strings.HasSuffix(file, ".cvsignore,v") {
+			return "cvs"
+		}
+	}
+	return "rcs"
+}
+
+// computeStriplen finds the common path prefix ending with a slash.
+func computeStriplen(files []string) int {
+	striplen := -1
+	last := ""
+	for _, file := range files {
+		if !strings.HasSuffix(file, ",v") {
+			continue
+		}
+		if striplen > 0 && last != "" {
+			common := commonPrefixEndingWithSlash(file, last)
+			if common < striplen {
+				striplen = common
+			}
+		} else if striplen < 0 {
+			striplen = 0
+			for i := 0; i < len(file); i++ {
+				if file[i] == '/' {
+					striplen = i + 1
+				}
+			}
+		}
+		last = file
+	}
+	if striplen < 0 {
+		return 0
+	}
+	return striplen
+}
+
+// skewVulnerable finds the latest commit without a commitid.
+func skewVulnerable(masters []*Master) *time.Time {
+	var max time.Time
+	found := false
+	for _, m := range masters {
+		for _, c := range m.Commits {
+			if c == nil || c.CommitID != "" {
+				continue
+			}
+			if !found || c.Date.After(max) {
+				max = c.Date
+				found = true
+			}
+		}
+	}
+	if !found {
+		return nil
+	}
+	return &max
+}
+
+// commonPrefixEndingWithSlash returns the last shared path separator index.
+func commonPrefixEndingWithSlash(a, b string) int {
+	max := len(a)
+	if len(b) < max {
+		max = len(b)
+	}
+	lastSlash := 0
+	for i := 0; i < max; i++ {
+		if a[i] != b[i] {
+			break
+		}
+		if a[i] == '/' {
+			lastSlash = i + 1
+		}
+	}
+	return lastSlash
+}
+
+// printHelp emits a brief usage banner.
+func printHelp() {
+	fmt.Print("Usage: cvs-fast-export [OPTIONS] [FILE]...\n")
+}
+
+// dumpHeads prints master head summaries for debugging.
+func dumpHeads(m *Master) {
+	fmt.Fprintf(os.Stderr, "== %s\n", m.Source)
+	for _, h := range m.Heads {
+		parent := ""
+		if h.Parent != nil {
+			parent = h.Parent.RefName
+		}
+		commit := ""
+		if h.Commit != nil {
+			commit = String(h.Commit.Number)
+		}
+		fmt.Fprintf(os.Stderr, "head=%s num=%s parent=%s commit=%s\n",
+			h.RefName, String(h.Number), parent, commit)
+	}
+}
+
+// dumpChains prints branch chain lengths for debugging.
+func dumpChains(m *Master) {
+	for _, h := range m.Heads {
+		if h.Commit == nil {
+			continue
+		}
+		count := 0
+		for c := h.Commit; c != nil; c = c.Parent {
+			count++
+		}
+		fmt.Fprintf(os.Stderr, "chain %s len=%d\n", h.RefName, count)
+	}
+}
+
+// dumpBranches prints branch commit numbers for debugging.
+func dumpBranches(m *Master) {
+	heads := append([]*Head(nil), m.Heads...)
+	sort.Slice(heads, func(i, j int) bool {
+		return heads[i].RefName < heads[j].RefName
+	})
+	for _, h := range heads {
+		if h.Commit == nil {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "branch %s: ", h.RefName)
+		first := true
+		for c := h.Commit; c != nil; c = c.Parent {
+			if !first {
+				fmt.Fprint(os.Stderr, " ")
+			}
+			first = false
+			fmt.Fprint(os.Stderr, String(c.Number))
+			if c.Tail {
+				break
+			}
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+}
