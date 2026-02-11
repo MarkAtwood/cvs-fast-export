@@ -2344,6 +2344,7 @@ func main() {
 	})
 
 	var masters []*Master
+	vendorWarning := false
 	for _, in := range inputs {
 		// Parse each RCS file and build the per-file master model.
 		rcsFile, symbolOrder, err := LoadFile(in.path)
@@ -2357,7 +2358,11 @@ func main() {
 			os.Exit(1)
 		}
 		// Resolve branches, vendor branches, and symbol refs.
-		master.Heads, _ = PatchVendorBranches(master.Heads)
+		var foundVendor bool
+		master.Heads, foundVendor = PatchVendorBranches(master.Heads)
+		if foundVendor {
+			vendorWarning = true
+		}
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
 			return master.Commits[String(n)]
 		})
@@ -2393,6 +2398,11 @@ func main() {
 			})
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
+	}
+
+	// Warn if vendor branches were detected.
+	if vendorWarning && !cfg.Quiet {
+		fmt.Fprintln(os.Stderr, "cvs-fast-export: vendor branch detected.")
 	}
 
 	// Warn if commitids are missing and skew could occur.
