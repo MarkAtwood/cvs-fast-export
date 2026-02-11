@@ -1546,3 +1546,8 @@ to follow a natural ordering in which references follow definitions.
      build cache).
   2. Update .gitignore so cmd/cvs-fast-export/* is no longer ignored.
 -----
+
+Go comments that simply say a function mirrors somethiing in the C code
+are not very useful, since the inytent is to get this code working
+and delete the C implementation. Improve these. Adapt comments
+attached to the corresponding C function when possible,

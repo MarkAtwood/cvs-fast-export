@@ -183,7 +183,8 @@ func min(a, b int) int {
 
 
 
-// PathDeepCompare mirrors import.c:path_deep_compare to sort by depth.
+// PathDeepCompare orders paths so deeper entries sort before their parents,
+// matching git fast-export's deletion-safe ordering.
 func PathDeepCompare(a, b string) int {
 	if a == b {
 		return 0
@@ -474,8 +475,8 @@ type Version struct {
 	Branches []Number
 }
 
-// SetRefs applies symbol names to heads and extracts tags.
-// This mirrors the core of revcvs.c:cvs_master_set_refs.
+// SetRefs assigns branch heads and tags from CVS symbols, synthesizing
+// missing branch names while discarding unreachable dead branches.
 func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit) ([]*Head, []Tag) {
 	var tags []Tag
 	for _, s := range symbols {
@@ -526,8 +527,8 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 	return heads, tags
 }
 
-// PatchVendorBranches mirrors cvs_master_patch_vendor_branch.
-// It mutates heads in place and returns whether any vendor branch was found.
+// PatchVendorBranches detects vendor branches, synthesizes missing names,
+// and splices them into master when no 1.2 exists.
 func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 	trunk := findHeadByName(heads, "master")
 	if trunk == nil {
@@ -581,8 +582,7 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 	return heads, foundVendor
 }
 
-// GraftBranches mirrors cvs_master_graft_branches.
-// GraftBranches links branch tips to their trunk parents.
+// GraftBranches links branch tails to their parent revisions to form a tree.
 func GraftBranches(heads []*Head, versions []Version, findRevision func(Number) *Commit) {
 	trunk := findHeadByName(heads, "master")
 	for _, h := range heads {

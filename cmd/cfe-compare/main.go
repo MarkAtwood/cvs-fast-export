@@ -130,7 +130,8 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	return out, nil
 }
 
-// PathDeepCompare mirrors import.c:path_deep_compare to sort by depth.
+// PathDeepCompare orders paths so deeper entries sort before their parents,
+// matching git fast-export's deletion-safe ordering.
 func PathDeepCompare(a, b string) int {
 	if a == b {
 		return 0
