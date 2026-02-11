@@ -2095,4 +2095,48 @@ Understood. Let’s reason it out from the actual mismatch.
   diff if anything still diverges.
 ----
 
-Yes, this makes longrev work.
+Yes, this makes longrev work. However, it changes the branch root
+selection in the postrev test.
+
+not ok - postbranch: Ilya Basin's test, failed by cvsps-3.x
+  --- |
+  --- postbranch.chk	2024-02-14 16:20:13.880208064 -0500
+  +++ -	2026-02-11 13:10:10.534824070 -0500
+  @@ -67,7 +67,7 @@
+   committer foo <foo> 103600 +0000
+   data 13
+   commit in br
+  -from :2
+  +from :4
+   M 100644 :5 f
+   property cvs-revisions 10 f 1.1.2.1
+   
+  ...
+
+While you're working on this, be suee to put as very detailed comment
+desaceribing the branch root selection aslforithm, its cases, and
+its motivation mnear the code that does it.  Because this is certain
+to be a pain point for future maintainance.
+
+----
+I rewrote the branch-root selection in linkBranchParents with a detailed comment and a more
+  principled rule that covers all three cases:
+
+  1. Nested branches (base on a branch, base.C > 2) → parent is the explicit base revision (fixes
+     longrev).
+  2. Branch from trunk (base.C == 2) → parent is the latest master commit ≤ branch date whose branch-
+     file states match the base revisions (fixes branchy and should fix postbranch).
+  3. Fallback → use any resolvable base revision.
+
+  I also added versionAtCommit helper to compute the visible revision for a file at a given master
+  commit, which is needed for rule (2).
+
+  There’s now a detailed block comment above linkBranchParents explaining the algorithm and
+  motivation.
+
+  Please rebuild (make cvs-fast-export-go) and rerun postbranch, branchy, and longrev. If any still
+  differ, send the diff and we’ll refine further.
+----
+
+That did indeed solve the longrev case without breaking any previous
+ones.

@@ -1684,7 +1684,23 @@ func collectTags(masters []*Master, repo *Repo) {
 	}
 }
 
-// linkBranchParents attaches branch tails to a master commit when possible.
+// linkBranchParents attaches branch tails to an appropriate parent on master.
+//
+// Branch roots are per-file in CVS, but git needs a single parent commit that
+// represents the repository state at branch creation time. The selection
+// strategy is:
+// 1) If any branch file's base revision is itself on a branch (base.C > 2),
+//    prefer that explicit base revision. This preserves nested-branch chains
+//    like longrev, where the parent is not on trunk at all.
+// 2) Otherwise (all bases on trunk), prefer the latest master commit on or
+//    before the branch date whose file states for the branch files match the
+//    base revisions. This captures branchy-style cases where unrelated master
+//    commits (touching other files) should still be ancestors, but commits that
+//    advance the branch files past the base must not be.
+// 3) If no such master commit is found, fall back to the base revision itself.
+//
+// This is a heuristic bridge between CVS per-file branching and Git's single
+// DAG parent requirement; it aims to preserve repository-visible file states.
 func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 	var master *GitBranch
 	for _, b := range branches {
@@ -1711,24 +1727,57 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if tail == nil || len(tail.Files) == 0 {
 			continue
 		}
-		// Prefer explicit branch-base revision when it is itself on a branch.
-		base := tail.Files[0].Number
-		if base.C < 4 {
-			continue
+		// Compute base revisions (strip the last branch hop).
+		baseByFile := make(map[string]Number, len(tail.Files))
+		needsBranchBase := false
+		for _, f := range tail.Files {
+			if f == nil || f.FileName == "" {
+				continue
+			}
+			base := f.Number
+			if base.C < 4 {
+				continue
+			}
+			base.C -= 2
+			base.N = base.N[:base.C]
+			baseByFile[f.FileName] = base
+			if base.C > 2 {
+				needsBranchBase = true
+			}
 		}
-		base.C -= 2
-		base.N = base.N[:base.C]
-		if base.C > 2 {
-			if gc := byNumber[String(base)]; gc != nil {
-				tail.Parent = gc
+		// Case 1: nested branch base (non-trunk).
+		if needsBranchBase {
+			for _, base := range baseByFile {
+				if base.C > 2 {
+					if gc := byNumber[String(base)]; gc != nil {
+						tail.Parent = gc
+						break
+					}
+				}
+			}
+			if tail.Parent != nil {
 				continue
 			}
 		}
-		// Otherwise prefer the latest master commit on or before the branch date.
-		if len(masterCommits) > 0 {
+		// Case 2: trunk bases - select latest master commit with matching base states.
+		if len(masterCommits) > 0 && len(baseByFile) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
-				if !mc.Date.After(tail.Date) {
+				if mc.Date.After(tail.Date) {
+					continue
+				}
+				ok := true
+				for path, base := range baseByFile {
+					if base.C == 0 {
+						continue
+					}
+					v, okv := versionAtCommit(mc, path)
+					if !okv || !Equal(v, base) {
+						ok = false
+						break
+					}
+				}
+				if ok {
 					pick = mc
 					break
 				}
@@ -1738,12 +1787,29 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 				continue
 			}
 		}
-		// Finally, fall back to the base revision even on trunk.
-		if gc := byNumber[String(base)]; gc != nil {
-			tail.Parent = gc
-			continue
+		// Case 3: fall back to any base revision we can resolve.
+		for _, base := range baseByFile {
+			if gc := byNumber[String(base)]; gc != nil {
+				tail.Parent = gc
+				break
+			}
 		}
 	}
+}
+
+// versionAtCommit returns the last revision of path visible at commit c.
+func versionAtCommit(c *GitCommit, path string) (Number, bool) {
+	for cur := c; cur != nil; cur = cur.Parent {
+		for _, f := range cur.Files {
+			if f == nil {
+				continue
+			}
+			if f.FileName == path {
+				return f.Number, true
+			}
+		}
+	}
+	return Zero, false
 }
 
 // commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
