@@ -1181,3 +1181,6 @@ Run linear.tst again.
 
   Next step?
 -----
+
+It's time to run a full test.  Make a standalone binary; I'll plug it
+into the regression-test suite and we'll see what happens.
