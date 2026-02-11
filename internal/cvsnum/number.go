@@ -7,13 +7,16 @@ import (
 	"strings"
 )
 
+// Number represents a CVS revision number split into components.
 type Number struct {
 	C int
 	N []int
 }
 
+// Zero is the sentinel for an empty CVS revision number.
 var Zero = Number{C: 0, N: nil}
 
+// Parse converts a dotted CVS revision string into a Number.
 func Parse(s string) (Number, error) {
 	if s == "" {
 		return Zero, fmt.Errorf("empty CVS number")
@@ -33,6 +36,7 @@ func Parse(s string) (Number, error) {
 	return n, nil
 }
 
+// IsHead reports whether the revision is a branch head marker.
 func IsHead(n Number) bool {
 	if n.C <= 2 || (n.C&1) != 0 {
 		return false
@@ -40,6 +44,7 @@ func IsHead(n Number) bool {
 	return n.N[n.C-2] == 0
 }
 
+// SameBranch reports whether two revisions reside on the same branch.
 func SameBranch(a, b Number) bool {
 	if a.C&1 == 1 {
 		a = appendZero(a)
@@ -71,6 +76,7 @@ func SameBranch(a, b Number) bool {
 	return true
 }
 
+// Equal reports whether two numbers are identical component-wise.
 func Equal(a, b Number) bool {
 	if a.C != b.C {
 		return false
@@ -103,6 +109,7 @@ func Compare(a, b Number) int {
 	return 0
 }
 
+// Degree reports the effective branch depth for a revision.
 func Degree(n Number) int {
 	if n.C < 4 {
 		return n.C
@@ -116,6 +123,7 @@ func Degree(n Number) int {
 	return n.C
 }
 
+// IsTrunk reports whether a revision is on trunk.
 func IsTrunk(n Number) bool { return n.C == 2 }
 
 // Vendor branches are 1.1.x with odd x.
@@ -126,6 +134,7 @@ func IsVendor(n Number) bool {
 	return n.N[0] == 1 && n.N[1] == 1 && (n.N[2]&1) == 1
 }
 
+// String formats a CVS revision number back to dotted text.
 func String(n Number) string {
 	if n.C == 0 {
 		return ""
@@ -140,10 +149,12 @@ func String(n Number) string {
 	return b.String()
 }
 
+// AppendZero appends a zero to make odd-length revisions comparable.
 func AppendZero(n Number) Number {
 	return appendZero(n)
 }
 
+// appendZero returns a new Number with an extra trailing zero.
 func appendZero(n Number) Number {
 	out := Number{C: n.C + 1, N: make([]int, n.C+1)}
 	copy(out.N, n.N)
@@ -151,6 +162,7 @@ func appendZero(n Number) Number {
 	return out
 }
 
+// min returns the smaller of two integers.
 func min(a, b int) int {
 	if a < b {
 		return a

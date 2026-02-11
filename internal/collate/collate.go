@@ -11,11 +11,13 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/symbols"
 )
 
+// Options controls commit collation heuristics.
 type Options struct {
 	CommitTimeWindow time.Duration
 	TrustCommitIDs   bool
 }
 
+// GitCommit groups CVS file revisions into a single fast-import commit.
 type GitCommit struct {
 	Parent  *GitCommit
 	Date    time.Time
@@ -25,6 +27,7 @@ type GitCommit struct {
 	RefName string
 }
 
+// GitBranch is a linearized commit chain for a named ref.
 type GitBranch struct {
 	Name   string
 	Head   *GitCommit
@@ -32,6 +35,7 @@ type GitBranch struct {
 	Depth  int
 }
 
+// Repo holds collated commits and tag targets for export.
 type Repo struct {
 	Branches   []*GitBranch
 	CommitOf   map[*symbols.Commit]*GitCommit
@@ -40,6 +44,7 @@ type Repo struct {
 	TagOrder   []string
 }
 
+// Build collates CVS commits into fast-import commit groups.
 func Build(masters []*rcsmodel.Master, opts Options) *Repo {
 	byName := collectBranches(masters)
 	branches := toposortBranches(byName, masters)
@@ -71,6 +76,7 @@ func CommitsForBranch(branch *GitBranch) []*GitCommit {
 	return out
 }
 
+// collectBranches gathers branch refs from master heads.
 func collectBranches(masters []*rcsmodel.Master) map[string]*GitBranch {
 	byName := make(map[string]*GitBranch)
 	for _, m := range masters {
@@ -87,6 +93,7 @@ func collectBranches(masters []*rcsmodel.Master) map[string]*GitBranch {
 	return byName
 }
 
+// toposortBranches returns a stable ordering for branch processing.
 func toposortBranches(byName map[string]*GitBranch, masters []*rcsmodel.Master) []*GitBranch {
 	var branches []*GitBranch
 	for _, b := range byName {
@@ -99,6 +106,7 @@ func toposortBranches(byName map[string]*GitBranch, masters []*rcsmodel.Master) 
 	return branches
 }
 
+// gatherHeads collects branch heads with the given ref name.
 func gatherHeads(masters []*rcsmodel.Master, name string) []*symbols.Head {
 	var heads []*symbols.Head
 	for _, m := range masters {
@@ -111,6 +119,7 @@ func gatherHeads(masters []*rcsmodel.Master, name string) []*symbols.Head {
 	return heads
 }
 
+// collateBranch groups commits for a branch and links them into a chain.
 func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf map[*symbols.Commit]*GitCommit, byNumber map[string]*GitCommit) *GitCommit {
 	seen := make(map[*symbols.Commit]struct{})
 	var commits []*symbols.Commit
@@ -232,6 +241,7 @@ func collateBranch(branch string, heads []*symbols.Head, opts Options, commitOf 
 	return prev
 }
 
+// collectTags records tag targets and preserves a deterministic tag order.
 func collectTags(masters []*rcsmodel.Master, repo *Repo) {
 	seen := make(map[string]map[*symbols.Commit]struct{})
 	seenOrder := make(map[string]struct{})
@@ -259,6 +269,7 @@ func collectTags(masters []*rcsmodel.Master, repo *Repo) {
 	}
 }
 
+// linkBranchParents attaches branch tails to a master commit when possible.
 func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 	var master *GitBranch
 	for _, b := range branches {
@@ -332,6 +343,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 	}
 }
 
+// commitTouches reports whether a commit modifies any of the named files.
 func commitTouches(c *GitCommit, files map[string]struct{}) bool {
 	if c == nil || len(files) == 0 {
 		return false
@@ -347,6 +359,7 @@ func commitTouches(c *GitCommit, files map[string]struct{}) bool {
 	return false
 }
 
+// commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
 func commitsMatch(g *GitCommit, c *symbols.Commit, opts Options) bool {
 	if opts.TrustCommitIDs && g.Files != nil && len(g.Files) > 0 {
 		if g.Files[0].CommitID != "" || c.CommitID != "" {

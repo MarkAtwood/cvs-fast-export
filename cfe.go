@@ -14,6 +14,7 @@ import (
 	rcs "github.com/arran4/golang-rcs"
 )
 
+// main parses stdin file lists and dumps parsed RCS files.
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	var files []*rcs.File

@@ -14,6 +14,7 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/symbols"
 )
 
+// Master represents one parsed RCS file with resolved commits and symbols.
 type Master struct {
 	Source   string
 	FileName string
@@ -25,6 +26,7 @@ type Master struct {
 	Root     *symbols.Commit
 }
 
+// BuildMaster converts a parsed RCS file into a CVS master model.
 func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
 	info, err := os.Stat(source)
 	if err != nil {
@@ -139,6 +141,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}, nil
 }
 
+// buildBranchHeads constructs branch head links and returns the trunk root.
 func buildBranchHeads(commits map[string]*symbols.Commit, versions []symbols.Version) ([]*symbols.Head, *symbols.Commit) {
 	trunkNum, ok := findTrunkStart(commits)
 	var heads []*symbols.Head
@@ -174,6 +177,7 @@ func buildBranchHeads(commits map[string]*symbols.Commit, versions []symbols.Ver
 	return heads, root
 }
 
+// findTrunkStart finds the smallest trunk revision number present.
 func findTrunkStart(commits map[string]*symbols.Commit) (cvsnum.Number, bool) {
 	var min cvsnum.Number
 	found := false
@@ -189,6 +193,7 @@ func findTrunkStart(commits map[string]*symbols.Commit) (cvsnum.Number, bool) {
 	return min, found
 }
 
+// buildBranchChain orders commits on a branch and links parents.
 func buildBranchChain(commits map[string]*symbols.Commit, branch cvsnum.Number) *symbols.Commit {
 	var chain []*symbols.Commit
 	for _, c := range commits {
@@ -209,6 +214,7 @@ func buildBranchChain(commits map[string]*symbols.Commit, branch cvsnum.Number) 
 	return chain[len(chain)-1]
 }
 
+// adjustDates enforces monotonically non-decreasing dates within a chain.
 func adjustDates(chain []*symbols.Commit) {
 	if len(chain) < 2 {
 		return
@@ -228,6 +234,7 @@ func adjustDates(chain []*symbols.Commit) {
 	}
 }
 
+// lastCommit returns the oldest commit reachable from a head.
 func lastCommit(head *symbols.Commit) *symbols.Commit {
 	if head == nil {
 		return nil
@@ -239,6 +246,7 @@ func lastCommit(head *symbols.Commit) *symbols.Commit {
 	return c
 }
 
+// exportName normalizes a master path to an RCS export name.
 func exportName(source string, striplen int) string {
 	path := source
 	if striplen > 0 && striplen < len(path) {
@@ -267,10 +275,12 @@ func exportName(source string, striplen int) string {
 	return strings.Join(cleaned, "/")
 }
 
+// ExportName is a public wrapper for exportName.
 func ExportName(source string, striplen int) string {
 	return exportName(source, striplen)
 }
 
+// fileopName applies .cvsignore to .gitignore mapping for output paths.
 func fileopName(rectified string) string {
 	if strings.HasSuffix(rectified, ".cvsignore") {
 		return strings.TrimSuffix(rectified, ".cvsignore") + ".gitignore"
@@ -278,6 +288,7 @@ func fileopName(rectified string) string {
 	return rectified
 }
 
+// sanitizeSymbolName removes invalid characters from tag names.
 func sanitizeSymbolName(s string) string {
 	const bad = "~^\\*?"
 	var b strings.Builder
@@ -293,6 +304,7 @@ func sanitizeSymbolName(s string) string {
 	return b.String()
 }
 
+// reconstructTexts reconstructs full texts for all revisions via deltas.
 func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) (map[string]string, error) {
 	out := make(map[string]string, len(contents))
 	if file.Head == "" {
@@ -359,6 +371,7 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 	return out, nil
 }
 
+// nextRevisionOf returns the NextRevision value for a revision head.
 func nextRevisionOf(file *rcs.File, rev string) string {
 	for _, rh := range file.RevisionHeads {
 		if rh.Revision == rev {
@@ -369,6 +382,7 @@ func nextRevisionOf(file *rcs.File, rev string) string {
 }
 
 // applyDelta applies an RCS reverse delta to the newer text, producing older text.
+// applyDelta applies a reverse delta script to newer text.
 func applyDelta(text, delta string) (string, error) {
 	lines, trailing := splitLinesForDelta(text)
 	commands, deltaTrailing := splitLinesForDelta(delta)
@@ -442,6 +456,7 @@ func applyDelta(text, delta string) (string, error) {
 	return joinLinesWithTrailing(lines, trailing), nil
 }
 
+// splitLines splits on newline, preserving trailing empty line semantics.
 func splitLines(s string) []string {
 	if s == "" {
 		return []string{}
@@ -454,10 +469,12 @@ func splitLines(s string) []string {
 	return parts
 }
 
+// joinLines joins lines with newline separators.
 func joinLines(lines []string) string {
 	return strings.Join(lines, "\n")
 }
 
+// splitLinesForDelta splits lines and reports whether a trailing newline exists.
 func splitLinesForDelta(s string) ([]string, bool) {
 	trailing := strings.HasSuffix(s, "\n")
 	if trailing {
@@ -469,6 +486,7 @@ func splitLinesForDelta(s string) ([]string, bool) {
 	return strings.Split(s, "\n"), trailing
 }
 
+// joinLinesWithTrailing joins lines and restores a trailing newline if needed.
 func joinLinesWithTrailing(lines []string, trailing bool) string {
 	if len(lines) == 0 {
 		if trailing {
@@ -483,6 +501,7 @@ func joinLinesWithTrailing(lines []string, trailing bool) string {
 	return out
 }
 
+// normalizeLog applies CVS initial-revision log normalization rules.
 func normalizeLog(log, desc string) string {
 	if log != "Initial revision\n" {
 		return log
@@ -493,6 +512,7 @@ func normalizeLog(log, desc string) string {
 	return desc
 }
 
+// branchParent returns the implied parent revision for a branch node.
 func branchParent(rev string) string {
 	n, err := cvsnum.Parse(rev)
 	if err != nil {
@@ -506,6 +526,7 @@ func branchParent(rev string) string {
 	return cvsnum.String(n)
 }
 
+// onBranch reports whether a revision lies on a given branch number.
 func onBranch(rev, branch cvsnum.Number) bool {
 	bn := normalizeBranch(branch)
 	rn := normalizeBranch(rev)
@@ -520,6 +541,7 @@ func onBranch(rev, branch cvsnum.Number) bool {
 	return true
 }
 
+// normalizeBranch ensures a branch number has even component count.
 func normalizeBranch(n cvsnum.Number) cvsnum.Number {
 	if n.C == 0 {
 		return n
@@ -530,6 +552,7 @@ func normalizeBranch(n cvsnum.Number) cvsnum.Number {
 	return n
 }
 
+// LoadFile parses an RCS file, returning the parsed model and symbol order.
 func LoadFile(path string) (*rcs.File, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -554,6 +577,7 @@ func LoadFile(path string) (*rcs.File, []string, error) {
 	return rcsFile, parseSymbolOrder(string(data)), nil
 }
 
+// parseSymbolOrder extracts symbol order from the raw header text.
 func parseSymbolOrder(data string) []string {
 	lines := strings.Split(data, "\n")
 	inSymbols := false
@@ -583,6 +607,7 @@ func parseSymbolOrder(data string) []string {
 	return names
 }
 
+// parseSymbolTokens parses name:rev entries from a symbols line.
 func parseSymbolTokens(s string) []string {
 	fields := strings.FieldsFunc(s, func(r rune) bool {
 		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ';'

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 )
 
+// Result captures paired execution output for C vs Go comparisons.
 type Result struct {
 	Match      bool
 	CExit      int
@@ -20,6 +21,7 @@ type Result struct {
 	GoStderr   []byte
 }
 
+// Run executes both binaries with identical stdin and compares outputs.
 func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
 	stdin := []byte(joinLines(inputs))
 	cOut, cErr, cExit, err := runOnce(cBin, args, stdin)
@@ -57,6 +59,7 @@ func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
 	return res, nil
 }
 
+// joinLines builds a newline-terminated stdin payload from path lines.
 func joinLines(lines []string) string {
 	if len(lines) == 0 {
 		return ""
@@ -69,6 +72,7 @@ func joinLines(lines []string) string {
 	return b.String()
 }
 
+// runOnce executes a command with provided stdin and captures output and exit code.
 func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
@@ -86,6 +90,7 @@ func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, erro
 	return nil, nil, 0, fmt.Errorf("run %s: %w", bin, err)
 }
 
+// firstDiffOffset returns the first differing byte offset or -1 if equal.
 func firstDiffOffset(a, b []byte) int {
 	n := len(a)
 	if len(b) < n {
@@ -102,6 +107,7 @@ func firstDiffOffset(a, b []byte) int {
 	return -1
 }
 
+// diffContext provides a small hex window around the first mismatch.
 func diffContext(a, b []byte, off int) string {
 	if off < 0 {
 		return ""
@@ -128,6 +134,7 @@ func diffContext(a, b []byte, off int) string {
 	return fmt.Sprintf("offset %d\nC: %s\nG: %s\n", off, hexDump(aSeg), hexDump(bSeg))
 }
 
+// hexDump renders bytes as compact hex for diff context.
 func hexDump(b []byte) string {
 	if len(b) == 0 {
 		return "(empty)"

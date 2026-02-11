@@ -1489,3 +1489,23 @@ Rebuild that check file accordungly.
 ----
 Updated tests/empty.chk to match the new behavior (file is now empty).
 ----
+
+The code needs to be readable by humans. Give each functioo a header
+comment briefly describing what it doers, and each structure a header
+commend briefly describing its semantics.
+
+---
+  Added brief header comments for every function and struct across all Go files outside third_party
+  and tests.
+
+  Details on where:
+
+  - internal/collate/collate.go
+  - cmd/cvs-fast-export/main.go
+  - cmd/cfe-check/main.go
+  - cmd/cfe-compare/main.go
+  - cfe.go
+
+  I didn’t run tests. If you want, I can rebuild and run a targeted
+  test pass next.
+----

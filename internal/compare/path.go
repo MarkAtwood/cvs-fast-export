@@ -3,7 +3,7 @@ package compare
 
 import "strings"
 
-// PathDeepCompare mirrors import.c:path_deep_compare.
+// PathDeepCompare mirrors import.c:path_deep_compare to sort by depth.
 func PathDeepCompare(a, b string) int {
 	if a == b {
 		return 0

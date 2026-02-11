@@ -8,6 +8,7 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/cvsnum"
 )
 
+// Commit represents a CVS revision with resolved content and metadata.
 type Commit struct {
 	Number   cvsnum.Number
 	Parent   *Commit
@@ -23,6 +24,7 @@ type Commit struct {
 	Tail     bool
 }
 
+// Head represents a named branch tip and its metadata.
 type Head struct {
 	RefName string
 	Number  cvsnum.Number
@@ -32,16 +34,19 @@ type Head struct {
 	Tail    bool
 }
 
+// Symbol associates a symbolic name with a CVS revision number.
 type Symbol struct {
 	Name   string
 	Number cvsnum.Number
 }
 
+// Tag records a lightweight tag name bound to a commit.
 type Tag struct {
 	Name   string
 	Commit *Commit
 }
 
+// Version captures a revision number and its child branches.
 type Version struct {
 	Number   cvsnum.Number
 	Branches []cvsnum.Number
@@ -155,6 +160,7 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 }
 
 // GraftBranches mirrors cvs_master_graft_branches.
+// GraftBranches links branch tips to their trunk parents.
 func GraftBranches(heads []*Head, versions []Version, findRevision func(cvsnum.Number) *Commit) {
 	trunk := findHeadByName(heads, "master")
 	for _, h := range heads {
@@ -187,6 +193,7 @@ func GraftBranches(heads []*Head, versions []Version, findRevision func(cvsnum.N
 	}
 }
 
+// fixUnnamedHeads synthesizes branch numbers for unnamed heads.
 func fixUnnamedHeads(heads []*Head) []*Head {
 	for _, h := range heads {
 		if h.RefName != "" {
@@ -209,6 +216,7 @@ func fixUnnamedHeads(heads []*Head) []*Head {
 	return heads
 }
 
+// discardZeroHeads removes heads that couldn't be assigned a number.
 func discardZeroHeads(heads []*Head) []*Head {
 	out := heads[:0]
 	for _, h := range heads {
@@ -219,6 +227,7 @@ func discardZeroHeads(heads []*Head) []*Head {
 	return out
 }
 
+// linkParents attaches parent heads based on CVS branch numbering.
 func linkParents(heads []*Head) {
 	for _, h := range heads {
 		if h.Number.C < 4 {
@@ -239,6 +248,7 @@ func linkParents(heads []*Head) {
 	}
 }
 
+// findHeadByBranch locates the head whose commits share a branch.
 func findHeadByBranch(heads []*Head, number cvsnum.Number) *Head {
 	for _, h := range heads {
 		if h.Commit != nil && cvsnum.SameBranch(h.Commit.Number, number) {
@@ -248,6 +258,7 @@ func findHeadByBranch(heads []*Head, number cvsnum.Number) *Head {
 	return nil
 }
 
+// findBranch walks up the branch number to find a matching head.
 func findBranch(heads []*Head, number cvsnum.Number) *Head {
 	n := cloneNumber(number)
 	for n.C >= 2 {
@@ -264,6 +275,7 @@ func findBranch(heads []*Head, number cvsnum.Number) *Head {
 	return nil
 }
 
+// firstLiveCommit returns the first non-dead commit in a chain.
 func firstLiveCommit(c *Commit) *Commit {
 	for c != nil {
 		if !c.Dead {
@@ -274,12 +286,14 @@ func firstLiveCommit(c *Commit) *Commit {
 	return nil
 }
 
+// cloneNumber copies a CVS number to avoid aliasing.
 func cloneNumber(n cvsnum.Number) cvsnum.Number {
 	out := cvsnum.Number{C: n.C, N: make([]int, n.C)}
 	copy(out.N, n.N[:n.C])
 	return out
 }
 
+// findHeadByName locates a head by its reference name.
 func findHeadByName(heads []*Head, name string) *Head {
 	for _, h := range heads {
 		if h.RefName == name {
@@ -289,6 +303,7 @@ func findHeadByName(heads []*Head, name string) *Head {
 	return nil
 }
 
+// removeHead removes a specific head from the slice.
 func removeHead(heads []*Head, target *Head) []*Head {
 	out := heads[:0]
 	for _, h := range heads {

@@ -12,14 +12,18 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/compare"
 )
 
+// stringList collects repeatable flag values.
 type stringList []string
 
+// String formats the list for flag display.
 func (s *stringList) String() string { return strings.Join(*s, ",") }
+// Set appends a new value to the list.
 func (s *stringList) Set(v string) error {
 	*s = append(*s, v)
 	return nil
 }
 
+// main compares C and Go fast-export streams for arbitrary inputs.
 func main() {
 	var cBin string
 	var goBin string
@@ -71,6 +75,7 @@ func main() {
 	os.Exit(1)
 }
 
+// collectInputs enumerates input RCS files from roots, files, and lists.
 func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	var inputs []string
 

@@ -13,12 +13,14 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/compare"
 )
 
+// testCase defines a named comparison fixture.
 type testCase struct {
 	Name string
 	Kind string // repo | testrepo
 	Args []string
 }
 
+// main runs a fixed battery of C-vs-Go comparisons.
 func main() {
 	var cBin string
 	var goBin string
@@ -103,6 +105,7 @@ func main() {
 	}
 }
 
+// ensureNeutralizeMap writes a stable author map for deterministic output.
 func ensureNeutralizeMap(testsDir string) error {
 	path := filepath.Join(testsDir, "neutralize.map")
 	user := os.Getenv("USER")
@@ -113,6 +116,7 @@ func ensureNeutralizeMap(testsDir string) error {
 	return os.WriteFile(path, []byte(line), 0644)
 }
 
+// caseRoot resolves or builds the repo root for a test case.
 func caseRoot(testsDir string, tc testCase) (string, error) {
 	switch tc.Kind {
 	case "repo":
@@ -143,6 +147,7 @@ func caseRoot(testsDir string, tc testCase) (string, error) {
 	}
 }
 
+// collectInputs enumerates input RCS files from roots, files, and lists.
 func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	var inputs []string
 

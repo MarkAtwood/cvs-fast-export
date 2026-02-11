@@ -8,12 +8,14 @@ import (
 	"strings"
 )
 
+// Author describes a resolved author identity from an authormap file.
 type Author struct {
 	Full     string
 	Email    string
 	Timezone string
 }
 
+// Load parses an authormap file into a username-to-author map.
 func Load(path string) (map[string]Author, error) {
 	f, err := os.Open(path)
 	if err != nil {

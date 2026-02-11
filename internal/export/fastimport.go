@@ -16,6 +16,7 @@ import (
 	"thyrsus.com/cvs-fast-export/internal/symbols"
 )
 
+// Emitter streams git fast-import output with CVS-specific conventions.
 type Emitter struct {
 	w          *bufio.Writer
 	mark       int
@@ -29,6 +30,7 @@ type Emitter struct {
 	sourceType string
 }
 
+// NewEmitter constructs an emitter with default epoch and mark state.
 func NewEmitter(w io.Writer) *Emitter {
 	return &Emitter{
 		w:     bufio.NewWriter(w),
@@ -38,6 +40,7 @@ func NewEmitter(w io.Writer) *Emitter {
 	}
 }
 
+// Options configures fast-import emission behavior.
 type Options struct {
 	ForceDates   bool
 	Reposurgeon  bool
@@ -46,11 +49,13 @@ type Options struct {
 	SourceType   string
 }
 
+// WithTagTargets provides tag revision sets for reposurgeon tagging.
 func (e *Emitter) WithTagTargets(tags map[string][]*symbols.Commit) *Emitter {
 	e.tagTargets = tags
 	return e
 }
 
+// WithOptions applies emitter options such as author maps and date forcing.
 func (e *Emitter) WithOptions(opts Options) *Emitter {
 	e.forceDates = opts.ForceDates
 	e.reposurgeon = opts.Reposurgeon
@@ -62,6 +67,7 @@ func (e *Emitter) WithOptions(opts Options) *Emitter {
 	return e
 }
 
+// Flush forces buffered output to be written.
 func (e *Emitter) Flush() error {
 	return e.w.Flush()
 }
@@ -141,6 +147,7 @@ func (e *Emitter) EmitRepo(repo *collate.Repo) error {
 	return nil
 }
 
+// emitCommit writes a single fast-import commit and its file operations.
 func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int, first bool, ops []*fileOp) (int, error) {
 	ref := branch
 	if ref == "" {
@@ -212,6 +219,7 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 	return mark, nil
 }
 
+// emitBlob writes a blob object and returns its mark.
 func (e *Emitter) emitBlob(path, text string) int {
 	mark := e.mark
 	e.mark++
@@ -230,6 +238,7 @@ func (e *Emitter) emitBlob(path, text string) int {
 	return mark
 }
 
+// fileOp captures a single file modification or deletion in a commit.
 type fileOp struct {
 	kind byte
 	path string
@@ -239,11 +248,13 @@ type fileOp struct {
 	commit *symbols.Commit
 }
 
+// fileState tracks materialized file content and mode between commits.
 type fileState struct {
 	text string
 	mode int
 }
 
+// buildOps computes file operations needed to transform prev into files.
 func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, map[string]fileState) {
 	next := make(map[string]fileState, len(prev))
 	byPath := make(map[string]*symbols.Commit)
@@ -305,6 +316,7 @@ func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, ma
 	return ops, next
 }
 
+// tagMatchesState reports whether a tag target set matches the current state.
 func tagMatchesState(targets []*symbols.Commit, state map[string]fileState) bool {
 	if len(targets) == 0 {
 		return false
@@ -333,6 +345,7 @@ func tagMatchesState(targets []*symbols.Commit, state map[string]fileState) bool
 	return true
 }
 
+// collectCommits flattens all branch commits and sorts them for emission.
 func collectCommits(repo *collate.Repo) []*collate.GitCommit {
 	var out []*collate.GitCommit
 	for _, b := range repo.Branches {
@@ -350,6 +363,7 @@ func collectCommits(repo *collate.Repo) []*collate.GitCommit {
 	return out
 }
 
+// resolveAuthor maps CVS usernames to full name, email, and timezone.
 func resolveAuthor(authors map[string]authormap.Author, name string) (string, string, string) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -367,6 +381,7 @@ func resolveAuthor(authors map[string]authormap.Author, name string) (string, st
 	return name, name, "+0000"
 }
 
+// buildRevpairs emits CVS revision mapping lines for reposurgeon metadata.
 func buildRevpairs(ops []*fileOp) string {
 	var b strings.Builder
 	for _, op := range ops {
@@ -385,6 +400,7 @@ func buildRevpairs(ops []*fileOp) string {
 	return b.String()
 }
 
+// cvsIgnores is the default CVS ignore list appended to .gitignore exports.
 const cvsIgnores = "# CVS default ignores begin\n" +
 	"tags\n" +
 	"TAGS\n" +
@@ -414,6 +430,7 @@ const cvsIgnores = "# CVS default ignores begin\n" +
 	"core\n" +
 	"# CVS default ignores end\n"
 
+// normalizeGitignore applies CVS .cvsignore rules and default ignores.
 func normalizeGitignore(text string) string {
 	if text == "" {
 		return cvsIgnores
@@ -442,6 +459,7 @@ func normalizeGitignore(text string) string {
 	return b.String()
 }
 
+// gitignoreDataLen computes the data length excluding escaped CVS comments.
 func gitignoreDataLen(text string) int {
 	if text == "" {
 		return 0
