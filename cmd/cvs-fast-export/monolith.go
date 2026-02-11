@@ -2161,6 +2161,26 @@ func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
 	if len(targets) == 0 {
 		return false
 	}
+	// Tags should represent a complete tree state. If the current state has
+	// any files not covered by the tag's target set, we must not emit the tag
+	// yet; otherwise, we'd attach the tag to a superset tree (tagbug).
+	targetPaths := make(map[string]struct{}, len(targets))
+	for _, t := range targets {
+		if t == nil {
+			continue
+		}
+		path := t.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		targetPaths[path] = struct{}{}
+	}
+	// Tags must correspond to the full tree state; extra files prevent a match.
+	for path := range state {
+		if _, ok := targetPaths[path]; !ok {
+			return false
+		}
+	}
 	// Ensure each target file matches current text and mode.
 	for _, t := range targets {
 		path := t.FileName

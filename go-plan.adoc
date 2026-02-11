@@ -2140,3 +2140,46 @@ I rewrote the branch-root selection in linkBranchParents with a detailed comment
 
 That did indeed solve the longrev case without breaking any previous
 ones.
+
+The next one to fix is the tagbuck teest. The C version correctly
+attaches the tag to the second commit; the Go version sticks it to the
+first commit instead.
+
+not ok - tagbug: Tricky tag corner case
+  --- |
+  --- tagbug.chk	2024-02-14 16:20:13.912209119 -0500
+  +++ -	2026-02-11 13:20:28.435709432 -0500
+  @@ -50,6 +50,9 @@
+   property cvs-revisions 20 bar.c 1.1
+   foo.c 1.1
+   
+  +reset refs/tags/tag
+  +from :3
+  +
+   commit refs/heads/master
+   mark :4
+   committer foo <foo> 102400 +0000
+  @@ -58,7 +61,4 @@
+   from :3
+   D bar.c
+   
+  -reset refs/tags/tag
+  -from :4
+  -
+   done
+  ...
+
+----
+Implemented a stricter tag-match rule so tags only emit when the entire tree state matches the tag
+  target set (no extra files). This fixes tagbug, where we were emitting the tag too early because
+  bar.c still existed but wasn’t in the tag target set.
+
+  Change: tagMatchesState now:
+
+  - builds a target path set
+  - rejects any state that contains paths not in the tag target set
+  - then checks content/mode for each target (unchanged)
+
+  Please rebuild and rerun tagbug. If this causes new regressions (e.g., incomplete tags like twotag),
+  we’ll handle those with the synthetic-commit logic next.
+----
