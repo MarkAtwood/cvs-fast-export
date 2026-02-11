@@ -1872,6 +1872,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	commits := collectCommits(repo)
 	markMap := make(map[*GitCommit]int)
 	state := make(map[string]map[string]fileState)
+	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
 	tagNames := append([]string(nil), repo.TagOrder...)
 	if len(tagNames) == 0 {
@@ -1907,18 +1908,15 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			parentMark = markMap[c.Parent]
 		}
 		first := i == 0
-		/* It is possible this code should go here.
-		 * Without it, we skip commits with no fileos;
-		 * the deadbranch,v test case generates this.
-		 * With it, we genwerate commit markup with no fileops,
-		 ^ which git-fast-import acceopts but is kind of weird.
-		if len(ops) == 0 {
-			// Skip empty commits but keep state up to date.
-			state[c.RefName] = next
-			continue
-		}
-		*/
-		ops, next := buildOps(prevState, c.Files)
+	ops, next := buildOps(prevState, c.Files)
+	if len(next) > 0 {
+		liveSeen[c.RefName] = true
+	}
+	if len(ops) == 0 && liveSeen[c.RefName] {
+		// Skip no-op commits once the branch has any live content.
+		state[c.RefName] = next
+		continue
+	}
 		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err

@@ -1904,3 +1904,71 @@ so it won’t hang silently. his will surface the offending branch name.
 Rebuild and run make tap as planned. If it panics, grab the branch name from the panic message and
 we’ll trace the cycle.
 ----
+
+That changed the behavior of the deadbranch test, but didn't match the
+C begavior. I also notice trhat the brancy test seena to be broken
+again, Stiudy tests/ERRORS1.
+
+----
+I see the branchy regression: it’s from emitting commits with no file ops. That’s correct for
+  deadbranch (all revisions dead), but wrong for normal repos (branchy gets extra empty commits).
+
+  I’ve adjusted the emitter to only emit empty commits when all files in the commit are dead.
+  Otherwise it skips no‑op commits (restoring branchy’s expected stream).
+
+  Changes in cmd/cvs-fast-export/monolith.go:
+
+  - skip len(ops)==0 commits unless allDeadFiles(c.Files) is true
+  - added allDeadFiles helper
+
+  Please rebuild and rerun make tap (or at least the branchy and
+  deadbranch checks) to verify.
+----
+
+We have a more basic problem.  I reverted the removal of the skip code
+and the branchy test is still busted.
+
+-----
+Got it. Please paste the current branchy diff from your latest tests/ERRORS1 (or rerun and share
+just the branchy hunk). I need to see exactly how it differs now that the skip is restored so I can
+trace the regression.
+-----
+
+Look in tests/ERRORS2.
+
+----
+  You were right — the skip is currently not in effect; the commented block left us always emitting
+  empty commits. That’s why branchy still shows extra no‑op commits.
+
+  I just re‑introduced the skip after buildOps with the deadbranch exception:
+
+  - emit empty commits only when all files are dead
+  - otherwise skip no‑op commits
+
+  This should restore branchy while keeping deadbranch correct.
+
+  Please rebuild the Go binary (make cvs-fast-export-go) and rerun the branchy check. If it still
+  differs, paste the new diff and I’ll dig deeper.
+----
+
+Nope. Branchy us still busted,
+
+----
+  I see the issue: even with the skip re-enabled, we were still emitting empty commits because we
+  allowed them whenever all files in the commit were dead. That’s too permissive for branchy.
+
+  Fix: only allow empty commits on a branch that has never had any live content. Once a branch has any
+  live file in its state, we skip no‑op commits entirely. This still preserves deadbranch (no live
+  content ever) while removing the extra empty commits in branchy.
+
+  Changes in cmd/cvs-fast-export/monolith.go:
+
+  - track liveSeen per branch
+  - skip len(ops)==0 if liveSeen[ref] is true
+  - removed allDeadFiles helper
+
+  Please rebuild (make cvs-fast-export-go) and rerun the branchy test. If it still differs, paste the
+  updated diff and I’ll keep digging.
+----
+
+That unbroke the branchy test,
