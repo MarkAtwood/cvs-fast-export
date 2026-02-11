@@ -1473,3 +1473,19 @@ conversion of the branchy test, which was previously correct.
   Next logical step: rerun tests and confirm branchy is back to green, then pick one of the remaining
   buckets (tags, vendor branch handling, or branch‑pruning warnings).
 ----
+
+not ok - empty: Pathological master without trunk from glide3x repository.
+  --- |
+  --- empty.chk	2024-02-14 16:20:14.084214792 -0500
+  +++ -	2026-02-11 05:00:18.136295875 -0500
+  @@ -1,2 +0,0 @@
+  -cvs-fast-export: warning - no master branch generated
+  -cvs-fast-export: warning - master file empty,v has no revision number - ignore file
+  ...
+
+This is a better error message than the C version generates.
+Rebuild that check file accordungly.
+
+----
+Updated tests/empty.chk to match the new behavior (file is now empty).
+----
