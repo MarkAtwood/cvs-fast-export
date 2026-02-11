@@ -1744,3 +1744,11 @@ did instead?
   Rebuild and re-run t9604. If you want broader TZ coverage, we can extend the map or parse more POSIX
   TZ forms.
 ----
+
+Regenerate the hashsymbol checkfile. The different placement of the
+warning is acceptable.
+
+----
+Regenerated tests/hashsymbol.chk using the Go binary. The file now
+reflects the new warning placement.
+----

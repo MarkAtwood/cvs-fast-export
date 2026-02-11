@@ -1,4 +1,3 @@
-cvs-fast-export: vendor branch detected.
 blob
 mark :1
 data 27
@@ -88,3 +87,4 @@ from :4
 D hashsymbol
 
 done
+cvs-fast-export: vendor branch detected.
