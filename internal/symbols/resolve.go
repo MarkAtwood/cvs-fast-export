@@ -18,6 +18,7 @@ type Commit struct {
 	Log      string
 	Text     string
 	FileName string
+	OrigName string
 	Mode     int
 	Tail     bool
 }

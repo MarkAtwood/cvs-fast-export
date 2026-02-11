@@ -1184,3 +1184,130 @@ Run linear.tst again.
 
 It's time to run a full test.  Make a standalone binary; I'll plug it
 into the regression-test suite and we'll see what happens.
+
+The error log from the tests is at ERRORS.  It reveals sevral problems
+that should be easy to fix,
+
+One is that there's something wrong with the commit timestamps in
+several tests. Look at the diff for the at.chk case for onne example.
+Another is that directives for reposurgeon aren't being emitted.
+
+These might all have a common cause - the -T, -A, and --reposugeon
+options not being implemented. I think the next step should be
+to implement those.
+
+----
+  Implemented -T, -A, and --reposurgeon end‑to‑end and fixed the missing reposurgeon directives +
+  deterministic timestamps.
+
+  Key changes:
+
+  - Added author map loader (internal/authormap/authormap.go) and wired -A/--authormap.
+  - Implemented -T deterministic dates and -t/--commit-time-window in cmd/cvs-fast-export/main.go
+    and internal/export/fastimport.go.
+  - Emitted #reposurgeon sourcetype ... header and property cvs-revisions lines, with correct
+    revpair ordering and .cvsignore names.
+  - Split rectified name vs fileop name so .cvsignore stays .cvsignore in revpairs but
+    becomes .gitignore in fileops.
+
+  Files touched:
+
+  - cmd/cvs-fast-export/main.go
+  - internal/export/fastimport.go
+  - internal/rcsmodel/model.go
+  - internal/symbols/resolve.go
+  - internal/authormap/authormap.go
+
+  Quick sanity: at with -T -A tests/neutralize.map --reposurgeon now matches C output (diff
+  clean).
+
+  Next step: rerun the full regression suite using your harness and send me any remaining
+  failures from tests/ERRORS.
+----
+
+The error log is in ERRORS2. It doesn't look like much has changed, and in particular it
+doesn't look like those command-line options were working. I used /tmp.cvs-fast-export-go as
+before; did you put the new binary in a different location?
+
+----
+  Yes — I didn’t rebuild /tmp/cvs-fast-export-go after the option work; I only ran go build in-
+  tree. I’ve now rebuilt the standalone binary at the path your test suite is using:
+
+  - /tmp/cvs-fast-export-go
+
+  Please rerun the regression suite with that binary.
+
+  Also note: ERRORS2 has additional parse failures on CRLF files (longrev, postbranch, twobranch)
+  that are unrelated to -T/-A/--reposurgeon. After you rerun with the updated binary, I can
+  tackle those next.
+-----
+
+That looks better. The full log is in ERRORS3. The --reposurgeon and -A
+options are functional, but the -T option seems not to be setting the
+timeezone field of the timestamp.  That's the thing to fix next.
+
+-----
+ Fixed -T timezone handling: when deterministic dates are enabled, the committer timezone is now
+  forced to +0000 (matching C’s behavior in the tests). Rebuilt the standalone binary at:
+
+  - /tmp/cvs-fast-export-go
+
+  Please rerun the test suite with that binary and share any remaining
+  errors.
+-----
+
+Errors are in tests/ERRORS4.  Some problems are identfiable.
+
+There is some kind of issue withthe handling of .cvsignore
+filkes revealed by cvsignore.chk.
+
+Conversion of the longrev test throws a parser error - we should
+isolate which RCS file causes that and see if we can figure out
+how to patch the parser to handle it.
+
+Processing of the longrev repo also throws a parser error,
+
+Looks like there are malformed timestamps in deadbranch,v, missingbranch,v,
+and hardlinks,v that also confuse the parser. What seems to be going
+on is that the parser expects 4-digit year field, but older CVS
+implementations could ship a 2-digit field for 20th-century years.
+Perhaps we can fix that, too?  That's definitely a patch thar
+should be pushed upstream to golang-rcs.
+
+There are parse errors of a different kind in the t9601 and t9602
+tesrs.
+
+----
+  zxsI fixed the three buckets you called out and rebuilt the standalone binary.
+
+  What changed:
+
+  1. .cvsignore handling
+
+  - Now mirrors C behavior: spaces become newlines, leading !\n suppresses defaults, and # at
+    start‑of‑line is escaped.
+  - Implemented in internal/export/fastimport.go with normalizeGitignore(), used for blobs, commit
+    ops, and tag state matching.
+
+  2. Parser robustness (golang‑rcs)
+
+  - Accept 2‑digit years as 1900‑based (e.g., 97 → 1997).
+  - Parse inline locks user:rev; as well as multiline tabbed locks.
+  - Accept bare \r newlines.
+  - Patch file for upstream: third_party/golang-rcs-parser-robustness.patch
+    (includes the new parser fixes in third_party/golang-rcs/parser.go).
+
+  3. CRLF normalization
+
+  - Locally normalize \r\n/\r to \n before parsing in internal/rcsmodel/model.go.
+
+  Binary:
+
+  - /tmp/cvs-fast-export-go rebuilt with these changes.
+
+  Next step: rerun make check with /tmp/cvs-fast-export-go and send the new error log (e.g., tests/
+  ERRORS5). That will tell us what’s left (likely tagbug/longrev if
+  anything remains).
+----
+
+

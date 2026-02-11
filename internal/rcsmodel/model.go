@@ -39,7 +39,8 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	for _, rc := range file.RevisionContents {
 		contents[rc.Revision] = rc
 	}
-	fileName := exportName(source, striplen)
+	rectified := exportName(source, striplen)
+	fileName := fileopName(rectified)
 	fulltext, err := reconstructTexts(file, contents)
 	if err != nil {
 		return nil, err
@@ -64,6 +65,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 			Log:      log,
 			Text:     text,
 			FileName: fileName,
+			OrigName: rectified,
 			Mode:     fileMode,
 		}
 	}
@@ -259,9 +261,6 @@ func exportName(source string, striplen int) string {
 			if strings.HasSuffix(part, ",v") {
 				part = strings.TrimSuffix(part, ",v")
 			}
-			if strings.HasSuffix(part, ".cvsignore") {
-				part = strings.TrimSuffix(part, ".cvsignore") + ".gitignore"
-			}
 		}
 		cleaned = append(cleaned, part)
 	}
@@ -270,6 +269,13 @@ func exportName(source string, striplen int) string {
 
 func ExportName(source string, striplen int) string {
 	return exportName(source, striplen)
+}
+
+func fileopName(rectified string) string {
+	if strings.HasSuffix(rectified, ".cvsignore") {
+		return strings.TrimSuffix(rectified, ".cvsignore") + ".gitignore"
+	}
+	return rectified
 }
 
 func sanitizeSymbolName(s string) string {
@@ -516,6 +522,8 @@ func LoadFile(path string) (*rcs.File, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
 	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse %s: %w", path, err)

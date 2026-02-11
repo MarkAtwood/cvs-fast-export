@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"thyrsus.com/cvs-fast-export/internal/authormap"
 	"thyrsus.com/cvs-fast-export/internal/collate"
 	"thyrsus.com/cvs-fast-export/internal/compare"
+	"thyrsus.com/cvs-fast-export/internal/cvsnum"
 	"thyrsus.com/cvs-fast-export/internal/symbols"
 )
 
@@ -20,6 +22,11 @@ type Emitter struct {
 	epoch      int64
 	didIg      bool
 	tagTargets map[string][]*symbols.Commit
+	forceDates bool
+	reposurgeon bool
+	commitWindow int64
+	authors    map[string]authormap.Author
+	sourceType string
 }
 
 func NewEmitter(w io.Writer) *Emitter {
@@ -27,11 +34,31 @@ func NewEmitter(w io.Writer) *Emitter {
 		w:     bufio.NewWriter(w),
 		mark:  1,
 		epoch: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
+		commitWindow: 300,
 	}
+}
+
+type Options struct {
+	ForceDates   bool
+	Reposurgeon  bool
+	CommitWindow time.Duration
+	Authors      map[string]authormap.Author
+	SourceType   string
 }
 
 func (e *Emitter) WithTagTargets(tags map[string][]*symbols.Commit) *Emitter {
 	e.tagTargets = tags
+	return e
+}
+
+func (e *Emitter) WithOptions(opts Options) *Emitter {
+	e.forceDates = opts.ForceDates
+	e.reposurgeon = opts.Reposurgeon
+	if opts.CommitWindow > 0 {
+		e.commitWindow = int64(opts.CommitWindow.Seconds())
+	}
+	e.authors = opts.Authors
+	e.sourceType = opts.SourceType
 	return e
 }
 
@@ -43,6 +70,13 @@ func (e *Emitter) Flush() error {
 func (e *Emitter) EmitRepo(repo *collate.Repo) error {
 	if repo == nil {
 		return nil
+	}
+	if e.reposurgeon {
+		st := e.sourceType
+		if st == "" {
+			st = "rcs"
+		}
+		fmt.Fprintf(e.w, "#reposurgeon sourcetype %s\n", st)
 	}
 	commits := collectCommits(repo)
 	markMap := make(map[*collate.GitCommit]int)
@@ -113,11 +147,6 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 		ref = "master"
 	}
 
-	when := c.Date.Unix()
-	if when == 0 {
-		when = e.epoch
-	}
-
 	files := append([]*symbols.Commit(nil), c.Files...)
 	sort.Slice(files, func(i, j int) bool {
 		return compare.PathDeepCompare(files[i].FileName, files[j].FileName) < 0
@@ -130,10 +159,21 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 
 	mark := e.mark
 	e.mark++
+
+	when := c.Date.Unix()
+	if e.forceDates {
+		when = 100000 + int64(mark)*e.commitWindow*2
+	} else if when == 0 {
+		when = e.epoch
+	}
+
 	fmt.Fprintf(e.w, "commit refs/heads/%s\n", ref)
 	fmt.Fprintf(e.w, "mark :%d\n", mark)
-	ident := formatIdent(c.Author)
-	fmt.Fprintf(e.w, "committer %s %d +0000\n", ident, when)
+	full, email, tz := resolveAuthor(e.authors, c.Author)
+	if e.forceDates {
+		tz = "+0000"
+	}
+	fmt.Fprintf(e.w, "committer %s <%s> %d %s\n", full, email, when, tz)
 	if c.Log == "" {
 		c.Log = "import\n"
 	}
@@ -162,6 +202,12 @@ func (e *Emitter) emitCommit(branch string, c *collate.GitCommit, parentMark int
 		}
 		e.didIg = true
 	}
+	if e.reposurgeon {
+		revpairs := buildRevpairs(ops)
+		if revpairs != "" {
+			fmt.Fprintf(e.w, "property cvs-revisions %d %s", len(revpairs), revpairs)
+		}
+	}
 	fmt.Fprintln(e.w)
 	return mark, nil
 }
@@ -173,7 +219,7 @@ func (e *Emitter) emitBlob(path, text string) int {
 		text = "\n"
 	}
 	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
-		text = cvsIgnores + text
+		text = normalizeGitignore(text)
 	}
 	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
 	fmt.Fprintf(e.w, "data %d\n%s\n", len(text), text)
@@ -186,6 +232,7 @@ type fileOp struct {
 	text string
 	mark int
 	mode int
+	commit *symbols.Commit
 }
 
 type fileState struct {
@@ -195,6 +242,7 @@ type fileState struct {
 
 func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, map[string]fileState) {
 	next := make(map[string]fileState, len(prev))
+	byPath := make(map[string]*symbols.Commit)
 	for k, v := range prev {
 		next[k] = v
 	}
@@ -207,9 +255,10 @@ func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, ma
 			delete(next, path)
 			continue
 		}
+		byPath[path] = f
 		text := f.Text
 		if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
-			text = cvsIgnores + text
+			text = normalizeGitignore(text)
 		}
 		mode := f.Mode
 		if mode == 0 {
@@ -244,9 +293,9 @@ func buildOps(prev map[string]fileState, files []*symbols.Commit) ([]*fileOp, ma
 		case okOld && !okNew:
 			ops = append(ops, &fileOp{kind: 'D', path: p})
 		case !okOld && okNew:
-			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode})
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode, commit: byPath[p]})
 		case okOld && okNew && (old.text != newv.text || old.mode != newv.mode):
-			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode})
+			ops = append(ops, &fileOp{kind: 'M', path: p, text: newv.text, mode: newv.mode, commit: byPath[p]})
 		}
 	}
 	return ops, next
@@ -263,7 +312,7 @@ func tagMatchesState(targets []*symbols.Commit, state map[string]fileState) bool
 		}
 		want := t.Text
 		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
-			want = cvsIgnores + want
+			want = normalizeGitignore(want)
 		}
 		got, ok := state[path]
 		if !ok {
@@ -297,15 +346,39 @@ func collectCommits(repo *collate.Repo) []*collate.GitCommit {
 	return out
 }
 
-func formatIdent(name string) string {
+func resolveAuthor(authors map[string]authormap.Author, name string) (string, string, string) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "cvs-fast-export <unknown>"
+		return "cvs-fast-export", "unknown", "+0000"
 	}
-	if strings.Contains(name, "<") {
-		return name
+	if authors != nil {
+		if a, ok := authors[name]; ok {
+			tz := a.Timezone
+			if tz == "" {
+				tz = "+0000"
+			}
+			return a.Full, a.Email, tz
+		}
 	}
-	return fmt.Sprintf("%s <%s>", name, name)
+	return name, name, "+0000"
+}
+
+func buildRevpairs(ops []*fileOp) string {
+	var b strings.Builder
+	for _, op := range ops {
+		if op.kind != 'M' || op.commit == nil {
+			continue
+		}
+		path := op.commit.OrigName
+		if path == "" {
+			path = op.path
+		}
+		b.WriteString(path)
+		b.WriteString(" ")
+		b.WriteString(cvsnum.String(op.commit.Number))
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 const cvsIgnores = "# CVS default ignores begin\n" +
@@ -336,3 +409,31 @@ const cvsIgnores = "# CVS default ignores begin\n" +
 	"*.ln\n" +
 	"core\n" +
 	"# CVS default ignores end\n"
+
+func normalizeGitignore(text string) string {
+	if text == "" {
+		return cvsIgnores
+	}
+	buf := []byte(text)
+	for i := range buf {
+		if buf[i] == ' ' {
+			buf[i] = '\n'
+		}
+	}
+	suppressDefaults := false
+	if len(buf) >= 2 && buf[0] == '!' && buf[1] == '\n' {
+		suppressDefaults = true
+		buf = buf[2:]
+	}
+	var b strings.Builder
+	if !suppressDefaults {
+		b.WriteString(cvsIgnores)
+	}
+	for i := 0; i < len(buf); i++ {
+		if buf[i] == '#' && (i == 0 || buf[i-1] == '\n') {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(buf[i])
+	}
+	return b.String()
+}
