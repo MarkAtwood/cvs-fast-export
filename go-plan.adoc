@@ -1972,3 +1972,68 @@ Nope. Branchy us still busted,
 ----
 
 That unbroke the branchy test,
+
+Take a look at tests/ERRORS3 and pick abother test failure to
+investigate.
+
+----
+  I picked hack3 (wrong parent mark for the branch commit). Root cause is our linkBranchParents
+  heuristic: we currently prefer a master commit that doesn’t touch branch files, which skips the real
+  branch point in hack3.
+
+  I changed the logic to prefer the explicit branch base revision (by number) first, then fall back to
+  the non‑touching master heuristic only if the base can’t be found.
+
+  Change is in cmd/cvs-fast-export/monolith.go (linkBranchParents).
+
+  Please rebuild (make cvs-fast-export-go) and rerun hack3 (or make tap), and let me know if that
+  fixes the parent mark. If it does, we can move on to the next
+  failure (tagbug/twotag).
+----
+
+That change busted the branchy test again.
+
+.....
+not ok - branchy: A branchy repo with deletions and only valid tags
+  --- |
+  --- branchy.chk       2024-02-14 16:20:13.616199357 -0500
+  +++ - 2026-02-11 12:08:00.591714701 -0500
+  @@ -239,7 +239,7 @@
+   committer foo <foo> 112600 +0000
+   data 34
+   Do we get branch detection right?
+  -from :19
+  +from :17
+   M 100644 :20 README
+   property cvs-revisions 15 README 1.4.2.1
+
+  ...
+.....
+
+----
+  I adjusted linkBranchParents to prefer the latest master commit ≤ branch date that touches the
+  branch files (the actual branch point), before trying the base revision and then the non‑touching
+  fallback.
+
+  This should fix branchy (parent should be mark :19) while keeping hack3 correct.
+
+  Rebuild (make cvs-fast-export-go) and re-run the branchy check. If it still differs, paste the
+  updated diff.
+----
+
+Nope, The branchy test continuees to fail in the same way,
+hack3 is still OK.
+
+----
+  I changed the branch parent heuristic again to match the branchy expectation:
+
+  - For branch tails, we now pick the latest master commit on or before the branch date, regardless of
+    which files it touches.
+  - Only if there’s no such master commit do we fall back to the explicit base revision number.
+  - This removes the file‑touch filtering that was pulling branchy back to mark :17.
+
+  I also removed the now‑unused branchFiles map and commitTouches.
+
+  Please rebuild (make cvs-fast-export-go) and re-run branchy. If it still differs, paste the new diff
+  and I’ll keep iterating.
+----

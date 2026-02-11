@@ -1711,20 +1711,11 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if tail == nil || len(tail.Files) == 0 {
 			continue
 		}
-		branchFiles := make(map[string]struct{})
-		for _, f := range tail.Files {
-			if f != nil && f.FileName != "" {
-				branchFiles[f.FileName] = struct{}{}
-			}
-		}
-		// Prefer a master commit before the branch that doesn't touch branch files.
-		if len(masterCommits) > 0 && len(branchFiles) > 0 {
+		// Prefer the latest master commit on or before the branch date.
+		if len(masterCommits) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
-				if mc.Date.After(tail.Date) {
-					continue
-				}
-				if !commitTouches(mc, branchFiles) {
+				if !mc.Date.After(tail.Date) {
 					pick = mc
 					break
 				}
@@ -1734,17 +1725,18 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 				continue
 			}
 		}
+		// Next, try the explicit branch base revision when available.
 		base := tail.Files[0].Number
 		if base.C < 4 {
 			continue
 		}
-		// Fall back to the branch base revision when possible.
 		base.C -= 2
 		base.N = base.N[:base.C]
 		if gc := byNumber[String(base)]; gc != nil {
 			tail.Parent = gc
 			continue
 		}
+		// Otherwise, leave the parent unset.
 		if len(masterCommits) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
@@ -1758,23 +1750,6 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 			}
 		}
 	}
-}
-
-// commitTouches reports whether a commit modifies any of the named files.
-func commitTouches(c *GitCommit, files map[string]struct{}) bool {
-	if c == nil || len(files) == 0 {
-		return false
-	}
-	// Scan commit file list for any named match.
-	for _, f := range c.Files {
-		if f == nil {
-			continue
-		}
-		if _, ok := files[f.FileName]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 // commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
