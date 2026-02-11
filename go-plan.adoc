@@ -1551,3 +1551,39 @@ Go comments that simply say a function mirrors somethiing in the C code
 are not very useful, since the inytent is to get this code working
 and delete the C implementation. Improve these. Adapt comments
 attached to the corresponding C function when possible,
+
+----
+  Updated the comments to remove “mirrors” language and instead describe behavior and intent, using
+  the C commentary as guidance.
+
+  Touched:
+
+  - cmd/cvs-fast-export/monolith.go
+  - cmd/cfe-check/main.go
+  - cmd/cfe-compare/main.go
+
+  If you want me to sweep for other low-value comments and tighten
+  them, say the word.
+----
+
+Yes, do that. Also, go through each funcrion more than
+10 lines long and add comments describuing the intent
+of ther major processing steps.
+
+The C code has a history of being difficult to maintain
+due to poor commenting. That need to be fixed.
+
+----
+  Updated comments across the Go code to remove “mirrors … C” phrasing and to explain intent in-place.
+  For every function longer than 10 lines, I added inline comments describing the major processing
+  steps.
+
+  Key files touched:
+
+  - cmd/cvs-fast-export/monolith.go
+  - cmd/cfe-check/main.go
+  - cmd/cfe-compare/main.go
+
+  I didn’t run any builds/tests. If you want, I can run a quick go build ./cmd/cvs-fast-export (needs
+  cache permissions) or proceed to a focused test next.
+----

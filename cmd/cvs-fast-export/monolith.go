@@ -32,6 +32,7 @@ func Parse(s string) (Number, error) {
 	if s == "" {
 		return Zero, fmt.Errorf("empty CVS number")
 	}
+	// Split into dotted components and validate each field.
 	parts := strings.Split(s, ".")
 	n := Number{C: len(parts), N: make([]int, len(parts))}
 	for i, p := range parts {
@@ -57,12 +58,14 @@ func IsHead(n Number) bool {
 
 // SameBranch reports whether two revisions reside on the same branch.
 func SameBranch(a, b Number) bool {
+	// Normalize odd-length revisions to branch form.
 	if a.C&1 == 1 {
 		a = appendZero(a)
 	}
 	if b.C&1 == 1 {
 		b = appendZero(b)
 	}
+	// Compare branch prefixes, ignoring the final leaf component.
 	if a.C != b.C {
 		return false
 	}
@@ -89,6 +92,7 @@ func SameBranch(a, b Number) bool {
 
 // Equal reports whether two numbers are identical component-wise.
 func Equal(a, b Number) bool {
+	// Compare component counts and values directly.
 	if a.C != b.C {
 		return false
 	}
@@ -102,6 +106,7 @@ func Equal(a, b Number) bool {
 
 // Compare gives a total ordering; parent always < child.
 func Compare(a, b Number) int {
+	// Compare shared prefix first, then fall back to length.
 	n := min(a.C, b.C)
 	for i := 0; i < n; i++ {
 		if a.N[i] < b.N[i] {
@@ -122,6 +127,7 @@ func Compare(a, b Number) int {
 
 // Degree reports the effective branch depth for a revision.
 func Degree(n Number) int {
+	// Vendor branches use one fewer component for branch degree.
 	if n.C < 4 {
 		return n.C
 	}
@@ -150,6 +156,7 @@ func String(n Number) string {
 	if n.C == 0 {
 		return ""
 	}
+	// Emit dotted numeric components.
 	var b strings.Builder
 	for i := 0; i < n.C; i++ {
 		if i > 0 {
@@ -186,6 +193,7 @@ func min(a, b int) int {
 // PathDeepCompare orders paths so deeper entries sort before their parents,
 // matching git fast-export's deletion-safe ordering.
 func PathDeepCompare(a, b string) int {
+	// Fast path for identity and pure lexicographic ordering.
 	if a == b {
 		return 0
 	}
@@ -194,6 +202,7 @@ func PathDeepCompare(a, b string) int {
 		return 0
 	}
 
+	// Identify the final directory boundary for each path.
 	aslash := strings.LastIndexByte(a, '/')
 	bslash := strings.LastIndexByte(b, '/')
 
@@ -207,6 +216,7 @@ func PathDeepCompare(a, b string) int {
 		return -1
 	}
 
+	// If one is a prefix of the other, keep the deeper path first.
 	alen := len(a)
 	blen := len(b)
 
@@ -245,6 +255,7 @@ type Result struct {
 
 // Run executes both binaries with identical stdin and compares outputs.
 func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
+	// Build a deterministic stdin payload for both binaries.
 	stdin := []byte(joinLines(inputs))
 	cOut, cErr, cExit, err := runOnce(cBin, args, stdin)
 	if err != nil {
@@ -265,16 +276,19 @@ func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
 	}
 
 	if cExit != goExit {
+		// Exit status mismatch is a hard failure regardless of output.
 		res.Match = false
 		res.DiffOffset = -1
 		return res, nil
 	}
 	if bytes.Equal(cOut, goOut) {
+		// Byte-for-byte identical output: success.
 		res.Match = true
 		res.DiffOffset = -1
 		return res, nil
 	}
 
+	// Record the first mismatch offset and a small diff context.
 	off := firstDiffOffset(cOut, goOut)
 	res.DiffOffset = off
 	res.Context = diffContext(cOut, goOut, off)
@@ -286,6 +300,7 @@ func joinLines(lines []string) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	// Preserve input order and end with a newline like the C tool.
 	var b bytes.Buffer
 	for _, line := range lines {
 		b.WriteString(line)
@@ -296,6 +311,7 @@ func joinLines(lines []string) string {
 
 // runOnce executes a command with provided stdin and captures output and exit code.
 func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	// Execute the command once and capture stdout/stderr and exit code.
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	var outBuf, errBuf bytes.Buffer
@@ -305,6 +321,7 @@ func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, erro
 	if err == nil {
 		return outBuf.Bytes(), errBuf.Bytes(), 0, nil
 	}
+	// Surface exit codes for non-zero termination.
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		return outBuf.Bytes(), errBuf.Bytes(), exitErr.ExitCode(), nil
@@ -314,6 +331,7 @@ func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, erro
 
 // firstDiffOffset returns the first differing byte offset or -1 if equal.
 func firstDiffOffset(a, b []byte) int {
+	// Scan byte-by-byte to find the earliest mismatch.
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
@@ -334,6 +352,7 @@ func diffContext(a, b []byte, off int) string {
 	if off < 0 {
 		return ""
 	}
+	// Emit a compact hex window around the mismatch.
 	const window = 64
 	start := off - window
 	if start < 0 {
@@ -361,6 +380,7 @@ func hexDump(b []byte) string {
 	if len(b) == 0 {
 		return "(empty)"
 	}
+	// Group bytes in 16-byte chunks for readability.
 	var buf bytes.Buffer
 	for i, v := range b {
 		if i > 0 && i%16 == 0 {
@@ -393,10 +413,12 @@ func Load(path string) (map[string]Author, error) {
 	lineno := 0
 	for scanner.Scan() {
 		lineno++
+		// Skip blanks and comments to match permissive map files.
 		line := scanner.Text()
 		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
+		// Split on the first '=' to preserve author details.
 		eq := strings.IndexByte(line, '=')
 		if eq < 0 {
 			return nil, fmt.Errorf("%s:%d: missing '='", path, lineno)
@@ -408,6 +430,7 @@ func Load(path string) (map[string]Author, error) {
 		if _, ok := m[name]; ok {
 			return nil, fmt.Errorf("%s:%d: duplicate username '%s'", path, lineno, name)
 		}
+		// Parse "Full Name <email> TZ" fields.
 		fullPart := strings.TrimSpace(line[eq+1:])
 		lt := strings.IndexByte(fullPart, '<')
 		if lt < 0 {
@@ -420,6 +443,7 @@ func Load(path string) (map[string]Author, error) {
 			return nil, fmt.Errorf("%s:%d: malformed email address '%s'", path, lineno, name)
 		}
 		email := emailPart[:gt]
+		// Everything after the closing '>' is treated as the timezone token.
 		tz := strings.TrimSpace(emailPart[gt+1:])
 		m[name] = Author{Full: full, Email: email, Timezone: tz}
 	}
@@ -479,10 +503,12 @@ type Version struct {
 // missing branch names while discarding unreachable dead branches.
 func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit) ([]*Head, []Tag) {
 	var tags []Tag
+	// Attach symbol names to branch heads or tag commits directly.
 	for _, s := range symbols {
 		if IsHead(s.Number) {
 			h := findHeadByBranch(heads, s.Number)
 			if h != nil {
+				// Prefer existing head names; otherwise add a parallel named head.
 				if h.RefName == "" {
 					h.RefName = s.Name
 					h.Degree = Degree(s.Number)
@@ -496,6 +522,7 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 				}
 			} else {
 				n := s.Number
+				// Walk up toward trunk to find a reachable commit to anchor the head.
 				for n.C >= 4 {
 					n.C -= 2
 					n.N = n.N[:n.C]
@@ -512,15 +539,18 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 				}
 			}
 			if h != nil {
+				// Record the symbol's revision number for the head.
 				h.Number = s.Number
 			}
 		} else {
+			// Non-head symbols are lightweight tags.
 			if c := findRevision(s.Number); c != nil {
 				tags = append(tags, Tag{Name: s.Name, Commit: c})
 			}
 		}
 	}
 
+	// Post-process unnamed heads, then link the resulting branch tree.
 	heads = fixUnnamedHeads(heads)
 	heads = discardZeroHeads(heads)
 	linkParents(heads)
@@ -537,6 +567,7 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 
 	var nvendor *Head
 	foundVendor := false
+	// Identify vendor branches by their numbering scheme and patch metadata.
 	for _, vendor := range heads {
 		if vendor.Commit == nil || !IsVendor(vendor.Commit.Number) {
 			continue
@@ -545,6 +576,7 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 		nvendor = vendor
 
 		if vendor.RefName == "" {
+			// Synthesize a stable "import-<branch>" name from the branch root.
 			vlast := vendor.Commit
 			for vlast != nil && vlast.Parent != nil {
 				vlast = vlast.Parent
@@ -564,6 +596,7 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 		vendor.Number = vendor.Commit.Number
 	}
 
+	// If trunk is missing 1.2, splice the newest vendor branch into master.
 	if nvendor != nil && trunk.Commit != nil && trunk.Commit.Parent == nil {
 		oldtip := trunk.Commit
 		trunk.Commit = nvendor.Commit
@@ -589,6 +622,7 @@ func GraftBranches(heads []*Head, versions []Version, findRevision func(Number) 
 		if h == trunk || h.Tail {
 			continue
 		}
+		// Find the last commit on the branch chain.
 		c := h.Commit
 		for c != nil && c.Parent != nil {
 			if c.Tail {
@@ -600,6 +634,7 @@ func GraftBranches(heads []*Head, versions []Version, findRevision func(Number) 
 		if c == nil {
 			continue
 		}
+		// Match the branch point in the version graph and graft to it.
 		for _, cv := range versions {
 			for _, cb := range cv.Branches {
 				if Compare(cb, c.Number) == 0 {
@@ -621,13 +656,16 @@ func fixUnnamedHeads(heads []*Head) []*Head {
 		if h.RefName != "" {
 			continue
 		}
+		// Find the first non-dead commit to base the synthetic branch on.
 		c := firstLiveCommit(h.Commit)
 		if c == nil {
+			// Mark fully-dead branches for removal.
 			h.Number = Zero
 			continue
 		}
 		n := c.Number
 		if n.C >= 2 {
+			// Convert revision to branch form (x.y.z -> x.y.0.z).
 			n = cloneNumber(n)
 			n.N[n.C-1] = n.N[n.C-2]
 			n.N[n.C-2] = 0
@@ -652,15 +690,18 @@ func discardZeroHeads(heads []*Head) []*Head {
 // linkParents attaches parent heads based on CVS branch numbering.
 func linkParents(heads []*Head) {
 	for _, h := range heads {
+		// Only branch numbers (>=4) have parents.
 		if h.Number.C < 4 {
 			continue
 		}
+		// Strip one branch segment to locate the parent head.
 		n := cloneNumber(h.Number)
 		n.C -= 2
 		n.N = n.N[:n.C]
 		p := findBranch(heads, n)
 		h.Parent = p
 		if p != nil && h.RefName == "" {
+			// Synthesize a readable name for unnamed branches.
 			if h.Commit != nil && h.Commit.CommitID != "" {
 				h.RefName = fmt.Sprintf("%s-UNNAMED-BRANCH-%s", p.RefName, h.Commit.CommitID)
 			} else {
@@ -683,6 +724,7 @@ func findHeadByBranch(heads []*Head, number Number) *Head {
 // findBranch walks up the branch number to find a matching head.
 func findBranch(heads []*Head, number Number) *Head {
 	n := cloneNumber(number)
+	// Walk up the revision number by stripping branch components.
 	for n.C >= 2 {
 		for _, h := range heads {
 			if SameBranch(h.Number, n) {
@@ -738,7 +780,7 @@ func removeHead(heads []*Head, target *Head) []*Head {
 
 
 
-// Master represents one parsed RCS file with resolved commits and 
+// Master represents one parsed RCS file with resolved commits and symbols.
 type Master struct {
 	Source   string
 	FileName string
@@ -756,10 +798,12 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	if err != nil {
 		return nil, err
 	}
+	// Derive executable bit from the master file mode.
 	fileMode := 0644
 	if info.Mode()&0100 != 0 {
 		fileMode = 0755
 	}
+	// Index revision contents and reconstruct fulltexts.
 	commits := make(map[string]*Commit, len(file.RevisionHeads))
 	contents := make(map[string]*rcs.RevisionContent, len(file.RevisionContents))
 	for _, rc := range file.RevisionContents {
@@ -771,6 +815,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	if err != nil {
 		return nil, err
 	}
+	// Build Commit records from revision heads.
 	for _, rh := range file.RevisionHeads {
 		num, err := Parse(rh.Revision)
 		if err != nil {
@@ -796,6 +841,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		}
 	}
 
+	// Convert revision heads into version nodes with branch pointers.
 	var versions []Version
 	for _, rh := range file.RevisionHeads {
 		num, err := Parse(rh.Revision)
@@ -813,8 +859,10 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		versions = append(versions, ver)
 	}
 
+	// Create branch head chains and locate the root commit.
 	branchHeads, root := buildBranchHeads(commits, versions)
 
+	// Normalize symbol ordering to preserve original CVS ordering where possible.
 	var sym []Symbol
 	seen := make(map[string]struct{}, len(file.SymbolMap))
 	if len(symbolOrder) > 0 {
@@ -854,6 +902,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		sym = append(sym, Symbol{Name: name, Number: n})
 	}
 
+	// Assemble the final master structure.
 	return &Master{
 		Source:   source,
 		FileName: fileName,
@@ -871,6 +920,7 @@ func buildBranchHeads(commits map[string]*Commit, versions []Version) ([]*Head, 
 	var heads []*Head
 	var root *Commit
 	if ok {
+		// Build the master trunk chain from the earliest trunk revision.
 		trunk := buildBranchChain(commits, trunkNum)
 		if trunk != nil {
 			root = lastCommit(trunk)
@@ -886,6 +936,7 @@ func buildBranchHeads(commits map[string]*Commit, versions []Version) ([]*Head, 
 	seen := make(map[string]struct{})
 	for _, ver := range versions {
 		for _, br := range ver.Branches {
+			// Only build one head per unique branch number.
 			key := String(br)
 			if _, ok := seen[key]; ok {
 				continue
@@ -906,6 +957,7 @@ func findTrunkStart(commits map[string]*Commit) (Number, bool) {
 	var min Number
 	found := false
 	for _, c := range commits {
+		// Consider only trunk revisions and pick the smallest.
 		if !IsTrunk(c.Number) {
 			continue
 		}
@@ -921,6 +973,7 @@ func findTrunkStart(commits map[string]*Commit) (Number, bool) {
 func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
 	var chain []*Commit
 	for _, c := range commits {
+		// Filter commits that belong to this branch number.
 		if onBranch(c.Number, branch) {
 			chain = append(chain, c)
 		}
@@ -931,6 +984,7 @@ func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
 	sort.Slice(chain, func(i, j int) bool {
 		return Compare(chain[i].Number, chain[j].Number) < 0
 	})
+	// Link parents from newest to oldest, then normalize dates.
 	for i := len(chain) - 1; i > 0; i-- {
 		chain[i].Parent = chain[i-1]
 	}
@@ -943,6 +997,7 @@ func adjustDates(chain []*Commit) {
 	if len(chain) < 2 {
 		return
 	}
+	// Ensure commit dates are non-decreasing within the chain.
 	var gc *Commit
 	for i := len(chain) - 1; i > 0; i-- {
 		c := chain[i]
@@ -973,11 +1028,13 @@ func lastCommit(head *Commit) *Commit {
 // exportName normalizes a master path to an RCS export name.
 func exportName(source string, striplen int) string {
 	path := source
+	// Trim the leading path prefix from input files.
 	if striplen > 0 && striplen < len(path) {
 		path = path[striplen:]
 	} else if striplen >= len(path) {
 		path = ""
 	}
+	// Drop CVS control directories and strip ",v" from leaf names.
 	parts := strings.Split(path, "/")
 	cleaned := make([]string, 0, len(parts))
 	for i, part := range parts {
@@ -1016,6 +1073,7 @@ func fileopName(rectified string) string {
 func sanitizeSymbolName(s string) string {
 	const bad = "~^\\*?"
 	var b strings.Builder
+	// Remove control chars and characters rejected by git fast-import.
 	for _, r := range s {
 		if r <= 0x20 || r == 0x7f {
 			continue
@@ -1034,6 +1092,7 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 	if file.Head == "" {
 		return out, nil
 	}
+	// Seed with the full text of the head revision.
 	head := file.Head
 	headContent, ok := contents[head]
 	if !ok {
@@ -1059,6 +1118,7 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 		if !ok {
 			return nil
 		}
+		// Prefer reverse deltas from newer revisions when available.
 		if newer := newerOf[rev]; newer != "" {
 			if err := compute(newer); err != nil {
 				return err
@@ -1071,6 +1131,7 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 			out[rev] = text
 			return nil
 		}
+		// Fall back to branch-parent deltas when moving across branches.
 		if parent := branchParent(rev); parent != "" {
 			if err := compute(parent); err != nil {
 				return err
@@ -1087,6 +1148,7 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 		return nil
 	}
 
+	// Resolve every revision in the file to a full text.
 	for rev := range contents {
 		if err := compute(rev); err != nil {
 			return nil, err
@@ -1118,6 +1180,7 @@ func applyDelta(text, delta string) (string, error) {
 		addTrailing bool
 	}
 	var ops []deltaOp
+	// Parse the delta script into operations.
 	for i := 0; i < len(commands); {
 		cmd := commands[i]
 		if cmd == "" {
@@ -1138,6 +1201,7 @@ func applyDelta(text, delta string) (string, error) {
 			ops = append(ops, deltaOp{op: 'd', start: start, count: count})
 			i++
 		case 'a':
+			// Add ops include inline line data that follows the command.
 			if i+count >= len(commands) {
 				return "", fmt.Errorf("delta add missing lines")
 			}
@@ -1148,6 +1212,7 @@ func applyDelta(text, delta string) (string, error) {
 			i = end
 		}
 	}
+	// Apply operations in reverse to reconstruct the older text.
 	for i := len(ops) - 1; i >= 0; i-- {
 		op := ops[i]
 		switch op.op {
@@ -1167,6 +1232,7 @@ func applyDelta(text, delta string) (string, error) {
 			if op.start < 0 {
 				return "", fmt.Errorf("delta add out of range")
 			}
+			// Insert the added lines at the correct position.
 			pos := op.start
 			if pos > len(lines) {
 				pos = len(lines)
@@ -1185,6 +1251,7 @@ func splitLines(s string) []string {
 	if s == "" {
 		return []string{}
 	}
+	// Preserve a trailing empty line when the input ends with '\n'.
 	parts := strings.Split(s, "\n")
 	// Preserve trailing empty line if original ended with newline.
 	if strings.HasSuffix(s, "\n") {
@@ -1218,6 +1285,7 @@ func joinLinesWithTrailing(lines []string, trailing bool) string {
 		}
 		return ""
 	}
+	// Rejoin lines and restore a trailing newline when requested.
 	out := strings.Join(lines, "\n")
 	if trailing {
 		out += "\n"
@@ -1242,6 +1310,7 @@ func branchParent(rev string) string {
 	if err != nil {
 		return ""
 	}
+	// Strip the branch components to reach the parent revision.
 	if n.C < 4 {
 		return ""
 	}
@@ -1252,6 +1321,7 @@ func branchParent(rev string) string {
 
 // onBranch reports whether a revision lies on a given branch number.
 func onBranch(rev, branch Number) bool {
+	// Normalize to even-length numbers for comparison.
 	bn := normalizeBranch(branch)
 	rn := normalizeBranch(rev)
 	if bn.C != rn.C {
@@ -1278,12 +1348,14 @@ func normalizeBranch(n Number) Number {
 
 // LoadFile parses an RCS file, returning the parsed model and symbol order.
 func LoadFile(path string) (*rcs.File, []string, error) {
+	// Read and normalize line endings for the RCS parser.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}
 	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
+	// Parse once, then retry with a compatibility shim if needed.
 	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
 	if err != nil {
 		// Some RCS files omit the extra blank line after desc. Insert one if needed and retry.
@@ -1298,6 +1370,7 @@ func LoadFile(path string) (*rcs.File, []string, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	// Record symbol ordering from the raw header text.
 	return rcsFile, parseSymbolOrder(string(data)), nil
 }
 
@@ -1307,6 +1380,7 @@ func parseSymbolOrder(data string) []string {
 	inSymbols := false
 	var names []string
 	for _, line := range lines {
+		// Capture tokens until the terminating ';' is reached.
 		trimmed := strings.TrimSpace(line)
 		if !inSymbols {
 			if strings.HasPrefix(trimmed, "symbols") {
@@ -1333,6 +1407,7 @@ func parseSymbolOrder(data string) []string {
 
 // parseSymbolTokens parses name:rev entries from a symbols line.
 func parseSymbolTokens(s string) []string {
+	// Tokenize on whitespace and ';', then split name:rev pairs.
 	fields := strings.FieldsFunc(s, func(r rune) bool {
 		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ';'
 	})
@@ -1371,7 +1446,7 @@ type GitBranch struct {
 	Depth  int
 }
 
-// Repo holds collated commits and tag targets for 
+// Repo holds collated commits and tag targets for export.
 type Repo struct {
 	Branches   []*GitBranch
 	CommitOf   map[*Commit]*GitCommit
@@ -1382,6 +1457,7 @@ type Repo struct {
 
 // Build collates CVS commits into fast-import commit groups.
 func Build(masters []*Master, opts CollateOptions) *Repo {
+	// Collect branches, collate per-branch commit chains, then link parents.
 	byName := collectBranches(masters)
 	branches := toposortBranches(byName, masters)
 
@@ -1396,6 +1472,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		if len(heads) == 0 {
 			continue
 		}
+		// Build the per-branch commit chain and index commit numbers.
 		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
 	}
 	linkBranchParents(branches, repo.ByNumber)
@@ -1421,6 +1498,7 @@ func collectBranches(masters []*Master) map[string]*GitBranch {
 			if name == "" {
 				continue
 			}
+			// De-duplicate branches by name across masters.
 			if _, ok := byName[name]; !ok {
 				byName[name] = &GitBranch{Name: name}
 			}
@@ -1435,6 +1513,7 @@ func toposortBranches(byName map[string]*GitBranch, masters []*Master) []*GitBra
 	for _, b := range byName {
 		branches = append(branches, b)
 	}
+	// Provide stable ordering for deterministic output.
 	sort.Slice(branches, func(i, j int) bool {
 		return branches[i].Name < branches[j].Name
 	})
@@ -1446,6 +1525,7 @@ func toposortBranches(byName map[string]*GitBranch, masters []*Master) []*GitBra
 func gatherHeads(masters []*Master, name string) []*Head {
 	var heads []*Head
 	for _, m := range masters {
+		// Select heads for the named ref across all masters.
 		for _, h := range m.Heads {
 			if h.RefName == name {
 				heads = append(heads, h)
@@ -1459,6 +1539,7 @@ func gatherHeads(masters []*Master, name string) []*Head {
 func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf map[*Commit]*GitCommit, byNumber map[string]*GitCommit) *GitCommit {
 	seen := make(map[*Commit]struct{})
 	var commits []*Commit
+	// Collect unique commits reachable from branch heads.
 	for _, h := range heads {
 		for c := h.Commit; c != nil; c = c.Parent {
 			if _, ok := seen[c]; ok {
@@ -1482,6 +1563,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 	})
 
 	if opts.TrustCommitIDs {
+		// First pass: group by commitid when present.
 		group := make(map[string]*GitCommit)
 		var order []*GitCommit
 		var noID []*Commit
@@ -1510,6 +1592,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			commitOf[c] = g
 			byNumber[String(c.Number)] = g
 		}
+		// Second pass: coalesce no-commitid revisions via time window and metadata.
 		if len(noID) > 0 {
 			sort.Slice(noID, func(i, j int) bool {
 				if !noID[i].Date.Equal(noID[j].Date) {
@@ -1541,6 +1624,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 				byNumber[String(c.Number)] = g
 			}
 		}
+		// Order grouped commits chronologically and link parent pointers.
 		sort.Slice(order, func(i, j int) bool {
 			if !order[i].Date.Equal(order[j].Date) {
 				return order[i].Date.Before(order[j].Date)
@@ -1555,6 +1639,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 		return prev
 	}
 
+	// Fallback path: coalesce purely by metadata and time window.
 	var prev *GitCommit
 	for _, c := range commits {
 		if prev != nil && commitsMatch(prev, c, opts) {
@@ -1586,6 +1671,7 @@ func collectTags(masters []*Master, repo *Repo) {
 			if t.Commit == nil {
 				continue
 			}
+			// Preserve stable tag emission order based on first occurrence.
 			if _, ok := seenOrder[t.Name]; !ok {
 				repo.TagOrder = append([]string{t.Name}, repo.TagOrder...)
 				seenOrder[t.Name] = struct{}{}
@@ -1599,6 +1685,7 @@ func collectTags(masters []*Master, repo *Repo) {
 		}
 	}
 	for name, set := range seen {
+		// Flatten tag target sets into slices for the emitter.
 		for c := range set {
 			repo.TagTargets[name] = append(repo.TagTargets[name], c)
 		}
@@ -1624,7 +1711,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if b.Name == "master" || b.Head == nil {
 			continue
 		}
-		// Find oldest commit on branch
+		// Find oldest commit on branch.
 		var tail *GitCommit
 		for c := b.Head; c != nil; c = c.Parent {
 			tail = c
@@ -1638,6 +1725,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 				branchFiles[f.FileName] = struct{}{}
 			}
 		}
+		// Prefer a master commit before the branch that doesn't touch branch files.
 		if len(masterCommits) > 0 && len(branchFiles) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
@@ -1658,6 +1746,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if base.C < 4 {
 			continue
 		}
+		// Fall back to the branch base revision when possible.
 		base.C -= 2
 		base.N = base.N[:base.C]
 		if gc := byNumber[String(base)]; gc != nil {
@@ -1684,6 +1773,7 @@ func commitTouches(c *GitCommit, files map[string]struct{}) bool {
 	if c == nil || len(files) == 0 {
 		return false
 	}
+	// Scan commit file list for any named match.
 	for _, f := range c.Files {
 		if f == nil {
 			continue
@@ -1697,6 +1787,7 @@ func commitTouches(c *GitCommit, files map[string]struct{}) bool {
 
 // commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
 func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
+	// Commit IDs override time-window matching when present.
 	if opts.TrustCommitIDs && g.Files != nil && len(g.Files) > 0 {
 		if g.Files[0].CommitID != "" || c.CommitID != "" {
 			return g.Files[0].CommitID == c.CommitID && g.Files[0].CommitID != ""
@@ -1708,6 +1799,7 @@ func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
 	if g.Log != c.Log {
 		return false
 	}
+	// Fall back to time-window matching.
 	delta := g.Date.Sub(c.Date)
 	if delta < 0 {
 		delta = -delta
@@ -1778,6 +1870,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if repo == nil {
 		return nil
 	}
+	// Emit reposurgeon header when requested.
 	if e.reposurgeon {
 		st := e.sourceType
 		if st == "" {
@@ -1785,6 +1878,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		fmt.Fprintf(e.w, "#reposurgeon sourcetype %s\n", st)
 	}
+	// Collect commits and initialize per-branch state tracking.
 	commits := collectCommits(repo)
 	markMap := make(map[*GitCommit]int)
 	state := make(map[string]map[string]fileState)
@@ -1797,6 +1891,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		sort.Strings(tagNames)
 	} else if len(tagNames) != len(e.tagTargets) {
+		// Fill in any tags that were not part of the original order.
 		seen := make(map[string]struct{}, len(tagNames))
 		for _, name := range tagNames {
 			seen[name] = struct{}{}
@@ -1812,6 +1907,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		tagNames = append(tagNames, extra...)
 	}
 	for i, c := range commits {
+		// Compute the per-branch file operations for this commit.
 		prevState := state[c.RefName]
 		if prevState == nil {
 			prevState = map[string]fileState{}
@@ -1823,6 +1919,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		first := i == 0
 		ops, next := buildOps(prevState, c.Files)
 		if len(ops) == 0 {
+			// Skip empty commits but keep state up to date.
 			state[c.RefName] = next
 			continue
 		}
@@ -1832,6 +1929,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		state[c.RefName] = next
 		markMap[c] = mark
+		// Emit lightweight tags when the repository state matches their target set.
 		for _, name := range tagNames {
 			targets := e.tagTargets[name]
 			if _, ok := emittedTags[name]; ok {
@@ -1855,6 +1953,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 		ref = "master"
 	}
 
+	// Sort files for deterministic emission and pre-emit blobs for M ops.
 	files := append([]*Commit(nil), c.Files...)
 	sort.Slice(files, func(i, j int) bool {
 		return PathDeepCompare(files[i].FileName, files[j].FileName) < 0
@@ -1868,6 +1967,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 	mark := e.mark
 	e.mark++
 
+	// Resolve committer identity and choose the commit timestamp.
 	when := c.Date.Unix()
 	if e.forceDates {
 		when = 100000 + int64(mark)*e.commitWindow*2
@@ -1889,6 +1989,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 	if parentMark > 0 {
 		fmt.Fprintf(e.w, "from :%d\n", parentMark)
 	}
+	// Emit file modifications and deletions.
 	for _, op := range ops {
 		if op.kind == 'M' {
 			fmt.Fprintf(e.w, "M 100%o :%d %s\n", op.mode, op.mark, op.path)
@@ -1897,6 +1998,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 		}
 	}
 	if first && !e.didIg {
+		// Inject default ignore rules if no .gitignore exists yet.
 		hasGitignore := false
 		for _, f := range files {
 			if f.FileName == ".gitignore" {
@@ -1911,6 +2013,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 		e.didIg = true
 	}
 	if e.reposurgeon {
+		// Append CVS revision metadata for reposurgeon.
 		revpairs := buildRevpairs(ops)
 		if revpairs != "" {
 			fmt.Fprintf(e.w, "property cvs-revisions %d %s", len(revpairs), revpairs)
@@ -1927,12 +2030,14 @@ func (e *Emitter) emitBlob(path, text string) int {
 	if text == "" {
 		text = "\n"
 	}
+	// Normalize .cvsignore content into .gitignore form.
 	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
 		text = normalizeGitignore(text)
 	}
 	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
 	dataLen := len(text)
 	if path == ".gitignore" {
+		// Adjust for escaped leading '#' characters.
 		dataLen = gitignoreDataLen(text)
 	}
 	fmt.Fprintf(e.w, "data %d\n%s\n", dataLen, text)
@@ -1959,6 +2064,7 @@ type fileState struct {
 func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string]fileState) {
 	next := make(map[string]fileState, len(prev))
 	byPath := make(map[string]*Commit)
+	// Seed next state with previous content.
 	for k, v := range prev {
 		next[k] = v
 	}
@@ -1968,6 +2074,7 @@ func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string
 			path = "UNKNOWN"
 		}
 		if f.Dead {
+			// Deletions remove the file from next state.
 			delete(next, path)
 			continue
 		}
@@ -1983,6 +2090,7 @@ func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string
 		next[path] = fileState{text: text, mode: mode}
 	}
 
+	// Build a stable path order across deletions and modifications.
 	var paths []string
 	for k := range prev {
 		paths = append(paths, k)
@@ -2003,6 +2111,7 @@ func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string
 			continue
 		}
 		seen[p] = struct{}{}
+		// Diff previous vs next state to decide on M or D ops.
 		old, okOld := prev[p]
 		newv, okNew := next[p]
 		switch {
@@ -2022,6 +2131,7 @@ func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
 	if len(targets) == 0 {
 		return false
 	}
+	// Ensure each target file matches current text and mode.
 	for _, t := range targets {
 		path := t.FileName
 		if path == "" {
@@ -2052,6 +2162,7 @@ func collectCommits(repo *Repo) []*GitCommit {
 	for _, b := range repo.Branches {
 		out = append(out, CommitsForBranch(b)...)
 	}
+	// Sort by time, then ref name, then log for deterministic output.
 	sort.Slice(out, func(i, j int) bool {
 		if !out[i].Date.Equal(out[j].Date) {
 			return out[i].Date.Before(out[j].Date)
@@ -2071,6 +2182,7 @@ func resolveAuthor(authors map[string]Author, name string) (string, string, stri
 		return "cvs-fast-export", "unknown", "+0000"
 	}
 	if authors != nil {
+		// Look up authored identities from the map when available.
 		if a, ok := authors[name]; ok {
 			tz := a.Timezone
 			if tz == "" {
@@ -2089,6 +2201,7 @@ func buildRevpairs(ops []*fileOp) string {
 		if op.kind != 'M' || op.commit == nil {
 			continue
 		}
+		// Prefer original CVS paths for reposurgeon metadata.
 		path := op.commit.OrigName
 		if path == "" {
 			path = op.path
@@ -2136,6 +2249,7 @@ func normalizeGitignore(text string) string {
 	if text == "" {
 		return cvsIgnores
 	}
+	// Translate CVS space-separated ignores to newline-separated.
 	buf := []byte(text)
 	for i := range buf {
 		if buf[i] == ' ' {
@@ -2144,6 +2258,7 @@ func normalizeGitignore(text string) string {
 	}
 	suppressDefaults := false
 	if len(buf) >= 2 && buf[0] == '!' && buf[1] == '\n' {
+		// Leading "!\n" suppresses default ignore list.
 		suppressDefaults = true
 		buf = buf[2:]
 	}
@@ -2151,6 +2266,7 @@ func normalizeGitignore(text string) string {
 	if !suppressDefaults {
 		b.WriteString(cvsIgnores)
 	}
+	// Escape lines that begin with '#' so they are literal patterns.
 	for i := 0; i < len(buf); i++ {
 		if buf[i] == '#' && (i == 0 || buf[i-1] == '\n') {
 			b.WriteByte('\\')
@@ -2165,6 +2281,7 @@ func gitignoreDataLen(text string) int {
 	if text == "" {
 		return 0
 	}
+	// Exclude backslashes inserted before leading '#' in user content.
 	escapes := 0
 	start := 0
 	if strings.HasPrefix(text, cvsIgnores) {
@@ -2200,6 +2317,7 @@ func main() {
 		}
 	}
 
+	// Determine input flavor and the common prefix to strip from paths.
 	cfg.SourceType = detectSourceType(cfg.Files)
 	striplen := computeStriplen(cfg.Files)
 
@@ -2212,6 +2330,7 @@ func main() {
 		if !strings.HasSuffix(path, ",v") {
 			continue
 		}
+		// Precompute rectified names for stable sorting.
 		inputs = append(inputs, inputFile{
 			path:      path,
 			rectified: ExportName(path, striplen),
@@ -2223,6 +2342,7 @@ func main() {
 
 	var masters []*Master
 	for _, in := range inputs {
+		// Parse each RCS file and build the per-file master model.
 		rcsFile, symbolOrder, err := LoadFile(in.path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -2233,6 +2353,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		// Resolve branches, vendor branches, and symbol refs.
 		master.Heads, _ = PatchVendorBranches(master.Heads)
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
 			return master.Commits[String(n)]
@@ -2251,6 +2372,7 @@ func main() {
 		masters = append(masters, master)
 	}
 
+	// Collate commits across masters, then emit fast-import.
 	repo := Build(masters, CollateOptions{
 		CommitTimeWindow: cfg.CommitWindow,
 		TrustCommitIDs:   true,
@@ -2270,6 +2392,7 @@ func main() {
 		_ = em.Flush()
 	}
 
+	// Warn if commitids are missing and skew could occur.
 	if skew := skewVulnerable(masters); skew != nil && len(masters) > 1 && !cfg.ForceDates {
 		fmt.Fprintf(os.Stderr, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
 	}
@@ -2297,6 +2420,7 @@ func parseArgs(args []string) (config, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
+			// Treat all remaining args as input paths.
 			cfg.Files = append(cfg.Files, args[i+1:]...)
 			break
 		}
@@ -2325,6 +2449,7 @@ func parseArgs(args []string) (config, error) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
+			// Parse commit window seconds as integer.
 			secs, err := parseInt(args[i])
 			if err != nil {
 				return cfg, fmt.Errorf("invalid -t value: %w", err)
@@ -2335,6 +2460,7 @@ func parseArgs(args []string) (config, error) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
+			// Load the author map immediately so parse errors surface early.
 			authors, err := Load(args[i])
 			if err != nil {
 				return cfg, err
@@ -2362,12 +2488,14 @@ func parseArgs(args []string) (config, error) {
 					"--remote", "--strip", "--incremental",
 					"--threads", "--debug", "--authormap":
 					if arg == "--authormap" {
+						// Allow long-form authormap without '='.
 						authors, err := Load(args[i+1])
 						if err != nil {
 							return cfg, err
 						}
 						cfg.Authors = authors
 					} else if arg == "--commit-time-window" {
+						// Parse commit window seconds.
 						secs, err := parseInt(args[i+1])
 						if err != nil {
 							return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
@@ -2422,6 +2550,7 @@ func computeStriplen(files []string) int {
 		if !strings.HasSuffix(file, ",v") {
 			continue
 		}
+		// Shrink the common prefix as new files are encountered.
 		if striplen > 0 && last != "" {
 			common := commonPrefixEndingWithSlash(file, last)
 			if common < striplen {
@@ -2429,6 +2558,7 @@ func computeStriplen(files []string) int {
 			}
 		} else if striplen < 0 {
 			striplen = 0
+			// Initialize to the last slash in the first path.
 			for i := 0; i < len(file); i++ {
 				if file[i] == '/' {
 					striplen = i + 1
@@ -2448,6 +2578,7 @@ func skewVulnerable(masters []*Master) *time.Time {
 	var max time.Time
 	found := false
 	for _, m := range masters {
+		// Track the latest commit without a commitid.
 		for _, c := range m.Commits {
 			if c == nil || c.CommitID != "" {
 				continue
@@ -2470,6 +2601,7 @@ func commonPrefixEndingWithSlash(a, b string) int {
 	if len(b) < max {
 		max = len(b)
 	}
+	// Track the last shared '/' while scanning the common prefix.
 	lastSlash := 0
 	for i := 0; i < max; i++ {
 		if a[i] != b[i] {
@@ -2491,6 +2623,7 @@ func printHelp() {
 func dumpHeads(m *Master) {
 	fmt.Fprintf(os.Stderr, "== %s\n", m.Source)
 	for _, h := range m.Heads {
+		// Summarize head, parent, and commit number for debug output.
 		parent := ""
 		if h.Parent != nil {
 			parent = h.Parent.RefName
@@ -2510,6 +2643,7 @@ func dumpChains(m *Master) {
 		if h.Commit == nil {
 			continue
 		}
+		// Count commits in each chain for quick sanity checks.
 		count := 0
 		for c := h.Commit; c != nil; c = c.Parent {
 			count++
@@ -2521,6 +2655,7 @@ func dumpChains(m *Master) {
 // dumpBranches prints branch commit numbers for debugging.
 func dumpBranches(m *Master) {
 	heads := append([]*Head(nil), m.Heads...)
+	// Emit branch chains in lexicographic order for readability.
 	sort.Slice(heads, func(i, j int) bool {
 		return heads[i].RefName < heads[j].RefName
 	})
@@ -2528,6 +2663,7 @@ func dumpBranches(m *Master) {
 		if h.Commit == nil {
 			continue
 		}
+		// Walk the branch chain and print revision numbers.
 		fmt.Fprintf(os.Stderr, "branch %s: ", h.RefName)
 		first := true
 		for c := h.Commit; c != nil; c = c.Parent {

@@ -46,6 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Collect all inputs before running either binary.
 	inputs, err := collectInputs(roots, files, stdinList)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cfe-compare: %v\n", err)
@@ -63,6 +64,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Report mismatch details and both stderrs when present.
 	fmt.Fprintf(os.Stderr, "Mismatch: C exit=%d Go exit=%d\n", res.CExit, res.GoExit)
 	if res.DiffOffset >= 0 {
 		fmt.Fprintf(os.Stderr, "%s", res.Context)
@@ -81,6 +83,7 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	var inputs []string
 
 	if stdinList != "" {
+		// Load explicit paths from a newline-separated list file.
 		data, err := os.ReadFile(stdinList)
 		if err != nil {
 			return nil, err
@@ -95,6 +98,7 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 	}
 
 	for _, root := range roots {
+		// Walk roots and collect RCS masters.
 		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -114,6 +118,7 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 
 	inputs = append(inputs, files...)
 
+	// De-duplicate while preserving a stable sort order.
 	uniq := make(map[string]struct{}, len(inputs))
 	out := make([]string, 0, len(inputs))
 	for _, in := range inputs {
@@ -133,6 +138,7 @@ func collectInputs(roots, files []string, stdinList string) ([]string, error) {
 // PathDeepCompare orders paths so deeper entries sort before their parents,
 // matching git fast-export's deletion-safe ordering.
 func PathDeepCompare(a, b string) int {
+	// Fast path for identity and pure lexicographic ordering.
 	if a == b {
 		return 0
 	}
@@ -141,6 +147,7 @@ func PathDeepCompare(a, b string) int {
 		return 0
 	}
 
+	// Identify the final directory boundary for each path.
 	aslash := strings.LastIndexByte(a, '/')
 	bslash := strings.LastIndexByte(b, '/')
 
@@ -154,6 +161,7 @@ func PathDeepCompare(a, b string) int {
 		return -1
 	}
 
+	// If one is a prefix of the other, keep the deeper path first.
 	alen := len(a)
 	blen := len(b)
 
@@ -190,6 +198,7 @@ type Result struct {
 
 // Run executes both binaries with identical stdin and compares outputs.
 func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
+	// Build a deterministic stdin payload for both binaries.
 	stdin := []byte(joinLines(inputs))
 	cOut, cErr, cExit, err := runOnce(cBin, args, stdin)
 	if err != nil {
@@ -210,11 +219,13 @@ func Run(cBin, goBin string, args []string, inputs []string) (*Result, error) {
 	}
 
 	if cExit != goExit {
+		// Exit status mismatch is a hard failure regardless of output.
 		res.Match = false
 		res.DiffOffset = -1
 		return res, nil
 	}
 	if bytes.Equal(cOut, goOut) {
+		// Byte-for-byte identical output: success.
 		res.Match = true
 		res.DiffOffset = -1
 		return res, nil
@@ -231,6 +242,7 @@ func joinLines(lines []string) string {
 	if len(lines) == 0 {
 		return ""
 	}
+	// Preserve input order and end with a newline like the C tool.
 	var b bytes.Buffer
 	for _, line := range lines {
 		b.WriteString(line)
@@ -241,6 +253,7 @@ func joinLines(lines []string) string {
 
 // runOnce executes a command with provided stdin and captures output and exit code.
 func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, error) {
+	// Execute the command once and capture stdout/stderr and exit code.
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = bytes.NewReader(stdin)
 	var outBuf, errBuf bytes.Buffer
@@ -250,6 +263,7 @@ func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, erro
 	if err == nil {
 		return outBuf.Bytes(), errBuf.Bytes(), 0, nil
 	}
+	// Surface exit codes for non-zero termination.
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		return outBuf.Bytes(), errBuf.Bytes(), exitErr.ExitCode(), nil
@@ -259,6 +273,7 @@ func runOnce(bin string, args []string, stdin []byte) ([]byte, []byte, int, erro
 
 // firstDiffOffset returns the first differing byte offset or -1 if equal.
 func firstDiffOffset(a, b []byte) int {
+	// Scan byte-by-byte to find the earliest mismatch.
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
@@ -279,6 +294,7 @@ func diffContext(a, b []byte, off int) string {
 	if off < 0 {
 		return ""
 	}
+	// Emit a compact hex window around the mismatch.
 	const window = 64
 	start := off - window
 	if start < 0 {
@@ -305,6 +321,7 @@ func hexDump(b []byte) string {
 	if len(b) == 0 {
 		return "(empty)"
 	}
+	// Group bytes in 16-byte chunks for readability.
 	var buf bytes.Buffer
 	for i, v := range b {
 		if i > 0 && i%16 == 0 {
