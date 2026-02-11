@@ -138,7 +138,7 @@ PROFILE: gmon.out
 	gprof cvs-fast-export >PROFILE
 
 clean:
-	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export
+	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export cvs-fast-export-go
 	rm -f *.1 *.html gram.output gmon.out
 	rm -f index.html *.tar.gz
 	rm -f *.gcno *.gcda
@@ -161,14 +161,18 @@ pylint:
 # Warning: The regression tests will fail spuriously if your CVS lacks the
 # MirOS patches.  These are carried by Debian Linux and derivatives; you can
 # check by Looking for "MirDebian" in the output of cvs --version.
-check: cvs-fast-export cppcheck
+check: cvs-fast-export-go cppcheck
 	@-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
-	@cd tests >/dev/null; $(MAKE) --quiet
+	@cd tests >/dev/null; $(MAKE) --quiet CVS_FAST_EXPORT=../cvs-fast-export-go
 
 # Like check, but forces rebuild of the generated test repositories first
 cleancheck:
 	@$(MAKE) -s -C tests clean
 	@$(MAKE) -s check
+
+# Go translation
+cvs-fast-export-go:
+	go build -o cvs-fast-export-go ./cmd/cvs-fast-export
 
 # Needs clean first because reflowing generated .c and .h files produces ungappy results
 reflow: clean

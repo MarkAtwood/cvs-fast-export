@@ -11,6 +11,8 @@ import os
 import subprocess
 import sys
 
+engine = os.getenv("CVS_FAST_EXPORT", "cvs-fast-export")
+
 
 def run_with_input(data):
     return subprocess.run(

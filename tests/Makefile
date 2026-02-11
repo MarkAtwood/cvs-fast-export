@@ -4,7 +4,7 @@ PATH := ${CURDIR}/..:${CURDIR}:${PATH}
 SHELL = sh	# Do not introduce bashisms!
 CVS = cvs
 DIFF = diff -u -a
-CVS_FAST_EXPORT = ../cvs-fast-export
+CVS_FAST_EXPORT = ../cvs-fast-export-go
 export CVS_FAST_EXPORT
 PYTHON = python3
 

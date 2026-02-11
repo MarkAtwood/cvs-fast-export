@@ -285,6 +285,28 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if tail == nil || len(tail.Files) == 0 {
 			continue
 		}
+		branchFiles := make(map[string]struct{})
+		for _, f := range tail.Files {
+			if f != nil && f.FileName != "" {
+				branchFiles[f.FileName] = struct{}{}
+			}
+		}
+		if len(masterCommits) > 0 && len(branchFiles) > 0 {
+			var pick *GitCommit
+			for _, mc := range masterCommits {
+				if mc.Date.After(tail.Date) {
+					continue
+				}
+				if !commitTouches(mc, branchFiles) {
+					pick = mc
+					break
+				}
+			}
+			if pick != nil {
+				tail.Parent = pick
+				continue
+			}
+		}
 		base := tail.Files[0].Number
 		if base.C < 4 {
 			continue
@@ -308,6 +330,21 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 			}
 		}
 	}
+}
+
+func commitTouches(c *GitCommit, files map[string]struct{}) bool {
+	if c == nil || len(files) == 0 {
+		return false
+	}
+	for _, f := range c.Files {
+		if f == nil {
+			continue
+		}
+		if _, ok := files[f.FileName]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func commitsMatch(g *GitCommit, c *symbols.Commit, opts Options) bool {
