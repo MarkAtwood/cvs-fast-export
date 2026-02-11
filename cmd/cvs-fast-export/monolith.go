@@ -1470,7 +1470,12 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 // CommitsForBranch flattens commits from newest to oldest for a branch.
 func CommitsForBranch(branch *GitBranch) []*GitCommit {
 	var out []*GitCommit
+	seen := make(map[*GitCommit]struct{})
 	for c := branch.Head; c != nil; c = c.Parent {
+		if _, ok := seen[c]; ok {
+			panic(fmt.Sprintf("commit cycle detected in branch %s", branch.Name))
+		}
+		seen[c] = struct{}{}
 		out = append(out, c)
 	}
 	return out
@@ -1902,12 +1907,18 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			parentMark = markMap[c.Parent]
 		}
 		first := i == 0
-		ops, next := buildOps(prevState, c.Files)
+		/* It is possible this code should go here.
+		 * Without it, we skip commits with no fileos;
+		 * the deadbranch,v test case generates this.
+		 * With it, we genwerate commit markup with no fileops,
+		 ^ which git-fast-import acceopts but is kind of weird.
 		if len(ops) == 0 {
 			// Skip empty commits but keep state up to date.
 			state[c.RefName] = next
 			continue
 		}
+		*/
+		ops, next := buildOps(prevState, c.Files)
 		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err
