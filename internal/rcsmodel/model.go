@@ -371,12 +371,13 @@ func nextRevisionOf(file *rcs.File, rev string) string {
 // applyDelta applies an RCS reverse delta to the newer text, producing older text.
 func applyDelta(text, delta string) (string, error) {
 	lines, trailing := splitLinesForDelta(text)
-	commands := splitLines(delta)
+	commands, deltaTrailing := splitLinesForDelta(delta)
 	type deltaOp struct {
-		op    byte
-		start int
-		count int
-		lines []string
+		op          byte
+		start       int
+		count       int
+		lines       []string
+		addTrailing bool
 	}
 	var ops []deltaOp
 	for i := 0; i < len(commands); {
@@ -402,9 +403,11 @@ func applyDelta(text, delta string) (string, error) {
 			if i+count >= len(commands) {
 				return "", fmt.Errorf("delta add missing lines")
 			}
-			add := commands[i+1 : i+1+count]
-			ops = append(ops, deltaOp{op: 'a', start: start, count: count, lines: add})
-			i += 1 + count
+			end := i + 1 + count
+			addTrailing := end < len(commands) || deltaTrailing
+			add := commands[i+1 : end]
+			ops = append(ops, deltaOp{op: 'a', start: start, count: count, lines: add, addTrailing: addTrailing})
+			i = end
 		}
 	}
 	for i := len(ops) - 1; i >= 0; i-- {
@@ -414,6 +417,13 @@ func applyDelta(text, delta string) (string, error) {
 			if op.start < 1 || op.start-1+op.count > len(lines) {
 				return "", fmt.Errorf("delta delete out of range")
 			}
+			if op.start-1+op.count == len(lines) {
+				if len(lines) == op.count {
+					trailing = false
+				} else {
+					trailing = true
+				}
+			}
 			lines = append(lines[:op.start-1], lines[op.start-1+op.count:]...)
 		case 'a':
 			if op.start < 0 {
@@ -422,6 +432,9 @@ func applyDelta(text, delta string) (string, error) {
 			pos := op.start
 			if pos > len(lines) {
 				pos = len(lines)
+			}
+			if pos == len(lines) {
+				trailing = op.addTrailing
 			}
 			lines = append(lines[:pos], append(op.lines, lines[pos:]...)...)
 		}
@@ -525,6 +538,16 @@ func LoadFile(path string) (*rcs.File, []string, error) {
 	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
 	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
+	if err != nil {
+		// Some RCS files omit the extra blank line after desc. Insert one if needed and retry.
+		if bytes.Contains(data, []byte("\ndesc\n@@\n\n1.")) {
+			patched := bytes.ReplaceAll(data, []byte("\ndesc\n@@\n\n1."), []byte("\ndesc\n@@\n\n\n1."))
+			rcsFile, err = rcs.ParseFile(bytes.NewReader(patched))
+			if err == nil {
+				data = patched
+			}
+		}
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
 	}

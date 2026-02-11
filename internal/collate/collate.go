@@ -291,6 +291,10 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		}
 		base.C -= 2
 		base.N = base.N[:base.C]
+		if gc := byNumber[cvsnum.String(base)]; gc != nil {
+			tail.Parent = gc
+			continue
+		}
 		if len(masterCommits) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
@@ -301,11 +305,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 			}
 			if pick != nil {
 				tail.Parent = pick
-				continue
 			}
-		}
-		if gc := byNumber[cvsnum.String(base)]; gc != nil {
-			tail.Parent = gc
 		}
 	}
 }

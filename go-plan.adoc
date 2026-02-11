@@ -1310,4 +1310,89 @@ tesrs.
   anything remains).
 ----
 
+The new log is in tests/ERRORS. Proress is definitely being made.
 
+In the cvsignore.chk test, one two many charcaters (probably a
+newline?) is getting generated into .cvsignore. This error
+is pretty harmless.
+
+There's a parse error iprocessing the longrev test, right at end of
+file. Looks like the parser is not seeing some kinnd of terminator
+that it expected. Similar situation at the end of the
+postbranch/module/f,v file.  Also in
+twobranch.repo/module/README,v. There aee a couple others like this.
+
+In t9605, the Go version doesn't emit the warning it should about
+missing commitids.
+
+----
+Made the fixes you called out and rebuilt /tmp/cvs-fast-export-go.
+
+  What changed:
+
+  - .cvsignore data length now matches C (don’t count the extra backslash inserted before # in user
+    ignore lines).
+  - golang-rcs parser now tolerates trailing blank lines/EOF in revision contents (fixes the
+    end‑of‑file parse errors for longrev/postbranch/twobranch and similar).
+  - Added the missing “no commitids before …” warning (t9605) when commitids are absent and -T isn’t
+    set.
+  - Refreshed upstream patch file: third_party/golang-rcs-parser-robustness.patch.
+
+  Quick local checks:
+
+  - tests/cvsignore.chk now matches with the Go output.
+  - longrev, postbranch, twobranch parse cleanly with go run.
+
+  Please rerun the suite with /tmp/cvs-fast-export-go and send the new
+  log (e.g., tests/ERRORS5).
+----
+
+OK, your were correct. New log at tests/ERRORS8. Am analyzing.
+
+----
+I pulled tests/ERRORS8 and here’s what it shows + what I verified locally.
+
+  What I fixed since ERRORS8 was generated (and verified locally):
+
+  - longrev/postbranch/twobranch now match their .chk outputs with the current /tmp/cvs-fast-export-
+    go.
+      - I fixed trailing‑newline handling in applyDelta() and changed branch parent selection to
+        prefer the CVS base revision over “closest master by date.”
+      - Verified:
+          - tests/longrev.chk vs /tmp/longrev.fi → clean
+          - tests/postbranch.chk vs /tmp/postbranch.fi → clean
+          - tests/twobranch.chk vs /tmp/twobranch.fi → clean
+
+  If you still see parse errors for those in c_regress, it’s almost certainly because cvsconvert is
+  still using an old binary. cvsconvert prepends .. to PATH, so it runs ../cvs-fast-export unless you
+  override PATH. Easiest fix:
+
+  cp /tmp/cvs-fast-export-go ../cvs-fast-export
+
+  or run:
+
+  PATH=/tmp:$PATH make check
+
+  Still failing in ERRORS8 (actual remaining logic gaps):
+
+  - tagbug: tag emitted before the delete commit.
+    Root cause: we don’t implement the C tag‑resolution logic (collate.c tag matching by full revision
+    sets). We’re still emitting tags by state match, which is too early.
+  - twotag: missing synthetic commit for incomplete tag.
+    Root cause: we don’t implement the “incomplete tag” synthetic commit branch creation from
+    collate.c.
+  - altexpand: vendor branch handling/output order is wrong, and warning missing.
+    Root cause: vendor branch detection + output ordering not fully ported.
+  - deadbranch / emptylabel / emptytag: missing warnings and branch pruning.
+    Root cause: we don’t yet port the warning+branch‑pruning logic from revcvs.c (discard dead
+    untagged branches, unnamed branches, etc.).
+
+  What I changed just now:
+
+  - Fixed applyDelta() trailing newline handling (fixes blob lengths for branch1..branch10).
+  - Fixed branch parent selection (fixes postbranch/longrev parents).
+  - Rebuilt /tmp/cvs-fast-export-go.
+
+  If you want, I can now tackle the tag resolution (tagbug/twotag) and vendor/branch‑pruning warnings
+  next.
+----
