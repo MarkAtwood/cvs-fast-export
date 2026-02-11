@@ -2037,3 +2037,62 @@ hack3 is still OK.
   Please rebuild (make cvs-fast-export-go) and re-run branchy. If it still differs, paste the new diff
   and I’ll keep iterating.
 ----
+
+We are now down to a class of cases (these branch rooot selection
+scenarios) for which it is not clear that the C version is always
+doing the right thing. The next case roi look at is longrev,v, which
+was matching C behavior in previous versions but is now busted.
+Some firt-principles reasoning about what &should* happen in
+this case is probably called for.
+
+----
+  Got it. To reason from first principles on longrev,v, I need the exact mismatch.
+
+  Please paste the longrev section from the latest tests/ERRORS (or just the diff hunk). Also, confirm
+  which tool you want as the oracle for “should” in this case:
+
+  1. C output is authoritative
+  2. Git fast-import semantics (ignore C if it conflicts)
+  3. CVS/RCS semantics (independent of C/Git)
+
+  Once I have the diff, I’ll walk through the intended ordering/parenting for that case and propose
+  the correct rule.
+----
+
+I can say that the C output is *not* authoritative. It was a best
+effort, which may be buggy in obscure ways, at bridging the gap
+between RCS/CVS semantics and Git semantics. I don't think I
+can answer 2 or 3 unequivocally.
+
+----
+Understood. Let’s reason it out from the actual mismatch.
+
+  Please paste the longrev diff hunk from the latest tests/ERRORS (or run just longrev and share the
+  diff). If it’s large, the minimal context around the first divergence is enough.
+
+  Also, tell me what you expect the correct behavior to be in this case (e.g., “branch root should
+  attach to nearest trunk ancestor by time,” “prefer explicit branch base revision,” “avoid empty
+  commits,” etc.). Even a rough preference helps pick the right rule.
+----
+
+(I then pasted in the longrev diff.)
+
+----
+  For longrev (nested branches), we need to prefer the branch base revision when the base is itself on
+  a branch. The current parent selection always goes to the latest master ≤ date, which collapses
+  nested branch chains back to master (hence all from :2).
+
+  I updated linkBranchParents to:
+
+  1. Prefer base revision if base.C > 2 (i.e., the base is on a branch).
+  2. Otherwise prefer latest master ≤ date.
+  3. Finally fall back to the base even on trunk if nothing else fits.
+
+  This should restore the longrev chain (from :4, :6, :8, ...) while keeping branchy (first‑level
+  branch) on the latest master.
+
+  Please rebuild and rerun longrev (and branchy) and share the new
+  diff if anything still diverges.
+----
+
+Yes, this makes longrev work.

@@ -1711,7 +1711,20 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		if tail == nil || len(tail.Files) == 0 {
 			continue
 		}
-		// Prefer the latest master commit on or before the branch date.
+		// Prefer explicit branch-base revision when it is itself on a branch.
+		base := tail.Files[0].Number
+		if base.C < 4 {
+			continue
+		}
+		base.C -= 2
+		base.N = base.N[:base.C]
+		if base.C > 2 {
+			if gc := byNumber[String(base)]; gc != nil {
+				tail.Parent = gc
+				continue
+			}
+		}
+		// Otherwise prefer the latest master commit on or before the branch date.
 		if len(masterCommits) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
@@ -1725,29 +1738,10 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 				continue
 			}
 		}
-		// Next, try the explicit branch base revision when available.
-		base := tail.Files[0].Number
-		if base.C < 4 {
-			continue
-		}
-		base.C -= 2
-		base.N = base.N[:base.C]
+		// Finally, fall back to the base revision even on trunk.
 		if gc := byNumber[String(base)]; gc != nil {
 			tail.Parent = gc
 			continue
-		}
-		// Otherwise, leave the parent unset.
-		if len(masterCommits) > 0 {
-			var pick *GitCommit
-			for _, mc := range masterCommits {
-				if !mc.Date.After(tail.Date) {
-					pick = mc
-					break
-				}
-			}
-			if pick != nil {
-				tail.Parent = pick
-			}
 		}
 	}
 }
