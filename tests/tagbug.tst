@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 ## Tricky tag corner case
+# Tag should attach to the second commit,
+# probably :4 in the emitted git stream,
+# after :3 which is the first commit and
+# blobs at :1 and :2.
+# It's an error if the tag attaches to :3.
 
 import sys, testlifter
 
