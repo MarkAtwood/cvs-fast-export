@@ -171,7 +171,7 @@ cleancheck:
 	@$(MAKE) -s check
 
 # Go translation
-cvs-fast-export-go:
+cvs-fast-export-go: cmd/cvs-fast-export/monolith.go go.mod go.sum
 	go build -o cvs-fast-export-go ./cmd/cvs-fast-export
 
 # Needs clean first because reflowing generated .c and .h files produces ungappy results

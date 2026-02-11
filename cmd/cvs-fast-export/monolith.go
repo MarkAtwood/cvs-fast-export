@@ -2330,6 +2330,9 @@ func main() {
 		if !strings.HasSuffix(path, ",v") {
 			continue
 		}
+		if strings.Contains(path, "CVSROOT") {
+			continue
+		}
 		// Precompute rectified names for stable sorting.
 		inputs = append(inputs, inputFile{
 			path:      path,
@@ -2393,7 +2396,7 @@ func main() {
 	}
 
 	// Warn if commitids are missing and skew could occur.
-	if skew := skewVulnerable(masters); skew != nil && len(masters) > 1 && !cfg.ForceDates {
+	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
 		fmt.Fprintf(os.Stderr, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
 	}
 
@@ -2407,6 +2410,7 @@ type config struct {
 	DumpBranches bool
 	ForceDates   bool
 	Reposurgeon  bool
+	Quiet        bool
 	CommitWindow time.Duration
 	Authors      map[string]Author
 	SourceType   string
@@ -2467,9 +2471,11 @@ func parseArgs(args []string) (config, error) {
 			}
 			cfg.Authors = authors
 		case arg == "-c", arg == "-g",
-			arg == "-v", arg == "-q", arg == "-a", arg == "-p",
+			arg == "-v", arg == "-a", arg == "-p",
 			arg == "-P", arg == "-E", arg == "-S", arg == "-N":
 			// flags without arguments (ignored for now)
+		case arg == "-q":
+			cfg.Quiet = true
 		case strings.HasPrefix(arg, "--"):
 			// long options with or without =value
 			if strings.Contains(arg, "=") {

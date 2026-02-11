@@ -1571,7 +1571,7 @@ Yes, do that. Also, go through each funcrion more than
 of ther major processing steps.
 
 The C code has a history of being difficult to maintain
-due to poor commenting. That need to be fixed.
+du<e to poor commenting. That need to be fixed.
 
 ----
   Updated comments across the Go code to remove “mirrors … C” phrasing and to explain intent in-place.
@@ -1587,3 +1587,100 @@ due to poor commenting. That need to be fixed.
   I didn’t run any builds/tests. If you want, I can run a quick go build ./cmd/cvs-fast-export (needs
   cache permissions) or proceed to a focused test next.
 ----
+
+Am I correct that you have not yet implemented any special handling
+for vendor branches?
+
+----
+No — vendor-branch handling is implemented.
+
+  In the Go monolith:
+
+  - PatchVendorBranches detects vendor branches by numbering, synthesizes missing names, and splices
+    the newest vendor branch into master when trunk lacks a 1.2.
+  - GraftBranches then links branch tails to their parent revisions.
+
+  If you want me to point you to exact spots in cmd/cvs-fast-export/monolith.go, tell me and I’ll cite
+  the function locations.
+----
+
+I am not certain the vendir branch handling in the C code was actually
+correct - expected vendoring behavior is very poorly documented, and
+there have been troubling bug reports around it.
+
+We'll return to this questio n after getting the existing regression
+tests to work or discovering that the beghavior of the C code with
+respect to these terts was incorrect.
+
+First, some cleanup issues.  "no commitids" messages are leaking out
+of the test harness. They didn't in the C version. Can you figure out
+why?
+
+----
+Yes — the leak is because my Go condition doesn’t match the C tool’s filecount logic.
+
+  C only counts input files after filtering out anything with CVSROOT in the path. In Go I was
+  counting all parsed masters (len(masters)), so a repo with only one real file + CVSROOT metadata
+  could still trigger the warning. I fixed it to match C:
+
+  - skip CVSROOT entries when building inputs
+  - use len(inputs) (post-filter) instead of len(masters) for the warning condition
+
+  Change is in cmd/cvs-fast-export/monolith.go.
+
+  If you want me to run the specific test that showed the leak, tell
+  me which one and I’ll run it.
+----
+
+....
+ake check
+........F...F.F.F.FFF.FFF.F.FFFFFFFFF...........not ok = tagbug.repo tag tag: file manifests don't match.
+not ok = tagbug.repo tag tag: common: 1
+not ok = tagbug.repo tag tag: gitspace only: {'bar.c'}
+.cvs-fast-export: no commitids before 2006-06-30T13:21:39Z.
+.cvs-fast-export: no commitids before 2009-03-11T19:09:10Z.
+..cvs-fast-export: no commitids before 2012-12-12T21:09:50Z.
+.cvs-fast-export: no commitids before 2014-12-20T18:31:31Z.
+....
+
+They're still leaking.
+
+----
+Cause: tests invoke cvs-fast-export with -q via cvsconvert/testlifter, but the Go parser ignored -q,
+  so warnings still printed.
+
+  Fix: honor -q and suppress the “no commitids” warning when quiet.
+
+  Changes in cmd/cvs-fast-export/monolith.go:
+
+  - added Quiet to config
+  - set Quiet on -q
+  - guard the warning with !cfg.Quiet
+
+  Rebuild and re-run make check when you’re ready.
+----
+
+No doubt implementing -q was part of the solkution,
+but thoose messages are still leaking out.
+
+----
+  Those warnings are almost certainly coming from an old Go binary. Your make check target doesn’t
+  rebuild cvs-fast-export-go unless it’s missing, so changes (like -q handling) weren’t picked up.
+
+  I fixed that by adding proper dependencies so the Go binary is rebuilt when the source changes:
+
+  - Makefile now makes cvs-fast-export-go depend on cmd/cvs-fast-export/monolith.go, go.mod, and
+    go.sum.
+
+  Please rerun:
+
+  make cvs-fast-export-go
+  make check
+
+  That should suppress the “no commitids” warning when -q is used. If it still leaks after the
+  rebuild, I’ll dig into how -q is being passed in your test harness.
+----
+
+Confirming, that fixed the problem.
+
+We're now up to 35 of 50 regression tests suvcceeding.
