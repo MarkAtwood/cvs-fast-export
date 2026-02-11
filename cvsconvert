@@ -40,6 +40,8 @@ os.putenv("PATH", os.getenv("PATH") + os.pathsep + "..")
 
 binary_encoding = "Latin-1"  # Preserves high bits in data
 
+engine = os.getenv("CVS_FAST_EXPORT", "cvs-fast-export")
+
 
 def noisy_run(dcmd, legend=""):
     "Either execute a command or raise a fatal exception."
@@ -168,8 +170,8 @@ class RCSRepository(object):
         vopt = "-v " * (verbose - DEBUG_LIFTER + 1)
         # The -L is necessary to handle proxied directories.
         self.run_with_cleanup(
-            'find -L {0} -name "*,v" | cvs-fast-export {1} {2} >{3}'.format(
-                directory, vopt, more_opts, outfile
+            'find -L {0} -name "*,v" | {1} {2} {3} >{4}'.format(
+                directory, engine, vopt, more_opts, outfile
             )
         )
 
@@ -558,7 +560,7 @@ if __name__ == "__main__":
             engine_opts += " -p"
         elif opt == "-q":
             engine_opts += " -q"
-        elif opt =="-s":
+        elif opt == "-s":
             engine_opts += " -s " + arg
         elif opt == "-t":
             tap_output = True

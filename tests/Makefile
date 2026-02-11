@@ -1,12 +1,11 @@
 # Test makefile for cvs-fast-export
 
-# Set OPTS to pass options to the cvs-fast-export instances.
-
 PATH := ${CURDIR}/..:${CURDIR}:${PATH}
 SHELL = sh	# Do not introduce bashisms!
 CVS = cvs
 DIFF = diff -u -a
-CVS_FAST_EXPORT = ../cvs-fast-export $(OPTS)
+CVS_FAST_EXPORT = ../cvs-fast-export
+export CVS_FAST_EXPORT
 PYTHON = python3
 
 .PHOMY: CHECK FULLCHECK

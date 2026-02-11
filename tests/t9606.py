@@ -13,9 +13,8 @@ import sys
 
 
 def run_with_input(data):
-    cmd = [os.path.join("..", "cvs-fast-export")]
     return subprocess.run(
-        cmd,
+        os.getenv("CVS_FAST_EXPORT", "../cvs-fast-export"),
         input=data,
         text=True,
         stdout=subprocess.DEVNULL,

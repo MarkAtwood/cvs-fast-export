@@ -1,6 +1,7 @@
 """
 Test framework for cvs-fast-export.
 """
+
 # This code runs correctly under both Python 2 and Python 3.
 # Preserve this property!
 
@@ -23,6 +24,8 @@ verbose = 0
 os.putenv("PATH", os.getenv("PATH") + os.pathsep + "..")
 
 binary_encoding = "Latin-1"  # Preserves high bits in data
+
+engine = os.getenv("CVS_FAST_EXPORT", "cvs-fast-export")
 
 
 def noisy_run(dcmd, legend=""):
@@ -154,8 +157,8 @@ class RCSRepository(object):
         vopt = "-v " * (verbose - DEBUG_LIFTER + 1)
         # The -L is necessary to handle proxied directories.
         self.run_with_cleanup(
-            'find -L {0} -name "*,v" | cvs-fast-export {1} {2} >{3}'.format(
-                self.directory, vopt, more_opts, outfile
+            'find -L {0} -name "*,v" | {1} {2} {3} >{4}'.format(
+                self.directory, engine, vopt, more_opts, outfile
             )
         )
 
@@ -455,7 +458,7 @@ class ConvertComparison(object):
             for path in cvspaths
             if path.replace(".checkout/", ConvertComparison.SUFFIX + "/") in gitpaths
         ]
-        for (a, b) in common:
+        for a, b in common:
             if not filecmp.cmp(a, b, shallow=False):
                 success = False
                 if success_expected:

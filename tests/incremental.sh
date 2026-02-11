@@ -18,7 +18,7 @@ trap '[ $out != /dev/stdout ] && rm -f $out' EXIT HUP INT QUIT TERM
 idate=$(cvs -d "$PWD/twobranch.repo" rlog -r1.1.2.2 module/README | sed -n "s/date: \(.*\)\;  author.*/\1/p" | ./parsedate.py)
 
 # shellcheck disable=SC2003,SC2046,SC2086
-find twobranch.repo/ -name "*,v" | cvs-fast-export $opts -i $(expr $idate - 1) >$out
+find twobranch.repo/ -name "*,v" | ${CVS_FAST_EXPORT:-cvs-fast-export} $opts -i $(expr $idate - 1) >$out
 
 if [ "$out" != /dev/stdout ]
 then
