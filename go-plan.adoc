@@ -1709,3 +1709,38 @@ Added vendor-branch warning emission to match C:
 
   Rebuild and re-run the failing test (t9601) and the warning should reappear.
 ----
+
+....
+not ok - t9604: Testing for correct timestamp handling in author maps.
+  --- |
+  --- t9604.err 2024-02-14 16:20:23.044510308 -0500
+  +++ - 2026-02-11 09:59:10.058609863 -0500
+  @@ -0,0 +1,3 @@
+  +fatal: Invalid raw date "1107216000 CST6CDT" in ident: User Two <user2@domain.org> 1107216000 CST6CDT
+  +fast-import: dumping crash report to .git/fast_import_crash_3193192
+  +t9604.py: cat module.git.fi | (cd t9604-git >/dev/null; git fast-import --quiet --done && git checkout) returned 128.
+....
+
+The C version did not emit this obviously malformed timezone to
+git-fast-import abd make it crash.  Can you figure out what it
+did instead?
+
+----
+  C uses TZ=CST6CDT (etc.) and formats %z to get a numeric offset; it never passes the timezone name
+  to git. We were doing that, which is why fast‑import crashed.
+
+  I fixed this by converting the authormap TZ into a numeric offset at the commit timestamp:
+
+  - emitCommit now calls formatTimezoneOffset(when, tz) and always emits ±HHMM.
+  - formatTimezoneOffset:
+      - returns +0000 for UTC/GMT or empty
+      - keeps numeric ±HHMM as-is
+      - maps POSIX TZs to IANA zones (CST6CDT→America/Chicago, EST5EDT→America/New_York,
+        MST7MDT→America/Denver, PST8PDT→America/Los_Angeles)
+      - falls back to +0000 if no zone is available
+
+  This matches the C behavior for the test (the offsets in t9604.py should now line up).
+
+  Rebuild and re-run t9604. If you want broader TZ coverage, we can extend the map or parse more POSIX
+  TZ forms.
+----
