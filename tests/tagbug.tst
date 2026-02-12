@@ -23,6 +23,14 @@ co.commit("First commit")
 co.remove("bar.c")
 co.commit("Second commit")
 
+# Here is the dangerous curve:
+#
+# CVS tags are file‑revision tags, not commit tags.
+#  - When you tag, CVS attaches the tag to the current revision of each file
+#    in the working directory.#
+#  - foo.c exists → tag points to foo.c 1.1, which ois associated with the
+#    irst commit.
+#  - bar.c was removed → no tag is attached to bar.c at all
 co.tag("tag")
 
 repo.cleanup()
