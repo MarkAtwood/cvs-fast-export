@@ -2187,5 +2187,5 @@ Implemented a stricter tag-match rule so tags only emit when the entire tree sta
 That fixed the tagbug test. Add a comment to the tag-selection logic
 explaining it - this is abother pain point for maintainers.
 
-To bring back this context::
-codex resume 019c4854-608c-75d3-b929-33a2ccad1485
+After extracting rcsFile structures, run  theough akll the Author
+fields reoplacing whitespace wit underscores.

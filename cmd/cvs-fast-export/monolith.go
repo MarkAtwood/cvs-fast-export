@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	rcs "github.com/arran4/golang-rcs"
 )
@@ -804,6 +805,12 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	if err != nil {
 		return nil, err
 	}
+	// Normalize author fields before commit construction.
+	for _, rh := range file.RevisionHeads {
+		if rh != nil {
+			rh.Author = normalizeAuthor(rh.Author)
+		}
+	}
 	// Build Commit records from revision heads.
 	for _, rh := range file.RevisionHeads {
 		num, err := Parse(rh.Revision)
@@ -901,6 +908,21 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		Commits:  commits,
 		Root:     root,
 	}, nil
+}
+
+// normalizeAuthor replaces whitespace with underscores for author tokens.
+// Yes. RCS masters have been seen in the wild with spaces embedded in
+// committer IDs.
+func normalizeAuthor(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return '_'
+		}
+		return r
+	}, s)
 }
 
 // buildBranchHeads constructs branch head links and returns the trunk root.
@@ -1689,15 +1711,15 @@ func collectTags(masters []*Master, repo *Repo) {
 // Branch roots are per-file in CVS, but git needs a single parent commit that
 // represents the repository state at branch creation time. The selection
 // strategy is:
-// 1) If any branch file's base revision is itself on a branch (base.C > 2),
-//    prefer that explicit base revision. This preserves nested-branch chains
-//    like longrev, where the parent is not on trunk at all.
-// 2) Otherwise (all bases on trunk), prefer the latest master commit on or
-//    before the branch date whose file states for the branch files match the
-//    base revisions. This captures branchy-style cases where unrelated master
-//    commits (touching other files) should still be ancestors, but commits that
-//    advance the branch files past the base must not be.
-// 3) If no such master commit is found, fall back to the base revision itself.
+//  1. If any branch file's base revision is itself on a branch (base.C > 2),
+//     prefer that explicit base revision. This preserves nested-branch chains
+//     like longrev, where the parent is not on trunk at all.
+//  2. Otherwise (all bases on trunk), prefer the latest master commit on or
+//     before the branch date whose file states for the branch files match the
+//     base revisions. This captures branchy-style cases where unrelated master
+//     commits (touching other files) should still be ancestors, but commits that
+//     advance the branch files past the base must not be.
+//  3. If no such master commit is found, fall back to the base revision itself.
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
@@ -1943,15 +1965,15 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			parentMark = markMap[c.Parent]
 		}
 		first := i == 0
-	ops, next := buildOps(prevState, c.Files)
-	if len(next) > 0 {
-		liveSeen[c.RefName] = true
-	}
-	if len(ops) == 0 && liveSeen[c.RefName] {
-		// Skip no-op commits once the branch has any live content.
-		state[c.RefName] = next
-		continue
-	}
+		ops, next := buildOps(prevState, c.Files)
+		if len(next) > 0 {
+			liveSeen[c.RefName] = true
+		}
+		if len(ops) == 0 && liveSeen[c.RefName] {
+			// Skip no-op commits once the branch has any live content.
+			state[c.RefName] = next
+			continue
+		}
 		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err
