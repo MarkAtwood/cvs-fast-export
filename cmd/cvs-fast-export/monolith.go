@@ -459,6 +459,7 @@ type Commit struct {
 	Text     string
 	FileName string
 	OrigName string
+	Source   string
 	Mode     int
 	Tail     bool
 }
@@ -782,6 +783,8 @@ type Master struct {
 	Root     *Commit
 }
 
+var masterWarnings []string
+
 // BuildMaster converts a parsed RCS file into a CVS master model.
 func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
 	info, err := os.Stat(source)
@@ -833,6 +836,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 			Text:     text,
 			FileName: fileName,
 			OrigName: rectified,
+			Source:   source,
 			Mode:     fileMode,
 		}
 	}
@@ -856,7 +860,13 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 
 	// Create branch head chains and locate the root commit.
+	pendingWarnings = nil
 	branchHeads, root := buildBranchHeads(commits, versions)
+	if len(pendingWarnings) > 0 {
+		for _, w := range pendingWarnings {
+			masterWarnings = append(masterWarnings, w)
+		}
+	}
 
 	// Normalize symbol ordering to preserve original CVS ordering where possible.
 	var sym []Symbol
@@ -909,6 +919,8 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		Root:     root,
 	}, nil
 }
+
+var pendingWarnings []string
 
 // normalizeAuthor replaces whitespace with underscores for author tokens.
 // Yes. RCS masters have been seen in the wild with spaces embedded in
@@ -999,15 +1011,20 @@ func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
 	for i := len(chain) - 1; i > 0; i-- {
 		chain[i].Parent = chain[i-1]
 	}
-	adjustDates(chain)
+	warnings := adjustDates(chain)
+	for _, w := range warnings {
+		pendingWarnings = append(pendingWarnings, w)
+	}
 	return chain[len(chain)-1]
 }
 
 // adjustDates enforces monotonically non-decreasing dates within a chain.
-func adjustDates(chain []*Commit) {
+// It returns formatted warning messages for any adjustments made.
+func adjustDates(chain []*Commit) []string {
 	if len(chain) < 2 {
-		return
+		return nil
 	}
+	var warnings []string
 	// Ensure commit dates are non-decreasing within the chain.
 	var gc *Commit
 	for i := len(chain) - 1; i > 0; i-- {
@@ -1016,12 +1033,17 @@ func adjustDates(chain []*Commit) {
 		if p.Date.After(c.Date) {
 			if gc != nil && !p.Date.After(gc.Date) {
 				c.Date = p.Date
+				warnings = append(warnings, fmt.Sprintf("warning - %s: %s is newer than %s, adjusting %s",
+					c.Source, String(p.Number), String(c.Number), String(c.Number)))
 			} else {
 				p.Date = c.Date
+				warnings = append(warnings, fmt.Sprintf("warning - %s: %s is newer than %s, adjusting %s",
+					c.Source, String(p.Number), String(c.Number), String(p.Number)))
 			}
 		}
 		gc = c
 	}
+	return warnings
 }
 
 // lastCommit returns the oldest commit reachable from a head.
@@ -2473,6 +2495,7 @@ func main() {
 
 	var masters []*Master
 	vendorWarning := false
+	seenWarn := make(map[string]struct{})
 	for _, in := range inputs {
 		// Parse each RCS file and build the per-file master model.
 		rcsFile, symbolOrder, err := LoadFile(in.path)
@@ -2485,6 +2508,16 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		for _, w := range masterWarnings {
+			if _, ok := seenWarn[w]; ok {
+				continue
+			}
+			seenWarn[w] = struct{}{}
+			if !cfg.Quiet {
+				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+			}
+		}
+		masterWarnings = nil
 		// Resolve branches, vendor branches, and symbol refs.
 		var foundVendor bool
 		master.Heads, foundVendor = PatchVendorBranches(master.Heads)

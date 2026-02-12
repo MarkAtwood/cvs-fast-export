@@ -2641,3 +2641,81 @@ Removed cmd/cfe-check and cmd/cfe-compare with git rm.
 
 
 No, leave the historical record intact.
+
+not ok - t9603: Testing for correct patchset estimation
+  --- |
+  --- t9603.err	2024-02-14 16:20:23.040510176 -0500
+  +++ -	2026-02-12 05:56:29.088974154 -0500
+  @@ -1,2 +1 @@
+  -cvs-fast-export: warning - tests/t9603.testrepo/module/a,v:  1.1 is newer than 1.2, adjusting 1.1
+   cvs-fast-export: no commitids before 2009-03-11T19:09:10Z.
+  ...
+
+I want to umderstand why the C and Go implementations behave
+differently on this test.
+
+----
+Here’s the concrete difference:
+
+  - C emits the warning in revcvs.c when it detects a child revision date earlier than its parent and
+    then adjusts one of the two timestamps. It prints:
+
+    warning - <file>: <parent> is newer than <child>, adjusting <rev>
+    (see revcvs.c around the time_compare block).
+    (see revcvs.c around the time_compare block).
+  - Go also adjusts the dates, but the adjustment happens in adjustDates() and we never emit a
+    warning. So the skew is corrected, but silently. That’s why t9603 lacks the warning.
+
+  In short: the behavior is functionally equivalent, but the Go port doesn’t log the warning. If you
+  want to match C, we should add a warning to adjustDates() with the same wording, and honor -q
+  suppression.
+
+  If you want me to implement that, say the word and I’ll patch it.
+----
+
+Do it.
+
+----
+
+mplemented the missing warning from t9603 and wired it to -q.
+
+  What I did (all in cmd/cvs-fast-export/monolith.go):
+
+  - adjustDates now returns warning strings when it fixes out‑of‑order timestamps, matching the C
+    wording.
+  - Warnings are collected during buildBranchChain, stored per‑master, and emitted in main() with the
+    cvs-fast-export: prefix unless -q is set.
+  - De‑duplication is per run to avoid repeated warnings.
+
+  Please rebuild (make cvs-fast-export-go) and re‑run t9603. If you want the warnings to be emitted in
+  a different place/order (e.g., directly during parsing), I can
+  adjust.
+----
+
+....
+not ok - t9603: Testing for correct patchset estimation
+  --- |
+  --- t9603.err	2024-02-14 16:20:23.040510176 -0500
+  +++ -	2026-02-12 06:15:19.090676009 -0500
+  @@ -1,2 +1,2 @@
+  -cvs-fast-export: warning - tests/t9603.testrepo/module/a,v:  1.1 is newer than 1.2, adjusting 1.1
+  +cvs-fast-export: warning - a: 1.1 is newer than 1.2, adjusting 1.1
+   cvs-fast-export: no commitids before 2009-03-11T19:09:10Z.
+  ...
+....
+
+Fix the pathname emission in the nessage.
+
+----
+Fixed the warning path to use the full master path, matching C.
+
+  Changes:
+
+  - Commit now carries Source (master path).
+  - BuildMaster populates Commit.Source = source.
+  - adjustDates warnings now print Commit.Source instead of FileName.
+
+  Rebuild (make cvs-fast-export-go) and rerun t9603; the warning should now be:
+
+  cvs-fast-export: warning - tests/t9603.testrepo/module/a,v:  1.1 is newer than 1.2, adjusting 1.1
+----
