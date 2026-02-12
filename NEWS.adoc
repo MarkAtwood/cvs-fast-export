@@ -1,7 +1,8 @@
 = cvs-fast-export project news =
 
 Repository head::
-   cvsconvert now has a 0s option that passes in a strip prefix,
+   Code ported to Golang; there will be no more heap corruption.
+   cvsconvert now has a -s option that passes in a strip prefix.
 
 1.68: 2024-07-31::
    Fix minor error in handling of -d argument.
