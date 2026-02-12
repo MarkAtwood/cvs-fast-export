@@ -64,6 +64,8 @@ standard output:
   topologically correct, but otherwise not specified (and is subject to
   change in future versions of this program).
 
+// FIXME: second sentence is false, such tags are just dicarded
+// They were anchored on a synthetic commit in the C version.
 * CVS tags become git lightweight tags when they can be unambiguously
   associated with a changeset.  If the same tag is attached to file
   deltas that resolve to multiple changesets, it is reported as if 

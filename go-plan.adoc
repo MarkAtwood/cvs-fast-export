@@ -2114,7 +2114,7 @@ not ok - postbranch: Ilya Basin's test, failed by cvsps-3.x
   ...
 
 While you're working on this, be suee to put as very detailed comment
-desaceribing the branch root selection aslforithm, its cases, and
+describing the branch root selection algorithm, its cases, and
 its motivation mnear the code that does it.  Because this is certain
 to be a pain point for future maintainance.
 
@@ -2234,7 +2234,7 @@ Describe the handking of CVS tags in the Go version in detail,
 including error cases and error messages.
 
 ----
--Below is how tags are handled in the current Go version, based on the implementation in cmd/cvs-
+  Below is how tags are handled in the current Go version, based on the implementation in cmd/cvs-
   fast-export/monolith.go. This is descriptive (not normative), so you can decide what behavior to
   keep/change.
 
@@ -2623,5 +2623,8 @@ cases. I need to understand why.
   tests.
 ----
 
+Unconditionally floaring tags forward isn't going to work then. I've
+reverted the code and am going to think abput something else for
+a while.
 
 
