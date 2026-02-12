@@ -1904,6 +1904,7 @@ type Emitter struct {
 	tagTargets   map[string][]*Commit
 	forceDates   bool
 	reposurgeon  bool
+	quiet        bool
 	commitWindow int64
 	authors      map[string]Author
 	sourceType   string
@@ -1923,6 +1924,7 @@ func NewEmitter(w io.Writer) *Emitter {
 type ExportOptions struct {
 	ForceDates   bool
 	Reposurgeon  bool
+	Quiet        bool
 	CommitWindow time.Duration
 	Authors      map[string]Author
 	SourceType   string
@@ -1938,6 +1940,7 @@ func (e *Emitter) WithTagTargets(tags map[string][]*Commit) *Emitter {
 func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	e.forceDates = opts.ForceDates
 	e.reposurgeon = opts.Reposurgeon
+	e.quiet = opts.Quiet
 	if opts.CommitWindow > 0 {
 		e.commitWindow = int64(opts.CommitWindow.Seconds())
 	}
@@ -1970,6 +1973,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	state := make(map[string]map[string]fileState)
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
+	tagAttach, tagWarnings := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf)
+	if len(tagWarnings) > 0 && !e.quiet {
+		for _, w := range tagWarnings {
+			fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+		}
+	}
 	tagNames := append([]string(nil), repo.TagOrder...)
 	if len(tagNames) == 0 {
 		tagNames = make([]string, 0, len(e.tagTargets))
@@ -2019,13 +2028,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		state[c.RefName] = next
 		markMap[c] = mark
-		// Emit lightweight tags when the repository state matches their target set.
+		// Emit tags when their chosen commit has been marked.
 		for _, name := range tagNames {
-			targets := e.tagTargets[name]
 			if _, ok := emittedTags[name]; ok {
 				continue
 			}
-			if tagMatchesState(targets, next) {
+			if tagAttach[name] == c {
 				fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
 				fmt.Fprintf(e.w, "from :%d\n\n", mark)
 				emittedTags[name] = struct{}{}
@@ -2218,13 +2226,11 @@ func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string
 }
 
 // tagMatchesState reports whether a tag target set matches the current state.
+// It requires an exact tree match (no extra files).
 func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
 	if len(targets) == 0 {
 		return false
 	}
-	// Tags should represent a complete tree state. If the current state has
-	// any files not covered by the tag's target set, we must not emit the tag
-	// yet; otherwise, we'd attach the tag to a superset tree (tagbug).
 	targetPaths := make(map[string]struct{}, len(targets))
 	for _, t := range targets {
 		if t == nil {
@@ -2241,6 +2247,15 @@ func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
 		if _, ok := targetPaths[path]; !ok {
 			return false
 		}
+	}
+	return tagMatchesPartial(targets, state)
+}
+
+// tagMatchesPartial reports whether all tagged files match current state.
+// Extra files in the current state are allowed.
+func tagMatchesPartial(targets []*Commit, state map[string]fileState) bool {
+	if len(targets) == 0 {
+		return false
 	}
 	// Ensure each target file matches current text and mode.
 	for _, t := range targets {
@@ -2265,6 +2280,111 @@ func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
 		}
 	}
 	return true
+}
+
+// resolveTagAttachments assigns tags to commits using a two-pass strategy.
+// First pass: strict matches (full-tree). Second pass: latest partial match.
+func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit) (map[string]*GitCommit, []string) {
+	attachments := make(map[string]*GitCommit)
+	var warnings []string
+	pending := make(map[string][]*Commit, len(targets))
+	for name, t := range targets {
+		pending[name] = t
+	}
+	state := make(map[string]map[string]fileState)
+	stateSnap := make(map[*GitCommit]map[string]fileState, len(commits))
+	for _, c := range commits {
+		prev := state[c.RefName]
+		if prev == nil {
+			prev = map[string]fileState{}
+		}
+		_, next := buildOps(prev, c.Files)
+		state[c.RefName] = next
+		stateSnap[c] = copyState(next)
+		for name, t := range pending {
+			if tagMatchesState(t, next) {
+				attachments[name] = c
+				delete(pending, name)
+			}
+		}
+	}
+	for i := len(commits) - 1; i >= 0; i-- {
+		if len(pending) == 0 {
+			break
+		}
+		c := commits[i]
+		st := stateSnap[c]
+		for name, t := range pending {
+			if tagMatchesPartial(t, st) {
+				attachments[name] = c
+				warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by partial match", name))
+				delete(pending, name)
+			}
+		}
+	}
+	// Final fallback: attach to the latest commit among the tag's referenced revisions.
+	for name, t := range pending {
+		var tagCommits []*GitCommit
+		for _, rev := range t {
+			if rev == nil {
+				continue
+			}
+			if gc := commitOf[rev]; gc != nil {
+				tagCommits = append(tagCommits, gc)
+			}
+		}
+		if len(tagCommits) == 0 {
+			continue
+		}
+		uniq := uniqueCommits(tagCommits)
+		pick := latestByDate(uniq)
+		if pick != nil {
+			attachments[name] = pick
+			warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by fallback", name))
+		}
+	}
+	return attachments, warnings
+}
+
+// uniqueCommits removes duplicate commit pointers.
+func uniqueCommits(commits []*GitCommit) []*GitCommit {
+	seen := make(map[*GitCommit]struct{}, len(commits))
+	out := make([]*GitCommit, 0, len(commits))
+	for _, c := range commits {
+		if _, ok := seen[c]; ok {
+			continue
+		}
+		seen[c] = struct{}{}
+		out = append(out, c)
+	}
+	return out
+}
+
+// latestByDate picks the latest commit by date, then log text.
+func latestByDate(commits []*GitCommit) *GitCommit {
+	var pick *GitCommit
+	for _, c := range commits {
+		if pick == nil {
+			pick = c
+			continue
+		}
+		if c.Date.After(pick.Date) {
+			pick = c
+			continue
+		}
+		if c.Date.Equal(pick.Date) && c.Log > pick.Log {
+			pick = c
+		}
+	}
+	return pick
+}
+// copyState clones a fileState map.
+func copyState(in map[string]fileState) map[string]fileState {
+	out := make(map[string]fileState, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // collectCommits flattens all branch commits and sorts them for emission.

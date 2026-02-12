@@ -1,3 +1,4 @@
+cvs-fast-export: warning - tag FUBAR attached by fallback
 #reposurgeon sourcetype rcs
 blob
 mark :1
@@ -71,13 +72,7 @@ M 100644 :5 tweedledum
 property cvs-revisions 30 tweedledee 1.2
 tweedledum 1.2
 
-commit refs/heads/FUBAR
-mark :7
-committer cvs-fast-export <cvs-fast-export> 104200 +0000
-data 42
-Synthetic commit for incomplete tag FUBAR
+reset refs/tags/FUBAR
 from :6
-M 100644 :2 tweedledum
-property cvs-revisions 15 tweedledum 1.1
 
 done

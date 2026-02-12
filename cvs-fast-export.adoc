@@ -64,8 +64,6 @@ standard output:
   topologically correct, but otherwise not specified (and is subject to
   change in future versions of this program).
 
-// FIXME: second sentence is false, such tags are just dicarded
-// They were anchored on a synthetic commit in the C version.
 * CVS tags become git lightweight tags when they can be unambiguously
   associated with a changeset.  If the same tag is attached to file
   deltas that resolve to multiple changesets, it is reported as if 
@@ -413,13 +411,6 @@ null branch name, probably from a damaged Attic file::
      export a null pointer as a name. The branch is given the name
      "null". It is likely this history will need repair.
 
-tag could not be assigned to a commit::
-     RCS/CVS tags are per-file, not per revision. If developers are not
-     careful in their use of tagging, it can be impossible to associate a
-     tag with any of the changesets that cvs-fast-export resolves. When
-     this happens, cvs-fast-export will issue this warning and the tag
-     named will be discarded.
-
 discarding dead untagged branch::
      Analysis found a CVS branch with no tag consisting entirely of
      dead revisions. These cannot have been visible in the archival
@@ -526,6 +517,11 @@ duplicate key in red black tree::
      Fatal error: there are two or more definitions of the same symbolic name
      in an RCS master.  This is not a cvs-fast-export error, the
      master file has been corrupted by a CVS bug or operator error.
+
+tag <name> assigned by partial match::
+tag <name> assigned by fallback::
+     These messages is a result of incomplete tagging - a tag that is not present
+     in all masters. Tags attached this way should be conidered dubious.
 
 internal error - branch cycle::
      cvs-fast-export found a cycle while topologically sorting commits
