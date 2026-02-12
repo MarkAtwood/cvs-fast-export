@@ -3134,3 +3134,204 @@ Duplicate supptression is failing. Curious; the logic looks correct.
   If you want, I can run make cvs-fast-export-go and make tap or
   whatever your usual check is.
 ----
+
+Patch the RCS parser to accept a hardkinks field.
+Also, prepare a patch for the parser maintainer.
+
+----
+I patched the bundled golang-rcs parser to accept hardlinks in revision headers (and, because the
+  field appears alongside them in the same stanza, to skip owner, group, and permissions too). The
+  parser now treats these as ignorable properties, matching CVS-NT/GNU CVS behavior.
+
+  Changed file:
+
+  - third_party/golang-rcs/parser.go
+
+  Upstream patch (apply in golang-rcs repo):
+
+  --- a/parser.go
+  +++ b/parser.go
+  @@ -382,7 +382,7 @@
+   		return nil, false, true, nil
+   	}
+   	for {
+  -		if err := ScanStrings(s, "branches", "date", "next", "commitid", "\n\n", "\r\n\r\n", "\n", "\r\n");
+  err != nil {
+  +		if err := ScanStrings(s, "branches", "date", "next", "commitid", "owner", "group", "permissions",
+  "hardlinks", "\n\n", "\r\n\r\n", "\n", "\r\n"); err != nil {
+   			return nil, false, false, fmt.Errorf("finding revision header field: %w", err)
+   		}
+   		nt := s.Text()
+  @@ -406,6 +406,10 @@
+   				return nil, false, false, fmt.Errorf("token %#v: %w", nt, err)
+   			} else {
+   				rh.CommitID = c
+  +			}
+  +		case "owner", "group", "permissions", "hardlinks":
+  +			if _, err := ParseProperty(s, true, nt, true); err != nil {
+  +				return nil, false, false, fmt.Errorf("token %#v: %w", nt, err)
+   			}
+   		case "\n\n", "\r\n\r\n":
+   			return rh, true, false, nil
+
+  If you want me to also add a minimal parser test in golang-rcs for this stanza, say the word and
+  I’ll add it.
+---
+
+Examining some of the remaining failures, like deadbranch,v, they look
+like results of the C and Go versiuns choosing to omit commits in a
+different order.  Compare the codebases and try to work out what
+the differences are.
+
+----
+  Here are the concrete C vs Go differences that explain “omit commits in a different order,” with
+  pointers to the code.
+
+  1) C never skips commits with zero fileops; Go does.
+
+  - C exporter (export.c:export_commit) always emits a commit, even if the merge-join produces zero
+    operations. There’s no “skip empty commit” guard in export.c.
+  - Go exporter (cmd/cvs-fast-export/monolith.go around EmitRepo) explicitly skips commits when
+    len(ops)==0 once the branch has seen live content:
+      - if len(ops) == 0 && liveSeen[c.RefName] { ... continue }
+        This is the most likely source of “omit commits in a different order,” because once you
+        drop a commit, all subsequent commits shift and the parent chain still refers to the latest
+        emitted commit.
+
+  2) Dead, unnamed branches are discarded earlier (and warned) in C; Go only drops the head.
+
+  - C (revcvs.c around line ~603) detects an unnamed head whose entire chain is dead and untagged,
+    warns, and marks the head for discard:
+      - warn("discarding dead untagged branch %s in %s\n", ...)
+  - Go (fixUnnamedHeads / discardZeroHeads in cmd/cvs-fast-export/monolith.go) sets h.Number = Zero
+    and removes the head, but doesn’t emit the warning and doesn’t explicitly prune commits. Those
+    commits can still be reached via branch collation and then later get filtered by the “skip no-
+    op commit” logic. That changes the omission order relative to C.
+
+  3) Commit ordering differs before emission.
+
+  - C canonicalizes a global commit list (export.c:canonicalize) with a topological shuffle that
+    tries to match git-fast-export order.
+  - Go’s Build() sorts commits mostly by date/file key inside a branch and then links parents in
+    that order. That means “which commit would have been omitted next” can differ, especially once
+    you start skipping empty commits.
+
+  If you want to align the omission order with C, you basically have two levers:
+
+  1. Remove or constrain Go’s empty-commit skip so it matches C (emit all commits, even no-op).
+  2. Ensure dead-branch pruning happens at the same stage as C (discard entire branch earlier, not
+     just its head).
+
+  If you want, I can sketch a minimal change to mirror C’s behavior (likely: emit commits
+  unconditionally, but keep the dead-branch discard + warning), then
+  we can test what breaks next.
+----
+
+Can we implement that topological-sort shuffle? Better emulation of git
+fast-export behavior would be a good thing. One of my objectives
+is to emit fast-export streams that are idempotent under coping
+through fast import and fast-output.
+
+----
+mplemented the canonical topological shuffle in the Go emitter to better mirror C’s
+  canonicalize() logic (and git-fast-export ordering). This should improve idempotence when
+  round‑tripping through fast-import/export.
+
+  What changed
+
+  - Added Tail to GitCommit and propagate it during collation so we can stop at branch roots
+    (mirrors C’s branch-tail handling).
+  - Replaced collectCommits() time-sort with a canonicalizeCommits() pass that:
+      - builds a per-branch span in forward order,
+      - shuffles commits toward time order without crossing parent/branch-root/older-date
+        constraints.
+
+  Touched file:
+
+  - cmd/cvs-fast-export/monolith.go
+
+  Next step
+
+  1. Rebuild: go build -o cvs-fast-export-go ./cmd/cvs-fast-export
+  2. Rerun the failing cases (deadbranch + any idempotence tests) and compare streams.
+
+  If you want, I can also port C’s branch ordering heuristic (fileop order) instead of the current
+  name-sorted branch order to get even closer.
+----
+
+Yes, port the branch-ordering heuristic too.
+
+----
+Implemented C-style branch ordering.
+
+  Changes:
+
+  - toposortBranches now derives branch order from each master’s sorted heads (like
+    cvs_master_sort_heads), then dedupes and appends any extras.
+  - Added sortHeadsForMaster, which orders heads by symbol number (missing symbols first), using a
+    stable sort.
+
+  Touched file:
+
+  - cmd/cvs-fast-export/monolith.go
+
+  Next step: rebuild and rerun the failing cases to see if branch ordering and the canonical
+  shuffle together improve idempotence and fix deadbranch ordering differences. If you want, I’ll
+  run go build -o cvs-fast-export-go ./cmd/cvs-fast-export and a
+  targeted test set.
+----
+
+That dramatically reduced the lengtgs of some failure diffs, so it was
+a step in the right direction.  However, it also did this to a test
+that was prevuiusly passing:
+
+....
+not ok - hack3: Third example from the Hacking Guide
+  --- |
+  --- hack3.chk	2024-02-14 16:20:13.792205163 -0500
+  +++ -	2026-02-12 12:15:24.589689811 -0500
+  @@ -90,36 +90,21 @@
+   
+   blob
+   mark :9
+  -data 30
+  -Ceci n'est pas un sourcefile.
+  -
+  -commit refs/heads/alternate
+  -mark :10
+  -committer foo <foo> 106000 +0000
+  -data 14
+  -Fourth commit
+  -from :8
+  -M 100644 :9 foo.c
+  -property cvs-revisions 14 foo.c 1.2.2.1
+  -
+  -blob
+  -mark :11
+   data 36
+   ...
+....
+
+----
+  Found and fixed the regression. The issue was how I propagated Tail into GitCommit when grouping
+  by commitid:
+
+  - I was marking a GitCommit as Tail if any file in that changeset had Tail.
+  - In hack3, bar.c’s branch has only one commit (so it’s a tail), which incorrectly marked the
+    whole changeset as the tail, truncating the alternate branch and dropping the “Fourth commit”.
+
+  Fix:
+
+  - Don’t inherit Tail from per‑file commits.
+  - After building the GitCommit chain, mark only the oldest commit in that branch as Tail.
+
+  I rebuilt and re‑ran hack3 with the same test options (-T -A neutralize.map --reposurgeon), and
+  the diff is now empty.
+
+  Changes are in:
+
+  - cmd/cvs-fast-export/monolith.go
+
+  If you want, I can rerun the full test suite or just the ones that were previously failing to
+  confirm this didn’t reintroduce other regressions.
+----

@@ -1483,6 +1483,7 @@ type GitCommit struct {
 	Log     string
 	Files   []*Commit
 	RefName string
+	Tail    bool
 }
 
 // GitBranch is a linearized commit chain for a named ref.
@@ -1561,16 +1562,74 @@ func collectBranches(masters []*Master) map[string]*GitBranch {
 
 // toposortBranches returns a stable ordering for branch processing.
 func toposortBranches(byName map[string]*GitBranch, masters []*Master) []*GitBranch {
-	var branches []*GitBranch
-	for _, b := range byName {
-		branches = append(branches, b)
+	seen := make(map[string]struct{})
+	var ordered []string
+	for _, m := range masters {
+		heads := sortHeadsForMaster(m.Heads, m.Symbols)
+		for _, h := range heads {
+			if h.RefName == "" {
+				continue
+			}
+			if _, ok := seen[h.RefName]; ok {
+				continue
+			}
+			if _, ok := byName[h.RefName]; !ok {
+				continue
+			}
+			seen[h.RefName] = struct{}{}
+			ordered = append(ordered, h.RefName)
+		}
 	}
-	// Provide stable ordering for deterministic output.
-	sort.Slice(branches, func(i, j int) bool {
-		return branches[i].Name < branches[j].Name
-	})
-	// parent relationships are resolved lazily in this minimal skeleton
+	// Append any branches not seen in master head ordering.
+	if len(ordered) != len(byName) {
+		var extra []string
+		for name := range byName {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			extra = append(extra, name)
+		}
+		sort.Strings(extra)
+		ordered = append(ordered, extra...)
+	}
+	var branches []*GitBranch
+	for _, name := range ordered {
+		if b := byName[name]; b != nil {
+			branches = append(branches, b)
+		}
+	}
 	return branches
+}
+
+// sortHeadsForMaster orders heads so parents precede children and trunk comes first.
+func sortHeadsForMaster(heads []*Head, symbols []Symbol) []*Head {
+	if len(heads) == 0 {
+		return nil
+	}
+	sym := make(map[string]Number, len(symbols))
+	for _, s := range symbols {
+		if s.Name != "" {
+			sym[s.Name] = s.Number
+		}
+	}
+	out := append([]*Head(nil), heads...)
+	sort.SliceStable(out, func(i, j int) bool {
+		a := out[i]
+		b := out[j]
+		na, oka := sym[a.RefName]
+		nb, okb := sym[b.RefName]
+		if !oka && !okb {
+			return false
+		}
+		if !oka {
+			return true
+		}
+		if !okb {
+			return false
+		}
+		return Compare(na, nb) < 0
+	})
+	return out
 }
 
 // gatherHeads collects branch heads with the given ref name.
@@ -1657,12 +1716,15 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			})
 			var prev *GitCommit
 			for _, c := range noID {
-				if prev != nil && commitsMatch(prev, c, opts) {
-					prev.Files = append(prev.Files, c)
-					commitOf[c] = prev
-					byNumber[String(c.Number)] = prev
-					continue
+			if prev != nil && commitsMatch(prev, c, opts) {
+				prev.Files = append(prev.Files, c)
+				if c.Tail {
+					prev.Tail = true
 				}
+				commitOf[c] = prev
+				byNumber[String(c.Number)] = prev
+				continue
+			}
 				g := &GitCommit{
 					Date:    c.Date,
 					Author:  c.Author,
@@ -1698,11 +1760,15 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			g.Parent = prev
 			prev = g
 		}
+		if len(order) > 0 {
+			order[0].Tail = true
+		}
 		return prev
 	}
 
 	// Fallback path: coalesce purely by metadata and time window.
 	var prev *GitCommit
+	var first *GitCommit
 	for _, c := range commits {
 		if prev != nil && commitsMatch(prev, c, opts) {
 			prev.Files = append(prev.Files, c)
@@ -1717,9 +1783,15 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			RefName: branch,
 		}
 		g.Parent = prev
+		if first == nil {
+			first = g
+		}
 		prev = g
 		commitOf[c] = g
 		byNumber[String(c.Number)] = g
+	}
+	if first != nil {
+		first.Tail = true
 	}
 	return prev
 }
@@ -2401,31 +2473,95 @@ func copyState(in map[string]fileState) map[string]fileState {
 
 // collectCommits flattens all branch commits and sorts them for emission.
 func collectCommits(repo *Repo) []*GitCommit {
-	var out []*GitCommit
-	for _, b := range repo.Branches {
-		out = append(out, CommitsForBranch(b)...)
+	return canonicalizeCommits(repo)
+}
+
+type commitSeq struct {
+	commit *GitCommit
+	head   *GitBranch
+	isBase bool
+}
+
+// canonicalizeCommits orders commits in a git-fast-export compatible sequence.
+func canonicalizeCommits(repo *Repo) []*GitCommit {
+	if repo == nil || len(repo.Branches) == 0 {
+		return nil
 	}
-	// Sort by time, then ref name, then log for deterministic output.
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].Date.Equal(out[j].Date) {
-			return out[i].Date.Before(out[j].Date)
-		}
-		if out[i].RefName != out[j].RefName {
-			return out[i].RefName < out[j].RefName
-		}
-		aiName, aiNum, aiOK := commitFileKey(out[i])
-		ajName, ajNum, ajOK := commitFileKey(out[j])
-		if aiOK && ajOK {
-			if aiName != ajName {
-				return PathDeepCompare(aiName, ajName) < 0
-			}
-			if cmp := Compare(aiNum, ajNum); cmp != 0 {
-				return cmp < 0
+	total := 0
+	for _, b := range repo.Branches {
+		for c := b.Head; c != nil; c = c.Parent {
+			total++
+			if c.Tail {
+				break
 			}
 		}
-		return out[i].Log < out[j].Log
-	})
+	}
+	if total == 0 {
+		return nil
+	}
+	history := make([]commitSeq, total)
+	branchbase := 0
+	for _, b := range repo.Branches {
+		if b.Head == nil {
+			continue
+		}
+		branchlength := 0
+		for c := b.Head; c != nil; c = c.Parent {
+			branchlength++
+			if c.Tail {
+				break
+			}
+		}
+		i := 0
+		for c := b.Head; c != nil; c = c.Parent {
+			n := branchbase + branchlength - (i + 1)
+			history[n] = commitSeq{commit: c, head: b}
+			i++
+			if c.Tail {
+				break
+			}
+		}
+		history[branchbase].isBase = true
+		branchbase += branchlength
+	}
+	// Shuffle commits toward time order without violating topology.
+	for hp := 1; hp < len(history); hp++ {
+		bp := hp
+		for bp > 0 &&
+			!isParentOf(history[bp-1], history[hp]) &&
+			!isBranchRootOf(history[bp-1], history[hp]) &&
+			!isOlderThan(history[bp-1], history[hp]) {
+			bp--
+		}
+		if bp < hp {
+			sc := history[hp]
+			copy(history[bp+1:hp+1], history[bp:hp])
+			history[bp] = sc
+		}
+	}
+	out := make([]*GitCommit, 0, len(history))
+	for _, h := range history {
+		if h.commit == nil {
+			continue
+		}
+		out = append(out, h.commit)
+	}
 	return out
+}
+
+func isParentOf(x, y commitSeq) bool {
+	return x.commit != nil && y.commit != nil && x.commit == y.commit.Parent
+}
+
+func isBranchRootOf(x, y commitSeq) bool {
+	return x.head == y.head && x.isBase
+}
+
+func isOlderThan(x, y commitSeq) bool {
+	if x.commit == nil || y.commit == nil {
+		return false
+	}
+	return x.commit.Date.Before(y.commit.Date)
 }
 
 // commitFileKey returns a deterministic file path and revision number for sorting.
