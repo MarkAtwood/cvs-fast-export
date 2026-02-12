@@ -3337,3 +3337,61 @@ not ok - hack3: Third example from the Hacking Guide
 ----
 
 That fixed the hack3 test. We're now down to only 10 failures.
+
+....
+not ok - deadbranch: Master from NetBSD with a branch entirely of dead revisions
+  --- |
+  --- deadbranch.chk	2026-02-11 10:54:13.168374673 -0500
+  +++ -	2026-02-12 13:47:34.377952996 -0500
+  @@ -1,9 +1,8 @@
+  -cvs-fast-export: discarding dead untagged branch 1.4.2.2 in deadbranch
+   commit refs/heads/master
+   mark :1
+  -committer cgd <cgd> 847321753 +0000
+  +committer cgd <cgd> 817094478 +0000
+   data 33
+  -02c3c00d1b01b59dc1df89a22fd85ed7
+  +9a8494f26b19ec9b6d911864f788627f
+   M 100644 inline .gitignore
+   data 199
+   # CVS default ignores begin
+  @@ -38,23 +37,30 @@
+   
+   commit refs/heads/master
+   mark :2
+  -committer cgd <cgd> 853377624 +0000
+  +committer cgd <cgd> 847321753 +0000
+   data 33
+  -d10b914da055c3e88c3f2d497211d6f0
+  +02c3c00d1b01b59dc1df89a22fd85ed7
+   from :1
+   
+   commit refs/heads/master
+   mark :3
+  -committer cgd <cgd> 854070780 +0000
+  +committer cgd <cgd> 853377624 +0000
+   data 33
+  -67e343d3c0df8fd8230b555776ef6aa5
+  +d10b914da055c3e88c3f2d497211d6f0
+   from :2
+   
+   commit refs/heads/master
+   mark :41
+  +committer cgd <cgd> 854070780 +0000
+  +data 33
+  +67e343d3c0df8fd8230b555776ef6aa5
+  +from :3
+  +
+  +commit refs/heads/master
+  +mark :5
+   committer cgd <cgd> 860316071 +0000
+   data 33
+   4a486f01d33c531a71545e0fa34fc4e3
+  -from :3
+  +from :4
+   
+   done
+  ...
+....
+
+This looks like there's another commit-ordering issue.

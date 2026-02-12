@@ -653,6 +653,10 @@ func fixUnnamedHeads(heads []*Head) []*Head {
 		c := firstLiveCommit(h.Commit)
 		if c == nil {
 			// Mark fully-dead branches for removal.
+			if h.Commit != nil {
+				appendMasterWarning(fmt.Sprintf("discarding dead untagged branch %s in %s",
+					String(h.Commit.Number), h.Commit.FileName))
+			}
 			h.Number = Zero
 			continue
 		}
@@ -1654,6 +1658,9 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 	for _, h := range heads {
 		for c := h.Commit; c != nil; c = c.Parent {
 			if _, ok := seen[c]; ok {
+				continue
+			}
+			if c.Dead && c.Parent == nil {
 				continue
 			}
 			seen[c] = struct{}{}
@@ -2832,6 +2839,14 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		// Resolve branches and symbol refs.
+		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		})
+		_, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		})
+		master.Tags = tags
 		for _, w := range masterWarnings {
 			if _, ok := seenWarn[w]; ok {
 				continue
@@ -2842,14 +2857,6 @@ func main() {
 			}
 		}
 		masterWarnings = nil
-		// Resolve branches and symbol refs.
-		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
-			return master.Commits[String(n)]
-		})
-		_, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
-			return master.Commits[String(n)]
-		})
-		master.Tags = tags
 		if cfg.DumpHeads {
 			dumpHeads(master)
 			dumpChains(master)
