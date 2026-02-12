@@ -2627,4 +2627,17 @@ Unconditionally floaring tags forward isn't going to work then. I've
 reverted the code and am going to think abput something else for
 a while.
 
+Since we're doing all out testing therough tests/Makefile, do
+cfe-check and cfe-compare still have a yse?  If not, remove
+them with git rm.
 
+
+----
+Removed cmd/cfe-check and cmd/cfe-compare with git rm.
+
+  Note: go-plan.adoc still references them in multiple places. If you want those scrubbed or updated,
+  say the word and I’ll clean that up next.
+----
+
+
+No, leave the historical record intact.
