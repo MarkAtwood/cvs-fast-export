@@ -411,11 +411,6 @@ null branch name, probably from a damaged Attic file::
      export a null pointer as a name. The branch is given the name
      "null". It is likely this history will need repair.
 
-fatal: internal error - duplicate key in red black tree::
-     Multiple tags with identical names exist in one of your master
-     files. This is a sign of a corrupted revision history; you will
-     need to manually inspect the master and remove one of the duplicates.
-
 tag could not be assigned to a commit::
      RCS/CVS tags are per-file, not per revision. If developers are not
      careful in their use of tagging, it can be impossible to associate a
