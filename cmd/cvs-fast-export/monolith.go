@@ -2130,9 +2130,11 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
 	tagAttach, tagWarnings := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf)
-	if len(tagWarnings) > 0 && e.verbose && !e.quiet {
+	if len(tagWarnings) > 0 && !e.quiet {
 		for _, w := range tagWarnings {
-			fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+			if e.verbose || strings.Contains(w, "points at commit with no gitspace link.") {
+				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+			}
 		}
 	}
 	tagNames := append([]string(nil), repo.TagOrder...)
@@ -2487,6 +2489,18 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 	for name, t := range targets {
 		pending[name] = t
 	}
+	for name, t := range targets {
+		latest := latestLiveCommit(t)
+		if latest == nil {
+			continue
+		}
+		if commitOf[latest] == nil {
+			base := path.Base(latest.FileName)
+			warnings = append(warnings, fmt.Sprintf("%s %s: %s points at commit with no gitspace link.",
+				base, String(latest.Number), name))
+			delete(pending, name)
+		}
+	}
 	state := make(map[string]map[string]fileState)
 	stateSnap := make(map[*GitCommit]map[string]fileState, len(commits))
 	for _, c := range commits {
@@ -2554,6 +2568,24 @@ func uniqueCommits(commits []*GitCommit) []*GitCommit {
 		out = append(out, c)
 	}
 	return out
+}
+
+// latestLiveCommit returns the newest non-dead commit in a tag target set.
+func latestLiveCommit(revs []*Commit) *Commit {
+	var pick *Commit
+	for _, r := range revs {
+		if r == nil || r.Dead {
+			continue
+		}
+		if pick == nil || r.Date.After(pick.Date) {
+			pick = r
+			continue
+		}
+		if r.Date.Equal(pick.Date) && Compare(r.Number, pick.Number) > 0 {
+			pick = r
+		}
+	}
+	return pick
 }
 
 // latestByDate picks the latest commit by date, then log text.

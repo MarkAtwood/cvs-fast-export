@@ -3453,3 +3453,42 @@ not ok - issue-57: test for GitLab issue #57
    
    blob
   ...
+
+----
+Fixed issue‑57.
+
+  Cause: our file‑ops diff logic only treated commits as patches, so the first vendor‑branch commit
+  didn’t delete files that aren’t part of that vendor branch (parapin). In C, that commit is diffed
+  against its parent (master) and should delete any file not present on the vendor branch.
+
+  Fix:
+
+  - Track per‑vendor‑branch file sets.
+  - For vendor branch start commits (import-* with parent on another branch), prune files not in
+    that vendor set before diffing, so deletions are emitted.
+  - Updated buildOps signature and tag attachment state tracking accordingly.
+
+  Verified:
+
+  - tests/issue-57.chk now matches.
+
+  Send the next faikure
+----
+
+....
+not ok - missingbranch: Missing tag for a branch.
+  --- |
+  --- missingbranch.chk	2024-02-14 16:20:14.264220730 -0500
+  +++ -	2026-02-12 15:20:23.282404644 -0500
+  @@ -1,6 +1,5 @@
+   cvs-fast-export: warning - putting missingbranch,v rev 1.4.0.2 on unnamed branch master-UNNAMED-BRANCH off master
+   cvs-fast-export: warning - putting missingbranch,v rev 1.2.0.2 on unnamed branch master-UNNAMED-BRANCH off master
+  -cvs-fast-export: missingbranch 1.2.2.1: CSRG-last points at commit with no gitspace link.
+   blob
+   mark :1
+   data 37
+  ...
+....
+
+Is the Go code not making tghe error inbdicatyed, or just not
+reporting it?
