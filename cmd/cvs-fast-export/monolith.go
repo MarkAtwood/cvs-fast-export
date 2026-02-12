@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -547,6 +548,7 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 	heads = fixUnnamedHeads(heads)
 	heads = discardZeroHeads(heads)
 	linkParents(heads)
+	heads = pruneUnnamedBranches(heads)
 	return heads, tags
 }
 
@@ -699,13 +701,46 @@ func linkParents(heads []*Head) {
 		h.Parent = p
 		if p != nil && h.RefName == "" {
 			// Synthesize a readable name for unnamed branches.
+			branchName := ""
 			if h.Commit != nil && h.Commit.CommitID != "" {
-				h.RefName = fmt.Sprintf("%s-UNNAMED-BRANCH-%s", p.RefName, h.Commit.CommitID)
+				branchName = fmt.Sprintf("%s-UNNAMED-BRANCH-%s", p.RefName, h.Commit.CommitID)
 			} else {
-				h.RefName = fmt.Sprintf("%s-UNNAMED-BRANCH", p.RefName)
+				branchName = fmt.Sprintf("%s-UNNAMED-BRANCH", p.RefName)
 			}
+			if h.Commit != nil {
+				base := path.Base(h.Commit.Source)
+				appendMasterWarning(fmt.Sprintf("warning - putting %s rev %s on unnamed branch %s off %s",
+					base, String(h.Number), branchName, p.RefName))
+			}
+			h.RefName = branchName
 		}
 	}
+}
+
+// pruneUnnamedBranches drops older unnamed branch heads with identical ref names.
+func pruneUnnamedBranches(heads []*Head) []*Head {
+	best := make(map[string]*Head)
+	for _, h := range heads {
+		if h.RefName == "" || !strings.Contains(h.RefName, "-UNNAMED-BRANCH") {
+			continue
+		}
+		if h.Commit == nil {
+			continue
+		}
+		if cur, ok := best[h.RefName]; !ok || cur.Commit == nil || h.Commit.Date.After(cur.Commit.Date) {
+			best[h.RefName] = h
+		}
+	}
+	out := heads[:0]
+	for _, h := range heads {
+		if h.RefName != "" && strings.Contains(h.RefName, "-UNNAMED-BRANCH") {
+			if best[h.RefName] != h {
+				continue
+			}
+		}
+		out = append(out, h)
+	}
+	return out
 }
 
 // findHeadByBranch locates the head whose commits share a branch.
@@ -817,6 +852,9 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 	rectified := exportName(source, striplen)
 	fileName := fileopName(rectified)
+	if hasEmptyBranchHeader(source) {
+		appendMasterWarning("ignoring empty branch")
+	}
 	fulltext, err := reconstructTexts(file, contents)
 	if err != nil {
 		return nil, err
@@ -955,6 +993,28 @@ func normalizeAuthor(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// hasEmptyBranchHeader reports whether the RCS header contains "branch;" with no value.
+func hasEmptyBranchHeader(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "branch") {
+			rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "branch"))
+			if rest == ";" {
+				return true
+			}
+		}
+		if trimmed == "" {
+			break
+		}
+	}
+	return false
 }
 
 // buildBranchHeads constructs branch head links and returns the trunk root.
@@ -1643,6 +1703,10 @@ func gatherHeads(masters []*Master, name string) []*Head {
 		// Select heads for the named ref across all masters.
 		for _, h := range m.Heads {
 			if h.RefName == name {
+				// Ignore heads whose commit does not live on the head's branch.
+				if h.Commit != nil && h.Number.C >= 4 && !SameBranch(h.Commit.Number, h.Number) {
+					continue
+				}
 				heads = append(heads, h)
 			}
 		}
@@ -2843,9 +2907,10 @@ func main() {
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
 			return master.Commits[String(n)]
 		})
-		_, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
+		heads, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
 			return master.Commits[String(n)]
 		})
+		master.Heads = heads
 		master.Tags = tags
 		for _, w := range masterWarnings {
 			if _, ok := seenWarn[w]; ok {

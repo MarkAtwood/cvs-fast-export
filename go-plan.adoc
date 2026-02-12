@@ -3395,3 +3395,44 @@ not ok - deadbranch: Master from NetBSD with a branch entirely of dead revisions
 ....
 
 This looks like there's another commit-ordering issue.
+
+----
+Fixed deadbranch.
+
+  What changed
+
+  - Added the C warning when discarding a fully-dead, untagged branch in fixUnnamedHeads.
+  - Dropped dead root commits (Dead && Parent==nil) from collation so 1.1 no longer appears.
+  - Moved warning emission to after SetRefs, so warnings generated during head fixup are actually
+    printed.
+----
+
+Yes, that worked.
+
+
+(I then pasted a diff of the emptylabel test failure).
+
+----
+Fixed emptylabel.
+
+  What changed
+
+  - Added “ignoring empty branch” warning by detecting branch ; in the RCS header.
+  - Added the C-style “warning - putting … on unnamed branch …” when we synthesize a branch name.
+  - Pruned duplicate unnamed-branch heads (keeps the newest head per unnamed branch name).
+  - Ensured SetRefs actually updates master.Heads so pruning takes effect.
+  - Warning now uses the *,v basename (matches C).
+----
+
+This change broke the branchy test.
+
+--
+  Fixed branchy.
+
+  Cause: we were accepting heads created from branch symbols even when their commit isn’t actually
+  on that branch (e.g., .cvsignore has a samplebranch symbol but no branch revisions). Those heads
+  pulled trunk commits into samplebranch.
+
+  Fix: in gatherHeads, skip heads where head.Number is a branch number (>=4) but head.Commit.Number
+  is not on that branch (SameBranch false).--
+----
