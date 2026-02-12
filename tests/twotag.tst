@@ -15,8 +15,8 @@ repo.checkout("tweedledum")
 repo.checkout("tweedledee")
 repo.write("tweedledum", "The quick brown fox jumped over the lazy dog.\n")
 repo.write("tweedledee", "Alve bazige froulju wachtsje op dyn komst.\n")
-repo.checkin("tweedledum", "An example first checkin") 
-repo.checkin("tweedledee", "An example first checkin") 
+repo.checkin("tweedledum", "An example first checkin")
+repo.checkin("tweedledee", "An example first checkin")
 repo.tag("tweedledum", "FUBAR")
 
 # Without this, where the tag is finally assigned might be random,
@@ -26,7 +26,7 @@ repo.tag("tweedledum", "FUBAR")
 # order of the tags.
 #
 # Yes, this is a coward's way out.  It will have to do until we invent a
-# way to total-order the tags.
+# way to total-order the commits.
 #
 time.sleep(1)
 
@@ -35,8 +35,8 @@ repo.checkout("tweedledum")
 repo.checkout("tweedledee")
 repo.write("tweedledum", "Portez ce vieux whisky au juge blond qui fume.\n")
 repo.write("tweedledee", "Lynx c.q. vos prikt bh: dag zwemjuf!.\n")
-repo.checkin("tweedledum", "An example second checkin") 
-repo.checkin("tweedledee", "An example second checkin") 
+repo.checkin("tweedledum", "An example second checkin")
+repo.checkin("tweedledee", "An example second checkin")
 repo.tag("tweedledee", "FUBAR")
 
 # end
