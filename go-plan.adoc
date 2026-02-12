@@ -3435,4 +3435,21 @@ This change broke the branchy test.
 
   Fix: in gatherHeads, skip heads where head.Number is a branch number (>=4) but head.Commit.Number
   is not on that branch (SameBranch false).--
+
+  Send the next failure
 ----
+
+
+not ok - issue-57: test for GitLab issue #57
+  --- |
+  --- issue-57.chk	2024-02-14 16:20:14.356223763 -0500
+  +++ -	2026-02-12 15:20:23.330274112 -0500
+  @@ -63,7 +63,6 @@
+   585e3addfd28851ce8284bca18e152df
+   from :3
+   M 100644 :4 metadata.xml
+  -D parapin-1.0.0.ebuild
+   property cvs-revisions 21 metadata.xml 1.1.1.1
+   
+   blob
+  ...

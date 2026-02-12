@@ -2122,10 +2122,11 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		fmt.Fprintf(e.w, "#reposurgeon sourcetype %s\n", st)
 	}
-	// Collect commits and initialize per-branch state tracking.
+	// Collect commits and initialize per-commit state tracking.
 	commits := collectCommits(repo)
+	vendorFiles := collectVendorBranchFiles(commits)
 	markMap := make(map[*GitCommit]int)
-	state := make(map[string]map[string]fileState)
+	stateByCommit := make(map[*GitCommit]map[string]fileState)
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
 	tagAttach, tagWarnings := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf)
@@ -2158,8 +2159,11 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		tagNames = append(tagNames, extra...)
 	}
 	for i, c := range commits {
-		// Compute the per-branch file operations for this commit.
-		prevState := state[c.RefName]
+		// Compute file operations relative to the parent commit state.
+		var prevState map[string]fileState
+		if c.Parent != nil {
+			prevState = stateByCommit[c.Parent]
+		}
 		if prevState == nil {
 			prevState = map[string]fileState{}
 		}
@@ -2168,20 +2172,31 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			parentMark = markMap[c.Parent]
 		}
 		first := i == 0
-		ops, next := buildOps(prevState, c.Files)
+		var prune map[string]struct{}
+		if strings.HasPrefix(c.RefName, "import-") && c.Parent != nil && c.Parent.RefName != c.RefName {
+			if files := vendorFiles[c.RefName]; len(files) > 0 {
+				prune = make(map[string]struct{})
+				for path := range prevState {
+					if _, ok := files[path]; !ok {
+						prune[path] = struct{}{}
+					}
+				}
+			}
+		}
+		ops, next := buildOps(prevState, c.Files, prune)
 		if len(next) > 0 {
 			liveSeen[c.RefName] = true
 		}
 		if len(ops) == 0 && liveSeen[c.RefName] {
 			// Skip no-op commits once the branch has any live content.
-			state[c.RefName] = next
+			stateByCommit[c] = next
 			continue
 		}
 		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err
 		}
-		state[c.RefName] = next
+		stateByCommit[c] = next
 		markMap[c] = mark
 		// Emit tags when their chosen commit has been marked.
 		for _, name := range tagNames {
@@ -2315,12 +2330,16 @@ type fileState struct {
 }
 
 // buildOps computes file operations needed to transform prev into files.
-func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string]fileState) {
+func buildOps(prev map[string]fileState, files []*Commit, prune map[string]struct{}) ([]*fileOp, map[string]fileState) {
 	next := make(map[string]fileState, len(prev))
 	byPath := make(map[string]*Commit)
 	// Seed next state with previous content.
 	for k, v := range prev {
 		next[k] = v
+	}
+	// Prune files that should not exist on this branch snapshot.
+	for path := range prune {
+		delete(next, path)
 	}
 	for _, f := range files {
 		path := f.FileName
@@ -2378,6 +2397,28 @@ func buildOps(prev map[string]fileState, files []*Commit) ([]*fileOp, map[string
 		}
 	}
 	return ops, next
+}
+
+// collectVendorBranchFiles builds a set of files referenced by each vendor branch.
+func collectVendorBranchFiles(commits []*GitCommit) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{})
+	for _, c := range commits {
+		if !strings.HasPrefix(c.RefName, "import-") {
+			continue
+		}
+		set := out[c.RefName]
+		if set == nil {
+			set = make(map[string]struct{})
+			out[c.RefName] = set
+		}
+		for _, f := range c.Files {
+			if f == nil || f.FileName == "" {
+				continue
+			}
+			set[f.FileName] = struct{}{}
+		}
+	}
+	return out
 }
 
 // tagMatchesState reports whether a tag target set matches the current state.
@@ -2453,7 +2494,7 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		if prev == nil {
 			prev = map[string]fileState{}
 		}
-		_, next := buildOps(prev, c.Files)
+		_, next := buildOps(prev, c.Files, nil)
 		state[c.RefName] = next
 		stateSnap[c] = copyState(next)
 		for name, t := range pending {
