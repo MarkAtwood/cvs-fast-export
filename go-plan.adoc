@@ -2719,3 +2719,244 @@ Fixed the warning path to use the full master path, matching C.
 
   cvs-fast-export: warning - tests/t9603.testrepo/module/a,v:  1.1 is newer than 1.2, adjusting 1.1
 ----
+
+....
+not ok - altexpand: Master with an expand field that's data, not a token.
+  --- |
+  --- altexpand.chk	2024-02-14 16:20:14.008212285 -0500
+  +++ -	2026-02-12 06:23:50.133700037 -0500
+  @@ -1,14 +1,13 @@
+  -cvs-fast-export: vendor branch detected.
+   blob
+   mark :1
+  -data 51
+  -projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1
+  +data 55
+  +projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1.1.1
+   
+   commit refs/heads/master
+   mark :2
+   committer cisers <cisers> 1094545449 +0000
+   data 33
+  -da28248b4ec75efbe0ba7461142ed60d
+  +03a6ecc1dbc74cfaacfeb8b1f09b8998
+   M 100644 :1 altexpand
+   M 100644 inline .gitignore
+   data 199
+  @@ -42,20 +41,21 @@
+   # CVS default ignores end
+   
+   
+  +reset refs/tags/rc1
+  +from :2
+  +
+   blob
+   mark :3
+  -data 55
+  -projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1.1.1
+  +data 51
+  +projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1
+   
+   commit refs/heads/master
+   mark :4
+   committer cisers <cisers> 1094545449 +0000
+   data 33
+  -03a6ecc1dbc74cfaacfeb8b1f09b8998
+  +da28248b4ec75efbe0ba7461142ed60d
+   from :2
+   M 100644 :3 altexpand
+   
+  -reset refs/tags/rc1
+  -from :4
+  -
+   done
+  +cvs-fast-export: vendor branch detected.
+  ...
+....
+
+Explain the cause of this divergence.
+
+----
+ause: vendor-branch patching is happening too late, so we’re treating the vendor-branch revision as
+  the “mainline” head and emitting it first.
+
+  Specifically:
+
+  - In altexpand, the earliest trunk revision is 1.1, and the vendor branch is 1.1.1.1.
+  - The C version emits the trunk revision first, then the vendor revision, and only afterwards
+    patches/moves vendor branches (warning appears at the top).
+  - Our Go pipeline builds commits and branch heads before vendor patching, so the ordering is wrong:
+    we emit 1.1.1.1 as if it were the trunk head, then emit 1.1 later. That flips blob content,
+    changes checksums, and moves the tag emission relative to the commits (the rc1 tag shows up at :2
+    instead of :4).
+
+  So the divergence is not about tags per se; it’s about head selection/ordering for vendor branches.
+  We’re effectively starting from the vendor branch head instead of the trunk head.
+
+  Fix path (if you want me to implement):
+
+  - Ensure vendor-branch patching and trunk head selection happen before we build commit chains and
+    choose the head revision. That means either:
+      1. Apply vendor-branch logic during BuildMaster so buildBranchHeads sees the right head; or
+      2. Re-run branch head construction after PatchVendorBranches, so commit ordering is based on the
+         patched head.
+
+  Given the impact on emitted order, this needs to be fixed at the head selection stage, not just at
+  the tag emission stage.
+
+  If you want me to implement that adjustment, say the word and I’ll
+  do it.
+----
+
+That sounds like a semantic error. Fix it.
+
+----
+Fixed the semantic error by moving vendor‑branch patching into BuildMaster before the final head
+  selection. That ensures the trunk head is chosen correctly and ordering matches C for altexpand.
+
+  What changed:
+
+  - BuildMaster now:
+      - builds initial heads
+      - applies PatchVendorBranches and records the vendor warning
+      - rebuilds heads after patching (rebuildHeads) to set the correct trunk head and root
+  - The main loop no longer calls PatchVendorBranches (now redundant).
+  - Vendor warning flag is now driven by the same warning list emitted from BuildMaster.
+
+  This should fix the altexpand inversion and restore the tag placement order.
+
+  Please rebuild (make cvs-fast-export-go) and rerun altexpand. If it still differs, send the new
+  diff.
+----
+
+With that code change:
+
+....
+not ok - altexpand: Master with an expand field that's data, not a token.
+  --- |
+  --- altexpand.chk	2024-02-14 16:20:14.008212285 -0500
+  +++ -	2026-02-12 06:30:28.910054567 -0500
+  @@ -47,7 +47,7 @@
+   data 55
+   projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1.1.1
+   
+  -commit refs/heads/master
+  +commit refs/heads/master-UNNAMED-BRANCH
+   mark :4
+   committer cisers <cisers> 1094545449 +0000
+   data 33
+  @@ -58,4 +58,18 @@
+   reset refs/tags/rc1
+   from :4
+   
+  +blob
+  +mark :5
+  +data 51
+  +projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1
+  +
+  +commit refs/heads/master-UNNAMED-BRANCH
+  +mark :6
+  +committer cisers <cisers> 1094545449 +0000
+  +data 33
+  +da28248b4ec75efbe0ba7461142ed60d
+  +from :4
+  +M 100644 :5 altexpand
+  +
+   done
+  +cvs-fast-export: vendor branch detected.
+  ...
+....
+
+----
+I removed the post‑patch head rebuild. That rebuild was discarding ref names and created the master-
+  UNNAMED-BRANCH in altexpand.
+
+  Now:
+
+  - BuildMaster builds heads,
+  - applies PatchVendorBranches,
+  - emits vendor warning,
+  - does not rebuild heads afterward.
+
+  This should restore master as the branch name and stop the extra synthetic commits.
+
+  Please rebuild and re‑run altexpand to confirm the diff clears. If it doesn’t, I’ll inspect the head
+  list after patching.
+----
+
+Nope. There are content mismatches.  Or possibly just the correct
+commits being issued in the wrong order.
+
+....
+not ok - altexpand: Master with an expand field that's data, not a token.
+  --- |
+  --- altexpand.chk	2024-02-14 16:20:14.008212285 -0500
+  +++ -	2026-02-12 07:06:25.126153352 -0500
+  @@ -1,14 +1,14 @@
+   cvs-fast-export: vendor branch detected.
+   blob
+   mark :1
+  -data 51
+  -projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1
+  +data 55
+  +projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1.1.1
+   
+   commit refs/heads/master
+   mark :2
+   committer cisers <cisers> 1094545449 +0000
+   data 33
+  -da28248b4ec75efbe0ba7461142ed60d
+  +03a6ecc1dbc74cfaacfeb8b1f09b8998
+   M 100644 :1 altexpand
+   M 100644 inline .gitignore
+   data 199
+  @@ -42,20 +42,21 @@
+   # CVS default ignores end
+   
+   
+  +reset refs/tags/rc1
+  +from :2
+  +
+   blob
+   mark :3
+  -data 55
+  -projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1.1.1
+  +data 51
+  +projectx/doc/jms-1_0_2b-spec.pdf,v content for 1.1
+   
+   commit refs/heads/master
+   mark :4
+   committer cisers <cisers> 1094545449 +0000
+   data 33
+  -03a6ecc1dbc74cfaacfeb8b1f09b8998
+  +da28248b4ec75efbe0ba7461142ed60d
+   from :2
+   M 100644 :3 altexpand
+   
+  -reset refs/tags/rc1
+  -from :4
+  -
+   done
+  +cvs-fast-export: vendor branch detected.
+  ...
+....
+
+----
+Cause of the altexpand inversion: for commits with identical timestamps, our tie‑breaker was log
+  text, which makes 1.1.1.1 sort before 1.1 (because 03a6… < da28…). C effectively preserves file/
+  revision ordering instead.
+
+  Fix implemented:
+
+  - When dates tie, order commits by file path + revision number, with log only as a final fallback.
+  - Applied to both:
+      - the “no commitid” grouping order (collation)
+      - the overall emission order (collectCommits)
+
+  Added helper commitFileKey to select a deterministic (path, revision) key for each GitCommit.
+
+  This should restore the C order in altexpand and keep other ordering stable. Rebuild and rerun
+  altexpand.
+----
+
+That fixed the altexpand test.

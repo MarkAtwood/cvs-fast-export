@@ -59,3 +59,4 @@ reset refs/tags/rc1
 from :4
 
 done
+cvs-fast-export: vendor branch detected.

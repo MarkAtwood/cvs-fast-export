@@ -859,7 +859,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		versions = append(versions, ver)
 	}
 
-	// Create branch head chains and locate the root commit.
+	// Create branch head chains and locate the root commit (pre-vendor patch).
 	pendingWarnings = nil
 	branchHeads, root := buildBranchHeads(commits, versions)
 	if len(pendingWarnings) > 0 {
@@ -909,7 +909,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 
 	// Assemble the final master structure.
-	return &Master{
+	master := &Master{
 		Source:   source,
 		FileName: fileName,
 		Heads:    branchHeads,
@@ -917,7 +917,14 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		Versions: versions,
 		Commits:  commits,
 		Root:     root,
-	}, nil
+	}
+	// Rebuild heads after vendor-branch patching so trunk selection is correct.
+	var foundVendor bool
+	master.Heads, foundVendor = PatchVendorBranches(master.Heads)
+	if foundVendor {
+		masterWarnings = append(masterWarnings, "vendor branch detected.")
+	}
+	return master, nil
 }
 
 var pendingWarnings []string
@@ -1665,6 +1672,16 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			if !order[i].Date.Equal(order[j].Date) {
 				return order[i].Date.Before(order[j].Date)
 			}
+			aiName, aiNum, aiOK := commitFileKey(order[i])
+			ajName, ajNum, ajOK := commitFileKey(order[j])
+			if aiOK && ajOK {
+				if aiName != ajName {
+					return PathDeepCompare(aiName, ajName) < 0
+				}
+				if cmp := Compare(aiNum, ajNum); cmp != 0 {
+					return cmp < 0
+				}
+			}
 			return order[i].Log < order[j].Log
 		})
 		var prev *GitCommit
@@ -2264,9 +2281,49 @@ func collectCommits(repo *Repo) []*GitCommit {
 		if out[i].RefName != out[j].RefName {
 			return out[i].RefName < out[j].RefName
 		}
+		aiName, aiNum, aiOK := commitFileKey(out[i])
+		ajName, ajNum, ajOK := commitFileKey(out[j])
+		if aiOK && ajOK {
+			if aiName != ajName {
+				return PathDeepCompare(aiName, ajName) < 0
+			}
+			if cmp := Compare(aiNum, ajNum); cmp != 0 {
+				return cmp < 0
+			}
+		}
 		return out[i].Log < out[j].Log
 	})
 	return out
+}
+
+// commitFileKey returns a deterministic file path and revision number for sorting.
+func commitFileKey(c *GitCommit) (string, Number, bool) {
+	if c == nil || len(c.Files) == 0 {
+		return "", Zero, false
+	}
+	var pick *Commit
+	for _, f := range c.Files {
+		if f == nil || f.FileName == "" {
+			continue
+		}
+		if pick == nil {
+			pick = f
+			continue
+		}
+		if PathDeepCompare(f.FileName, pick.FileName) < 0 {
+			pick = f
+			continue
+		}
+		if f.FileName == pick.FileName {
+			if Compare(f.Number, pick.Number) < 0 {
+				pick = f
+			}
+		}
+	}
+	if pick == nil {
+		return "", Zero, false
+	}
+	return pick.FileName, pick.Number, true
 }
 
 // resolveAuthor maps CVS usernames to full name, email, and timezone.
@@ -2516,14 +2573,12 @@ func main() {
 			if !cfg.Quiet {
 				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
 			}
+			if w == "vendor branch detected." {
+				vendorWarning = true
+			}
 		}
 		masterWarnings = nil
-		// Resolve branches, vendor branches, and symbol refs.
-		var foundVendor bool
-		master.Heads, foundVendor = PatchVendorBranches(master.Heads)
-		if foundVendor {
-			vendorWarning = true
-		}
+		// Resolve branches and symbol refs.
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
 			return master.Commits[String(n)]
 		})
