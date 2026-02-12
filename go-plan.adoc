@@ -3069,3 +3069,68 @@ Also add a warning when a tag is ttached by fallback.
 
   Rebuild and rerun your tag tests.
 ---
+
+The "tag attached by fallback" message is leaking out of the test
+harness.
+
+----
+Got it — those warnings should not appear during normal tests.
+
+  I’ve gated the “tag attached by …” warnings behind -v (verbose). By default they are silent,
+  matching the C harness behavior.
+
+  Changes:
+
+  - Added Verbose to config and export options.
+  - Set cfg.Verbose on -v.
+  - Added Emitter.verbose and only emit tag warnings when -v is set (and not -q).
+
+  Rebuild and rerun the tests; the fallback warnings should no longer leak. If you want a different
+  flag for these warnings, say which one and I’ll switch it.
+----
+
+Either fix the logic for appending warnings so it won't append
+duplicaes or set ab explicit "vendor branch detected" but that
+suppresses repeats of that message, whichever is simpler.
+
+----
+  I chose the simplest fix: de‑duplicate warnings at the point of collection.
+
+  Changes:
+
+  - Added appendMasterWarning(msg) which skips duplicates.
+  - Used it for both pending date‑adjust warnings and “vendor branch detected.”
+
+  This prevents repeated vendor warnings and avoids duplicates in the master warning list.
+
+  Rebuild and rerun to confirm the duplicate suppression. If you prefer a dedicated vendor flag
+  instead, I can switch to that.
+----
+
+....
+not ok - t9601: Test handling of vendor branches
+  --- |
+  --- t9601.err	2024-02-14 16:20:15.096248171 -0500
+  +++ -	2026-02-12 10:44:27.770538344 -0500
+  @@ -1,3 +1,4 @@
+   cvs-fast-export: vendor branch detected.
+  +cvs-fast-export: vendor branch detected.
+   cvs-fast-export: no commitids before 2004-02-09T15:43:16Z.
+   t9601.checkout/added-imported.txt and t9601.git/added-imported.txt are not the same.
+  ...
+....
+
+Duplicate supptression is failing. Curious; the logic looks correct.
+
+----
+  Removed the duplicate vendor-branch emission path. The warning is now only emitted via the per-
+  master warning list (deduped across files), so it can’t repeat.
+
+  Changed file:
+
+  - cmd/cvs-fast-export/monolith.go
+
+  Next step: rebuild and rerun the failing test to confirm t9601 only prints the vendor warning once.
+  If you want, I can run make cvs-fast-export-go and make tap or
+  whatever your usual check is.
+----

@@ -138,7 +138,7 @@ PROFILE: gmon.out
 	gprof cvs-fast-export >PROFILE
 
 clean:
-	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export cvs-fast-export-go
+	rm -f $(OBJS) gram.h gram.c lex.h lex.c cvs-fast-export
 	rm -f *.1 *.html gram.output gmon.out
 	rm -f index.html *.tar.gz
 	rm -f *.gcno *.gcda
@@ -169,10 +169,6 @@ check: cvs-fast-export-go cppcheck
 cleancheck:
 	@$(MAKE) -s -C tests clean
 	@$(MAKE) -s check
-
-# Go translation
-cvs-fast-export-go: cmd/cvs-fast-export/monolith.go go.mod go.sum
-	go build -o cvs-fast-export-go ./cmd/cvs-fast-export
 
 # Needs clean first because reflowing generated .c and .h files produces ungappy results
 reflow: clean
@@ -229,8 +225,9 @@ refresh: html
 
 # Experimental Go code
 
-cfe: cfe.go
-	go build -o cfe cfe.go
+# Go translation
+cvs-fast-export-go: cmd/cvs-fast-export/monolith.go go.mod go.sum
+	go build -o cvs-fast-export-go ./cmd/cvs-fast-export
 
 rcs-refresh:
 	go get github.com/arran4/golang-rcs

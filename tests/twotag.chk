@@ -1,4 +1,3 @@
-cvs-fast-export: warning - tag FUBAR attached by fallback
 #reposurgeon sourcetype rcs
 blob
 mark :1

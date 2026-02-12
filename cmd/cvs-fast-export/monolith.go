@@ -785,6 +785,15 @@ type Master struct {
 
 var masterWarnings []string
 
+func appendMasterWarning(msg string) {
+	for _, w := range masterWarnings {
+		if w == msg {
+			return
+		}
+	}
+	masterWarnings = append(masterWarnings, msg)
+}
+
 // BuildMaster converts a parsed RCS file into a CVS master model.
 func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
 	info, err := os.Stat(source)
@@ -864,7 +873,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	branchHeads, root := buildBranchHeads(commits, versions)
 	if len(pendingWarnings) > 0 {
 		for _, w := range pendingWarnings {
-			masterWarnings = append(masterWarnings, w)
+			appendMasterWarning(w)
 		}
 	}
 
@@ -922,7 +931,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	var foundVendor bool
 	master.Heads, foundVendor = PatchVendorBranches(master.Heads)
 	if foundVendor {
-		masterWarnings = append(masterWarnings, "vendor branch detected.")
+		appendMasterWarning("vendor branch detected.")
 	}
 	return master, nil
 }
@@ -1905,6 +1914,7 @@ type Emitter struct {
 	forceDates   bool
 	reposurgeon  bool
 	quiet        bool
+	verbose      bool
 	commitWindow int64
 	authors      map[string]Author
 	sourceType   string
@@ -1925,6 +1935,7 @@ type ExportOptions struct {
 	ForceDates   bool
 	Reposurgeon  bool
 	Quiet        bool
+	Verbose      bool
 	CommitWindow time.Duration
 	Authors      map[string]Author
 	SourceType   string
@@ -1941,6 +1952,7 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	e.forceDates = opts.ForceDates
 	e.reposurgeon = opts.Reposurgeon
 	e.quiet = opts.Quiet
+	e.verbose = opts.Verbose
 	if opts.CommitWindow > 0 {
 		e.commitWindow = int64(opts.CommitWindow.Seconds())
 	}
@@ -1974,7 +1986,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
 	tagAttach, tagWarnings := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf)
-	if len(tagWarnings) > 0 && !e.quiet {
+	if len(tagWarnings) > 0 && e.verbose && !e.quiet {
 		for _, w := range tagWarnings {
 			fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
 		}
@@ -2671,7 +2683,6 @@ func main() {
 	})
 
 	var masters []*Master
-	vendorWarning := false
 	seenWarn := make(map[string]struct{})
 	for _, in := range inputs {
 		// Parse each RCS file and build the per-file master model.
@@ -2692,9 +2703,6 @@ func main() {
 			seenWarn[w] = struct{}{}
 			if !cfg.Quiet {
 				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
-			}
-			if w == "vendor branch detected." {
-				vendorWarning = true
 			}
 		}
 		masterWarnings = nil
@@ -2728,17 +2736,14 @@ func main() {
 			WithOptions(ExportOptions{
 				ForceDates:   cfg.ForceDates,
 				Reposurgeon:  cfg.Reposurgeon,
+				Quiet:        cfg.Quiet,
+				Verbose:      cfg.Verbose,
 				CommitWindow: cfg.CommitWindow,
 				Authors:      cfg.Authors,
 				SourceType:   cfg.SourceType,
 			})
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
-	}
-
-	// Warn if vendor branches were detected.
-	if vendorWarning && !cfg.Quiet {
-		fmt.Fprintln(os.Stderr, "cvs-fast-export: vendor branch detected.")
 	}
 
 	// Warn if commitids are missing and skew could occur.
@@ -2757,6 +2762,7 @@ type config struct {
 	ForceDates   bool
 	Reposurgeon  bool
 	Quiet        bool
+	Verbose      bool
 	CommitWindow time.Duration
 	Authors      map[string]Author
 	SourceType   string
@@ -2817,9 +2823,11 @@ func parseArgs(args []string) (config, error) {
 			}
 			cfg.Authors = authors
 		case arg == "-c", arg == "-g",
-			arg == "-v", arg == "-a", arg == "-p",
+			arg == "-a", arg == "-p",
 			arg == "-P", arg == "-E", arg == "-S", arg == "-N":
 			// flags without arguments (ignored for now)
+		case arg == "-v":
+			cfg.Verbose = true
 		case arg == "-q":
 			cfg.Quiet = true
 		case strings.HasPrefix(arg, "--"):
