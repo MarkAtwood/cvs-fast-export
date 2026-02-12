@@ -3490,5 +3490,51 @@ not ok - missingbranch: Missing tag for a branch.
   ...
 ....
 
-Is the Go code not making tghe error inbdicatyed, or just not
+Is the Go code not making tge error inbdicated, or just not
 reporting it?
+
+---
+Fixed missingbranch.
+
+  Cause: we never emitted the “points at commit with no gitspace link” warning. That condition
+  happens when the latest live revision in a tag set has no gitspace mapping (commitOf), and the C
+  code warns and drops the tag.
+
+  Fix:
+
+  - In resolveTagAttachments, detect the newest non-dead revision for each tag; if it has no
+    gitspace link, emit the warning and remove the tag from pending.
+  - Print that warning even without -v (matches C); other tag warnings remain -v only.
+
+  Verified:
+
+  - ./cvs-fast-export-go tests/missingbranch,v now matches
+    tests/missingbranch.chk.
+----
+
+Directions as we get down to the last and trickiest cases.
+
+It's a requirement tat cvs-fast-export produce failthful translations
+of the sequebces of modifications thar CVS recorded, but not
+necessarily the exact translations in these check files. In
+particular, order od commits isn't very important as long as
+modification sequences and ancestry chains are translated
+vorredtly.
+
+Think about this as you evaluate test faikures. If a "failed" test is
+a correct history with commits merely ordered differently, tell me
+that and we'll just regenerate the checkfile rather than complicating
+the code further.
+
+----
+
+Got it. I’ll treat commit ordering differences as acceptable if the
+modification sequences and ancestry chains are still faithful. For any
+remaining failures, I’ll call out when it’s just ordering and
+recommend regenerating the checkfile instead of adding more
+complexity.
+
+
+Send the next failure (or the full ERRORS excerpt), and I’ll classify
+it accordingly.
+----
