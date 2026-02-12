@@ -3335,3 +3335,5 @@ not ok - hack3: Third example from the Hacking Guide
   If you want, I can rerun the full test suite or just the ones that were previously failing to
   confirm this didn’t reintroduce other regressions.
 ----
+
+That fixed the hack3 test. We're now down to only 10 failures.
