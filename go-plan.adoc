@@ -3706,3 +3706,16 @@ Nice—makes sense to avoid collisions. Do you want me to pull in your changes (
 and run make tap to see what’s left? If you point me at the updated code or describe the naming
 rule, I’ll sync and test
 ----
+
+Take on the empmytsg test next.
+
+----
+Emptytag fixed.
+
+  Changes:
+
+  - Add ByFileRev back to Repo and populate it in Build (keyed by file+"\x00"+rev).
+  - In linkBranchParents, detect “trimmed dead base” by checking if the immediately previous
+    revision on the same branch is dead; if so, skip parent linking for that branch. This removes
+    the unwanted from :2 on yamt-pdpolicy.
+----

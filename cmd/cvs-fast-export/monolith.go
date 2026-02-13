@@ -1099,6 +1099,20 @@ func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
 	sort.Slice(chain, func(i, j int) bool {
 		return Compare(chain[i].Number, chain[j].Number) < 0
 	})
+	// Drop leading dead revisions when the branch later becomes live.
+	firstLive := -1
+	for i, c := range chain {
+		if c == nil {
+			continue
+		}
+		if !c.Dead {
+			firstLive = i
+			break
+		}
+	}
+	if firstLive > 0 {
+		chain = chain[firstLive:]
+	}
 	// Link parents from newest to oldest, then normalize dates.
 	for i := len(chain) - 1; i > 0; i-- {
 		chain[i].Parent = chain[i-1]
@@ -1575,6 +1589,7 @@ type Repo struct {
 	Branches   []*GitBranch
 	CommitOf   map[*Commit]*GitCommit
 	ByNumber   map[string]*GitCommit
+	ByFileRev  map[string]*Commit
 	TagTargets map[string][]*Commit
 	TagOrder   []string
 }
@@ -1589,7 +1604,17 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		Branches:   branches,
 		CommitOf:   make(map[*Commit]*GitCommit),
 		ByNumber:   make(map[string]*GitCommit),
+		ByFileRev:  make(map[string]*Commit),
 		TagTargets: make(map[string][]*Commit),
+	}
+	for _, m := range masters {
+		for _, c := range m.Commits {
+			if c == nil || c.FileName == "" {
+				continue
+			}
+			key := c.FileName + "\x00" + String(c.Number)
+			repo.ByFileRev[key] = c
+		}
 	}
 	for _, b := range branches {
 		heads := gatherHeads(masters, b.Name)
@@ -1599,7 +1624,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		// Build the per-branch commit chain and index commit numbers.
 		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
 	}
-	linkBranchParents(branches, repo.ByNumber)
+	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev)
 	collectTags(masters, repo)
 	return repo
 }
@@ -1926,7 +1951,7 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit) {
 	var master *GitBranch
 	for _, b := range branches {
 		if b.Name == "master" {
@@ -1970,6 +1995,25 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 				needsBranchBase = true
 			}
 		}
+		trimmedDeadBase := false
+		for _, f := range tail.Files {
+			if f == nil || f.FileName == "" {
+				continue
+			}
+			if f.Number.C < 3 {
+				continue
+			}
+			prev := cloneNumber(f.Number)
+			if prev.N[prev.C-1] <= 1 {
+				continue
+			}
+			prev.N[prev.C-1]--
+			key := f.FileName + "\x00" + String(prev)
+			if c := byFileRev[key]; c != nil && c.Dead {
+				trimmedDeadBase = true
+				break
+			}
+		}
 		// Case 1: nested branch base (non-trunk).
 		if needsBranchBase {
 			for _, base := range baseByFile {
@@ -1983,8 +2027,13 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 			if tail.Parent != nil {
 				continue
 			}
+			// If the branch base is non-trunk but we can't find it, leave unparented.
+			continue
 		}
 		// Case 2: trunk bases - select latest master commit with matching base states.
+		if trimmedDeadBase {
+			continue
+		}
 		if len(masterCommits) > 0 && len(baseByFile) > 0 {
 			var pick *GitCommit
 			for _, mc := range masterCommits {
