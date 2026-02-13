@@ -4261,5 +4261,6 @@ The generated DOT is fine, I was just surprised that it was different.
 
 The Go port was finished at about 2026-10-13T14:15:00.
 
+// codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
