@@ -2088,6 +2088,14 @@ func versionAtCommit(c *GitCommit, path string) (Number, bool) {
 
 // commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
 func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
+	// Never coalesce multiple revisions of the same file into one commit.
+	if g != nil && c != nil && c.FileName != "" {
+		for _, f := range g.Files {
+			if f != nil && f.FileName == c.FileName {
+				return false
+			}
+		}
+	}
 	// Commit IDs override time-window matching when present.
 	if opts.TrustCommitIDs && g.Files != nil && len(g.Files) > 0 {
 		if g.Files[0].CommitID != "" || c.CommitID != "" {

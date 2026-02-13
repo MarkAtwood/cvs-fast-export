@@ -3719,3 +3719,19 @@ Emptytag fixed.
     revision on the same branch is dead; if so, skip parent linking for that branch. This removes
     the unwanted from :2 on yamt-pdpolicy.
 ----
+
+Take on the issue22 test next.
+
+----
+ssue22 fixed.
+
+  Cause: our collation was coalescing multiple revisions of the same file into one git commit when
+  log/author/time matched, which C never does (its commit coalescing only merges across files).
+  That dropped 1.21, 1.24, etc.
+
+  Fix:
+
+  - In commitsMatch, refuse to coalesce if the candidate revision is for a file already present in
+    the GitCommit. This preserves one revision per file per commit,
+    matching C.
+----
