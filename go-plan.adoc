@@ -4261,10 +4261,5 @@ The generated DOT is fine, I was just surprised that it was different.
 
 The Go port was finished at about 2026-10-13T14:15:00.
 
-Post-port cleanup:
-
-FIXME: test branch_cycle_error, hang-1 and the Mozilla repo at untried
-FIXME: clear the buglist on Gitlab
-FIXME: Make PR for golang-rcs.
-FIXME: concurrent reafing of masters?
+// end
 

@@ -130,11 +130,13 @@ were made in such a way that the cliques don't have matching IDs.
 
 -g::
 Generate a picture of the commit graph in the DOT markup language used
-by the graphviz tools, rather than fast-exporting. With two -g
-options, tag each report on a CVS component commit with a prefix
-character; + for an added file, | for a changed one, - for a deleted
-one. With the -r option, don't collate - graph the CVS forest instead
-(-T) forces more verbosity.
+by the graphviz tools, rather than fast-exporting.
+// FIXME: Reimplement these options?
+
+//With two -g options, tag each report on a CVS component commit
+//with a prefix character; + for an added file, | for a changed one, -
+//for a deleted one. With the -r option, don't collate - graph the CVS
+//forest instead (-T) forces more verbosity.
 
 -l::
 Warnings normally go to standard error.  This option, which takes a

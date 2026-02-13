@@ -55,3 +55,13 @@ with tagging. The tags (e.g. Ilya_5_23) only point to commits in one branch.
 I think they need to treated as separate branch heads.
 
 This didn't work with the old or new vendor branch code.
+
+Smaller items:
+
+FIXME: test branch_cycle_error, hang-1 and the Mozilla repo at untried
+
+FIXME: clear the buglist on Gitlab
+
+FIXME: Make PR for golang-rcs.
+
+FIXME: concurrent reading of masters?

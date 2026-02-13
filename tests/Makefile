@@ -114,12 +114,12 @@ GRAPHTESTS=basic branchy
 g_rebuild: neutralize.map
 	@-for file in $(GRAPHTESTS); do \
 	    echo "Remaking $${file}.dot"; \
-	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g -t 0 $(TESTOPTS) >$${file}.dot 2>&1; \
+	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g $(TESTOPTS) >$${file}.dot 2>&1; \
 	done;
 g_regress: neutralize.map
 	@echo "# Graph regressions"
 	@-for repo in $(GRAPHTESTS); do \
-	    find $${repo}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g -t 0 $(TESTOPTS) 2>&1 | tapdiffer "$${repo}: DOT regression test" $${repo}.dot; \
+	    find $${repo}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g $(TESTOPTS) 2>&1 | tapdiffer "$${repo}: DOT regression test" $${repo}.dot; \
 	done
 TEST_TARGETS += $(GRAPHTESTS)
 
