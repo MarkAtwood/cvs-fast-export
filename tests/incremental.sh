@@ -17,6 +17,12 @@ trap '[ $out != /dev/stdout ] && rm -f $out' EXIT HUP INT QUIT TERM
 # shellcheck disable=SC2006
 idate=$(cvs -d "$PWD/twobranch.repo" rlog -r1.1.2.2 module/README | sed -n "s/date: \(.*\)\;  author.*/\1/p" | ./parsedate.py)
 
+if [ "$idate" = "INVALID-DATE" ]
+then
+    echo "not ok - twobranch repo may be corrupted"
+    exit 1
+fi
+
 # shellcheck disable=SC2003,SC2046,SC2086
 find twobranch.repo/ -name "*,v" | ${CVS_FAST_EXPORT:-cvs-fast-export} $opts -i $(expr $idate - 1) >$out
 

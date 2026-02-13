@@ -8,4 +8,7 @@ import sys
 
 date_str = sys.stdin.readline().rstrip()
 
-print(int(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S %z").timestamp()))
+try:
+    print(int(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S %z").timestamp()))
+except ValueError:
+    print("INVALID-DATE")

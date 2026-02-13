@@ -2125,6 +2125,9 @@ type Emitter struct {
 	tagTargets   map[string][]*Commit
 	forceDates   bool
 	reposurgeon  bool
+	incremental  bool
+	noIgnores    bool
+	fromTime     int64
 	quiet        bool
 	verbose      bool
 	commitWindow int64
@@ -2146,6 +2149,9 @@ func NewEmitter(w io.Writer) *Emitter {
 type ExportOptions struct {
 	ForceDates   bool
 	Reposurgeon  bool
+	Incremental  bool
+	NoIgnores    bool
+	FromTime     int64
 	Quiet        bool
 	Verbose      bool
 	CommitWindow time.Duration
@@ -2163,6 +2169,9 @@ func (e *Emitter) WithTagTargets(tags map[string][]*Commit) *Emitter {
 func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	e.forceDates = opts.ForceDates
 	e.reposurgeon = opts.Reposurgeon
+	e.incremental = opts.Incremental
+	e.noIgnores = opts.NoIgnores
+	e.fromTime = opts.FromTime
 	e.quiet = opts.Quiet
 	e.verbose = opts.Verbose
 	if opts.CommitWindow > 0 {
@@ -2176,6 +2185,17 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 // Flush forces buffered output to be written.
 func (e *Emitter) Flush() error {
 	return e.w.Flush()
+}
+
+// displayDate computes the timestamp used for incremental filtering.
+func (e *Emitter) displayDate(c *GitCommit, mark int) int64 {
+	if e.forceDates {
+		return 100000 + int64(mark)*e.commitWindow*2
+	}
+	if c == nil {
+		return 0
+	}
+	return c.Date.Unix()
 }
 
 // EmitRepo emits a fast-import stream for all branches, ordered by commit date.
@@ -2229,6 +2249,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		sort.Strings(extra)
 		tagNames = append(tagNames, extra...)
 	}
+	realized := make(map[string]bool)
 	for i, c := range commits {
 		// Compute file operations relative to the parent commit state.
 		var prevState map[string]fileState
@@ -2263,21 +2284,61 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			stateByCommit[c] = next
 			continue
 		}
+		blobMarks := 0
+		for _, op := range ops {
+			if op.kind == 'M' {
+				blobMarks++
+			}
+		}
+		commitMark := e.mark + blobMarks
+		report := true
+		if e.incremental && e.fromTime > 0 {
+			report = e.fromTime < e.displayDate(c, commitMark)
+		}
+		if e.incremental && report && !realized[c.RefName] {
+			if c.Parent != nil && e.fromTime > 0 {
+				parentMark := markMap[c.Parent]
+				if parentMark > 0 && e.displayDate(c.Parent, parentMark) < e.fromTime {
+					fmt.Fprintf(e.w, "from refs/heads/%s^0\n\n", c.RefName)
+				}
+			}
+			realized[c.RefName] = true
+		}
+		if !report {
+			e.mark = commitMark + 1
+			stateByCommit[c] = next
+			markMap[c] = commitMark
+			if e.incremental && e.fromTime > 0 && e.displayDate(c, commitMark) > e.fromTime {
+				for _, name := range tagNames {
+					if _, ok := emittedTags[name]; ok {
+						continue
+					}
+					if tagAttach[name] == c {
+						fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+						fmt.Fprintf(e.w, "from :%d\n\n", commitMark)
+						emittedTags[name] = struct{}{}
+					}
+				}
+			}
+			continue
+		}
 		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
 		if err != nil {
 			return err
 		}
 		stateByCommit[c] = next
 		markMap[c] = mark
-		// Emit tags when their chosen commit has been marked.
-		for _, name := range tagNames {
-			if _, ok := emittedTags[name]; ok {
-				continue
-			}
-			if tagAttach[name] == c {
-				fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
-				fmt.Fprintf(e.w, "from :%d\n\n", mark)
-				emittedTags[name] = struct{}{}
+		if !e.incremental || e.fromTime == 0 || e.displayDate(c, mark) > e.fromTime {
+			// Emit tags when their chosen commit has been marked.
+			for _, name := range tagNames {
+				if _, ok := emittedTags[name]; ok {
+					continue
+				}
+				if tagAttach[name] == c {
+					fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+					fmt.Fprintf(e.w, "from :%d\n\n", mark)
+					emittedTags[name] = struct{}{}
+				}
 			}
 		}
 	}
@@ -2337,7 +2398,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 			fmt.Fprintf(e.w, "D %s\n", op.path)
 		}
 	}
-	if first && !e.didIg {
+	if first && !e.didIg && !e.noIgnores {
 		// Inject default ignore rules if no .gitignore exists yet.
 		hasGitignore := false
 		for _, f := range files {
@@ -3087,6 +3148,9 @@ func main() {
 			WithOptions(ExportOptions{
 				ForceDates:   cfg.ForceDates,
 				Reposurgeon:  cfg.Reposurgeon,
+				Incremental:  cfg.Incremental,
+				NoIgnores:    cfg.NoIgnores,
+				FromTime:     cfg.FromTime,
 				Quiet:        cfg.Quiet,
 				Verbose:      cfg.Verbose,
 				CommitWindow: cfg.CommitWindow,
@@ -3111,6 +3175,9 @@ type config struct {
 	DumpHeads    bool
 	DumpBranches bool
 	ForceDates   bool
+	Incremental  bool
+	NoIgnores    bool
+	FromTime     int64
 	Reposurgeon  bool
 	Quiet        bool
 	Verbose      bool
@@ -3173,6 +3240,14 @@ func parseArgs(args []string) (config, error) {
 				return cfg, err
 			}
 			cfg.Authors = authors
+		case arg == "-i":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			cfg.Incremental = true
+			cfg.NoIgnores = true
+			cfg.FromTime = convertDate(args[i])
 		case arg == "-c", arg == "-g",
 			arg == "-a", arg == "-p",
 			arg == "-P", arg == "-E", arg == "-S", arg == "-N":
@@ -3212,6 +3287,10 @@ func parseArgs(args []string) (config, error) {
 							return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
 						}
 						cfg.CommitWindow = time.Duration(secs) * time.Second
+					} else if arg == "--incremental" {
+						cfg.Incremental = true
+						cfg.NoIgnores = true
+						cfg.FromTime = convertDate(args[i+1])
 					}
 					i++
 				default:
@@ -3222,7 +3301,7 @@ func parseArgs(args []string) (config, error) {
 			// short options with arguments
 			if i+1 < len(args) {
 				switch arg {
-				case "-w", "-l", "-R", "-e", "-s", "-i", "-d":
+				case "-w", "-l", "-R", "-e", "-s", "-d":
 					i++
 				default:
 					// unknown short option; ignore
@@ -3241,6 +3320,28 @@ func parseInt(s string) (int64, error) {
 		return 0, err
 	}
 	return v, nil
+}
+
+// convertDate accepts RFC3339-like timestamps or plain epoch seconds.
+func convertDate(s string) int64 {
+	s = strings.TrimSpace(s)
+	layouts := []string{
+		"2006-01-02T15:04:05-0700",
+		"2006-01-02 15:04:05-0700",
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006/01/02T15:04:05",
+		"2006/01/02 15:04:05",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.Unix()
+		}
+	}
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return v
+	}
+	return 0
 }
 
 // detectSourceType guesses CVS vs RCS based on input paths.

@@ -3735,3 +3735,135 @@ ssue22 fixed.
     the GitCommit. This preserves one revision per file per commit,
     matching C.
 ----
+
+Try to fix the twobranch test:
+
+not ok - twobranch: Two-branch repo to test incremental dumping
+  --- |
+  --- twobranch.chk	2024-02-14 16:20:13.940210043 -0500
+  +++ -	2026-02-12 22:55:28.501229044 -0500
+  @@ -46,60 +46,4 @@
+   reset refs/tags/samplebranch_root
+   from :2
+   
+  -blob
+  -mark :3
+  -data 70
+  -Now is the time for all good men to come to the aid of their country.
+  -
+  -commit refs/heads/samplebranch
+  -mark :4
+  -committer foo <foo> 102400 +0000
+  -data 30
+  -This is another sample commit
+  -from :2
+  -M 100644 :3 README
+  -property cvs-revisions 15 README 1.1.2.1
+  -
+  -blob
+  -mark :5
+  -data 44
+  -And now for something completely different.
+  -
+  -commit refs/heads/master
+  -mark :6
+  -committer foo <foo> 103600 +0000
+  -data 38
+  -The obligatory Monty Python reference
+  -from :2
+  -M 100644 :5 README
+  -property cvs-revisions 11 README 1.2
+  -
+  -blob
+  -mark :7
+  -data 35
+  -This is random content for README.
+  -
+  -commit refs/heads/samplebranch
+  -mark :8
+  -committer foo <foo> 104800 +0000
+  -data 50
+  -We will put the dump theshold before this commit.
+  -from :4
+  -M 100644 :7 README
+  -property cvs-revisions 15 README 1.1.2.2
+  -
+  -blob
+  -mark :9
+  -data 30
+  -I'm back in the saddle again.
+  -
+  -commit refs/heads/master
+  -mark :10
+  -committer foo <foo> 106000 +0000
+  -data 44
+  -This commit should alter the master branch.
+  -from :6
+  -M 100644 :9 README
+  -property cvs-revisions 11 README 1.3
+  -
+   done
+
+----
+  I can’t fix this without one piece of concrete evidence: whether the repo used in the test
+  actually contains the branch revisions.
+
+  The diff you pasted is exactly what you get if twobranch.repo only has the initial 1.1 revision
+  (no 1.1.2.x at all). That also explains the parsedate.py blow‑up: cvs rlog -r1.1.2.2 returns
+  nothing, so the date parser gets an empty string.
+
+  Please run one of these and paste the output:
+
+  1. Check if the branch revision exists:
+
+  cd tests
+  cvs -d :local:$PWD/twobranch.repo rlog -r1.1.2.2 module/README | sed -n '1,20p'
+
+  2. Or just show the revision list:
+
+  cd tests
+  cvs -d :local:$PWD/twobranch.repo rlog -h module/README | sed -n '/symbolic names:/,/keyword
+  substitution/p'
+
+  If the branch revision is missing, the fix is to rebuild the repo (or delete tests/twobranch.repo
+  so the .tst rule regenerates it). If the branch revision is present, then I’ll adjust the
+  exporter logic accordingly — but I need to know which case we’re in.
+
+  If you want, I can also add a hard check in tests/incremental.sh so it fails with a clear message
+  when 1.1.2.2 isn’t present.
+----
+
+You're right. Something went transiently wrong with the execution that
+was supposed to build twobranch.repo; it was incomplete, and that
+caused both new errors. I have added guard code in parsedate.py and
+increnental.sh to detect this if it happens again
+
+make tap now runs with onkly the expected errors on t9602 and
+the incremental twobranch tests.
+
+----
+  Fixed. The twobranch incremental failure was because -i/--incremental handling (and the
+  incremental emit path) had been dropped from cmd/cvs-fast-export/monolith.go, so the exporter
+  always behaved as if incremental mode was off. I restored the incremental fields and logic, and
+  the two twobranch checks now match:
+
+  - tests/twobranch.chk: clean
+  - tests/twobranch.inc-chk: clean
+
+  Key changes in cmd/cvs-fast-export/monolith.go:
+
+  - Restored incremental config fields and option parsing for -i/--incremental.
+  - Restored incremental filtering, mark prediction, and branch-anchor emission in EmitRepo.
+  - Restored NoIgnores handling and convertDate.
+
+  If you want to confirm quickly:
+
+  1. cd tests
+  2. find twobranch.repo/module -name '*,v' | ../cvs-fast-export-go -T -A neutralize.map
+     --reposurgeon | diff -u twobranch.chk -
+  3. find twobranch.repo/module -name '*,v' | ../cvs-fast-export-go -T -i 104000 -A neutralize.map
+     | diff -u twobranch.inc-chk -
+
+  Both are clean here. Next step: rerun make tap and see if only t9602
+  remains.
+----
