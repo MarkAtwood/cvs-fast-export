@@ -4141,3 +4141,56 @@ behavior with the C tool:
   If you want, I can run a quick sanity check on specific flags (e.g., -a, -g, -R, -e) against a
   small repo.
 ----
+
+Examine cvs-fast-export.adoc. Remove the list items on error messages that the Go version no
+longer emits.
+
+----
+  I trimmed the WARNING AND ERROR MESSAGES section in cvs-fast-export.adoc to remove items for
+  messages the Go version doesn’t emit anymore, and updated the tag warning labels to match current
+  Go wording.
+
+  If you want, I can also audit the remaining items against the current Go output and adjust
+  wording for exact match.
+
+  Next steps (pick one):
+
+  1. I can run a quick diff against the Go warning strings to confirm the section is fully aligned.
+  2. Leave it as-is and continue with the next task.
+----
+
+Do step 1.
+
+----
+  Audit complete. The warnings currently documented in cvs-fast-export.adoc all still exist in the
+  Go emitter:
+
+  - vendor branch detected
+  - null branch name, probably from a damaged Attic file
+  - discarding dead untagged branch
+  - warning - xxx newer than yyy
+  - tag <name> attached by partial match
+  - tag <name> attached by fallback
+
+  No stale entries remain.
+
+  There are a few Go-emitted warnings that are not listed in the doc right now:
+
+  - warning - putting <file> rev <rev> on unnamed branch <name> off <parent>
+  - ignoring empty branch
+  - warning - tag <name> requires synthetic commit (partial match) (t9602-only)
+  - cvs-fast-export: no commitids before <timestamp> (outside this section)
+
+  Do you want me to add those to the warning list, or keep the section
+  minimal?
+----
+
+Yes, do that:
+
+----
+  Added the missing warning entries to cvs-fast-export.adoc, including the unnamed-branch
+  assignment, empty-branch drop, no-commitid notice, and synthetic-tag warning.
+
+  If you want wording tightened to match exact stderr prefixes (e.g., cvs-fast-export:), I can
+  adjust.
+-----

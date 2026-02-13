@@ -7,7 +7,7 @@ cvs-fast-export - fast-export history from a CVS repository or RCS collection.
 == SYNOPSIS ==
 *cvs-fast-export*
     [-h] [-a] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P]
-    [-i 'date'] [-A 'authormap'] [-t threads]
+    [-i 'date'] [-A 'authormap']
     [-R 'revmap'] [--reposurgeon] [-e 'remote'] [-s 'stripprefix']
 
 == DESCRIPTION ==
@@ -419,17 +419,14 @@ discarding dead untagged branch::
      repository's past, but without an identifying tag that state
      is impossible to reconstruct.
 
-warning - unnamed branch::
-     A CVS branch with a live revision lacks a head label.  A label
-     with "-UNNAMED-BRANCH" suffixed to the name of the parent branch
-     will be generated.
+warning - putting xxx rev yyy on unnamed branch zzz off www::
+     A CVS branch with a live revision lacks a head label. A label with
+     "-UNNAMED-BRANCH" suffixed to the name of the parent branch will be
+     generated for the exported branch.
 
-warning - no master branch generated::
-     cvs-fast-export could not identify the default (HEAD) branch and
-     therefore there is no "master" in the conversion; this will
-     seriously confuse git and probably other VCSes when they try to
-     import the output stream. You may be able to identify and rename 
-     a master branch using reposurgeon(1).
+ignoring empty branch::
+     An explicitly named CVS branch has no live revisions; it is dropped
+     from the conversion output.
 
 warning - xxx newer than yyy::
      Early in analysis of a CVS master file, time sort order of its
@@ -440,102 +437,20 @@ warning - xxx newer than yyy::
      out-of-order commit to be that of its parent, but this may not
      prevent other time-skew errors later in analysis.
 
-warning - skew_vulnerable in file xxx rev yyy set to zzz::
-     This warning is emitted when verbose is on and only on commits
-     with no commit ID.  It calls out commits that cause the date
-     before which coalescence is unreliable to be pushed forward.
+no commitids before zzz::
+     Emitted when CVS history predates the introduction of commit IDs;
+     earlier sections can be vulnerable to clock skew affecting collation.
 
-tip commit older than imputed branch join::
-     A similar problem to "newer than" being reported at a later
-     stage, when file branches are being knit into changeset branches.
-     One CVS branch in a collection about to be collated into a gitspace
-     branch has a tip commit older than the earliest commit that is a 
-     a parent on some (other) tip in the collection.  The adventitious
-     branch is snipped off.
+warning - tag <name> requires synthetic commit (partial match)::
+     A tag spans mixed base revisions and no existing commit matches
+     the full checkout state, so a synthetic commit was emitted to
+     materialize the tag state. This is only done for pathological
+     cases.
 
-some parent commits are younger than children::
-     May indicate that cvs-fast-export aggregated some changesets in
-     the wrong order; probably a harmless result of clock skew, but check head.
-
-warning - branch point later than branch::
-     Late in the analysis, when connecting branches to their parents
-     in the changeset DAG, the commit date of the root commit of a
-     branch is earlier than the date of the parent it gets connected
-     to. Could be yet another clock-skew symptom, or might point to
-     an error in the program's topological analysis.  Examine commits
-     near the join with reposurgeon(1); the branch may need to be
-     reparented by hand.
-
-more than one delta with number X.Y.Z::
-     The CVS history contained duplicate file delta numbers. Should
-     never happen, and may indicate a corrupted CVS archive if it does;
-     check head.
-
-{revision|patch} with odd depth::
-     Should never happen; only branch numbers are supposed to have odd
-     depth, not file delta or patch numbers. May indicate a corrupted
-     CVS archive; check head.
-
-duplicate tag in CVS master, ignoring::
-     A CVS master has multiple instances of the same tag pointing at
-     different file deltas. Probably a CVS operator error and relatively
-     harmless, but check that the tag's referent in the conversion
-     makes sense.
-
-tag or branch name was empty after sanitization::
-    Fatal error: tag name was empty after all characters illegal for git
-    were removed.  Probably indicates a corrupted RCS file.
-
-revision number too long, increase CVS_MAX_DEPTH::
-     Fatal error: internal buffers are too short to handle a CVS
-     revision in a repo. Increase this constant in cvs.h and rebuild.
-     Warning: this will increase memory usage and slow down the tests
-     a lot.
-
-snapshot sequence number too large, widen serial_t::
-     Fatal error: the number of file snapshots in the CVS repo
-     overruns an internal counter.  Rebuild cvs-fast-export from
-     source with a wider serial_t patched into cvs.h. Warning: this
-     will significantly increase the working-set size
-
-too many branches, widen branchcount_t::
-     Fatal error: the number of branches descended from some single
-     commit overruns an internal counter.  Rebuild cvs-fast-export from
-     source with a wider branchcount_t patched into cvs.h. Warning:
-     this will significantly increase the working-set size
-
-corrupt delta in::
-     The text of a delta is expected to be led with d (delete) and a
-     (append) lines describing line-oriented changes at that delta.
-     When you see this message, these are garbled.
-
-edit script tried to delete beyond eof::
-     Indicates a corrupted RCS file.  An edit line count was wrong,
-     possibly due to an integer overflow in an old 32-bit version of RCS.
-
-duplicate key in red black tree::
-     Fatal error: there are two or more definitions of the same symbolic name
-     in an RCS master.  This is not a cvs-fast-export error, the
-     master file has been corrupted by a CVS bug or operator error.
-
-tag <name> assigned by partial match::
-tag <name> assigned by fallback::
+tag <name> attached by partial match::
+tag <name> attached by fallback::
      These messages is a result of incomplete tagging - a tag that is not present
      in all masters. Tags attached this way should be conidered dubious.
-
-internal error - branch cycle::
-     cvs-fast-export found a cycle while topologically sorting commits
-     by parent link. This should never happen and indicates either
-     damaged metadata or a serious internal error in cvs-fast-export:
-     please file a bug report.
-
-internal error - lost tag::
-     Late in analysis (after changeset coalescence) a tag lost its
-     commit reference.  This should never happen and probably indicates
-     an internal error in cvs-fast-export: please file a bug report.
-
-internal error - child commit emitted before parent exists::
-     This should never happen; please file a bug report.
 
 == REPORTING BUGS ==
 Report bugs to Eric S. Raymond <esr@thyrsus.com>. Please read
