@@ -37,9 +37,9 @@ fullcheck:
 ,v.dot:
 	$(CVS_FAST_EXPORT) -g $< >$*.dot
 
-test: s_regress m_regress r_regress i_regress t_regress c_regress sporadic #  z_regress
+test: s_regress m_regress r_regress g_regress i_regress t_regress c_regress sporadic #  z_regress
 
-rebuild: s_rebuild m_rebuild r_rebuild i_rebuild t_rebuild # z_rebuild
+rebuild: s_rebuild m_rebuild r_rebuild g_rebuild i_rebuild t_rebuild # z_rebuild
 
 testlist:
 	@grep '^##' *.tst *.py *.sh
@@ -110,6 +110,19 @@ r_regress: neutralize.map
 	done
 TEST_TARGETS += $(REDUCED)
 
+GRAPHTESTS=basic branchy
+g_rebuild: neutralize.map
+	@-for file in $(GRAPHTESTS); do \
+	    echo "Remaking $${file}.dot"; \
+	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g -t 0 $(TESTOPTS) >$${file}.dot 2>&1; \
+	done;
+g_regress: neutralize.map
+	@echo "# Graph regressions"
+	@-for repo in $(GRAPHTESTS); do \
+	    find $${repo}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -g -t 0 $(TESTOPTS) 2>&1 | tapdiffer "$${repo}: DOT regression test" $${repo}.dot; \
+	done
+TEST_TARGETS += $(GRAPHTESTS)
+
 PYTESTS=t9601 t9602 t9603 t9604 t9605 t9606
 PATHSTRIP = sed -e '/\/.*tests/s//tests/'
 t_regress:
@@ -175,6 +188,7 @@ detailcount:
 	@echo "Master-parsing regressions: $(words $(MASTERS))"
 	@echo "Incremental-dump regressions: $(words $(INCREMENTAL))"
 	@echo "Repo regressions: $(words $(REDUCED))"
+	@echo "Graph regressions: $(words $(GRAPHTEST))"
 	@echo "Pathological cases: $(words $(PYTESTS))"
 	@echo "Conversion checks: $(words $(CD) $(CT))"
 	@echo "Sporadic tests: $(words $(SPORADIC))"
