@@ -4194,3 +4194,39 @@ Yes, do that:
   If you want wording tightened to match exact stderr prefixes (e.g., cvs-fast-export:), I can
   adjust.
 -----
+
+Review the manual page. List anything it says agout the
+Go version that is incorrect.
+
+
+-----
+Here’s what the manual page currently claims that is not true for the Go version:
+
+  -p progress reporting: documented as emitting progress + stats; Go ignores -p and emits no
+    progress output.
+  -t threadcount: documented as threaded scheduler; Go ignores -t and runs single-threaded
+    analysis.
+  -s strip prefix: documented as overriding common-prefix stripping; Go ignores -s and always
+    uses longest common prefix.
+  -E / --embed-id: documented as embedding CVS revision IDs in commit messages; Go ignores -E and
+    never embeds IDs.
+  -g graph mode details: doc says -g dumps DOT, double -g tags +/|/-, and -r graphing avoids
+    collation; Go only graphs the collated commit DAG and doesn’t implement the “graph CVS forest”
+    behavior.
+  - Progress/verbosity cross‑references: doc says -l is convenient with -p, and that progress
+    reporting animates completion % + timings; neither behavior exists in Go.
+
+  Everything else in the options list appears consistent with the Go implementation after the CLI
+  fixes. If you want, I can update the manual to clarify these
+  differences.
+----
+
+I removed the threadcount option verbiage.
+
+FIXME: Implement -E and -p.
+FIXME: implement -g -g and -g -r.
+FIXME: write regression tests for -g.
+FIXME: test branch_cycle_errorm, hang-1 and the Mozilla repo at untried
+FIXME: clear the buglist on Gitlab
+FIXME: Make PR for golang-rcs.
+

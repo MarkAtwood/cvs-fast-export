@@ -204,15 +204,6 @@ refs/heads, making the import appear to come from the named remote.
 -s 'stripprefix'::
 Strip the given prefix instead of longest common prefix
 
--t 'threadcount'::
-Running multithreaded increases the program's memory footprint
-proportionally to the number of threads, but means the conversion may
-run in less total time because an I/O operation involving one master
-file will not block compute-intensive processing of others. By
-default, the program conservatively assumes it can use two threads per
-processor available. You can use this option to set the number of threads;
-the value 0 forces sequential processing with no threading.
-
 -p::
 Enable progress reporting. This also dumps statistics (elapsed time
 and size of maximum resident set) for several points in the conversion

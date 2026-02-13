@@ -3619,6 +3619,9 @@ func main() {
 	os.Exit(0)
 }
 
+// Set with an -X option
+var version string
+
 // execMode selects the primary output mode.
 type execMode int
 
@@ -3687,7 +3690,7 @@ func parseArgs(args []string) (config, error) {
 		case arg == "--dump-branches":
 			cfg.DumpBranches = true
 		case arg == "-V" || arg == "--version":
-			fmt.Println("cvs-fast-export (go)")
+			fmt.Println("cvs-fast-export ", version)
 			os.Exit(0)
 		case arg == "-T":
 			cfg.ForceDates = true
