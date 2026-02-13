@@ -157,7 +157,7 @@ main () {
         # configuration when pulled as a dependency.  This package doesn't care
         # whether your Python is 2.x or 3.x.
         $install tzdata
-        $install make grep sed gcc bison flex python3 git rcs cvs pylint cppcheck shellcheck asciidoctor
+        $install make golang grep sed gcc python3 git rcs cvs pylint shellcheck asciidoctor
         ;;
     emerge)
         echo "Not yet supported" >&2
@@ -165,7 +165,7 @@ main () {
         ;;
     pacman)
         $install tzdata
-        $install make grep sed gcc bison flex python git rcs cvs \
+        $install golang make grep sed gcc python git rcs cvs \
         python-pylint cppcheck shellcheck
         ;;
     pkgin)
@@ -173,16 +173,14 @@ main () {
         exit 1
         ;;
     pkg)
+	$install golang               # GNU Make.
 	$install gmake                # GNU Make.
-	$install bison                #
 	$install python3              # /usr/local/bin/python3 -> python3.9
-	# $install cppcheck           # Broken on 14.0-RELEASE-p4 - devel/cppcheck
 	$install hs-ShellCheck-0.9.0
 	$install cvs                  # Source code control
 	# $install pylint             # Didn't need this
 	echo "FreeBSD Notes:"
 	echo "    Use gmake to build as make won't work"
-	echo "    gmake check  # Lots fails as cppcheck is missing/broken"
 	echo ""
         ;;
     yum)
@@ -191,7 +189,7 @@ main () {
         ;;
     dnf)
         $install tzdata
-        $install make grep sed gcc bison flex rcs cvs pylint cppcheck ShellCheck
+        $install golang make grep sed rcs cvs pylint ShellCheck
         ;;
     yast)
         echo "Not yet supported" >&2
@@ -199,7 +197,7 @@ main () {
         ;;
     zypper)
         $install timezone
-        $install make grep sed gcc bison flex rcs cvs python3-pylint cppcheck ShellCheck
+        $install golang make grep sed rcs cvs python3-pylint cppcheck ShellCheck
         ;;
     esac
 }
@@ -226,7 +224,7 @@ doc () {
         exit 1
         ;;
     pkg)
-	$install asciidoc             # Need a2x to install man pages
+	$install asciidoctor             # Need a2x to install man pages
         ;;
     yum)
         echo "Not yet supported" >&2
@@ -236,7 +234,7 @@ doc () {
         $install asciidoctor
         ;;
     yast|zypper)
-        $install asciidoc 'rubygem(asciidoctor)'
+        $install asciidoctor 'rubygem(asciidoctor)'
         ;;
     esac
 }
