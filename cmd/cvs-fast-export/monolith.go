@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unsafe"
 
 	rcs "github.com/arran4/golang-rcs"
 )
@@ -1634,11 +1635,11 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	enablePathologies := hasT9602Pathology(masters)
 
 	repo := &Repo{
-		Branches:   branches,
-		CommitOf:   make(map[*Commit]*GitCommit),
-		ByNumber:   make(map[string]*GitCommit),
-		ByFileRev:  make(map[string]*Commit),
-		TagTargets: make(map[string][]*Commit),
+		Branches:       branches,
+		CommitOf:       make(map[*Commit]*GitCommit),
+		ByNumber:       make(map[string]*GitCommit),
+		ByFileRev:      make(map[string]*Commit),
+		TagTargets:     make(map[string][]*Commit),
 		PathologyFixes: enablePathologies,
 	}
 	for _, m := range masters {
@@ -2365,47 +2366,55 @@ func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
 
 // Emitter streams git fast-import output with CVS-specific conventions.
 type Emitter struct {
-	w            *bufio.Writer
-	mark         int
-	epoch        int64
-	didIg        bool
-	tagTargets   map[string][]*Commit
-	forceDates   bool
-	reposurgeon  bool
-	incremental  bool
-	noIgnores    bool
-	fromTime     int64
-	quiet        bool
-	verbose      bool
-	commitWindow int64
-	authors      map[string]Author
-	sourceType   string
+	w             *bufio.Writer
+	warn          io.Writer
+	mark          int
+	epoch         int64
+	didIg         bool
+	tagTargets    map[string][]*Commit
+	forceDates    bool
+	reposurgeon   bool
+	incremental   bool
+	noIgnores     bool
+	fromTime      int64
+	quiet         bool
+	verbose       bool
+	commitWindow  int64
+	authors       map[string]Author
+	sourceType    string
 	syntheticTags bool
+	branchPrefix  string
+	revisionMap   io.Writer
 }
 
 // NewEmitter constructs an emitter with default epoch and mark state.
 func NewEmitter(w io.Writer) *Emitter {
 	return &Emitter{
 		w:            bufio.NewWriter(w),
+		warn:         os.Stderr,
 		mark:         1,
 		epoch:        time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
 		commitWindow: 300,
+		branchPrefix: "refs/heads/",
 	}
 }
 
 // ExportOptions configures fast-import emission behavior.
 type ExportOptions struct {
-	ForceDates   bool
-	Reposurgeon  bool
-	Incremental  bool
-	NoIgnores    bool
-	FromTime     int64
-	Quiet        bool
-	Verbose      bool
-	CommitWindow time.Duration
-	Authors      map[string]Author
-	SourceType   string
+	ForceDates    bool
+	Reposurgeon   bool
+	Incremental   bool
+	NoIgnores     bool
+	FromTime      int64
+	Quiet         bool
+	Verbose       bool
+	CommitWindow  time.Duration
+	Authors       map[string]Author
+	SourceType    string
 	SyntheticTags bool
+	BranchPrefix  string
+	RevisionMap   io.Writer
+	Warn          io.Writer
 }
 
 // WithTagTargets provides tag revision sets for reposurgeon tagging.
@@ -2429,6 +2438,15 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	}
 	e.authors = opts.Authors
 	e.sourceType = opts.SourceType
+	if opts.BranchPrefix != "" {
+		e.branchPrefix = opts.BranchPrefix
+	}
+	if opts.RevisionMap != nil {
+		e.revisionMap = opts.RevisionMap
+	}
+	if opts.Warn != nil {
+		e.warn = opts.Warn
+	}
 	return e
 }
 
@@ -2479,7 +2497,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if len(tagWarnings) > 0 && !e.quiet {
 		for _, w := range tagWarnings {
 			if e.verbose || strings.Contains(w, "points at commit with no gitspace link.") {
-				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+				fmt.Fprintf(e.warn, "cvs-fast-export: %s\n", w)
 			}
 		}
 	}
@@ -2582,7 +2600,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			if c.Parent != nil && e.fromTime > 0 {
 				parentMark := markMap[c.Parent]
 				if parentMark > 0 && e.displayDate(c.Parent, parentMark) < e.fromTime {
-					fmt.Fprintf(e.w, "from refs/heads/%s^0\n\n", c.RefName)
+					fmt.Fprintf(e.w, "from %s%s^0\n\n", e.branchPrefix, c.RefName)
 				}
 			}
 			realized[c.RefName] = true
@@ -2648,7 +2666,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			if mark == 0 {
 				continue
 			}
-			fmt.Fprintf(e.w, "reset refs/heads/%s\n", name)
+			fmt.Fprintf(e.w, "reset %s%s\n", e.branchPrefix, name)
 			fmt.Fprintf(e.w, "from :%d\n\n", mark)
 			emittedBranches[name] = struct{}{}
 		}
@@ -2687,7 +2705,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
 		fmt.Fprintf(e.w, "from :%d\n\n", mark)
 		// Drop the temporary ref to avoid polluting the branch list.
-		fmt.Fprintf(e.w, "reset refs/heads/%s\n\n", ref)
+		fmt.Fprintf(e.w, "reset %s%s\n\n", e.branchPrefix, ref)
 		emittedTags[name] = struct{}{}
 	}
 	fmt.Fprintln(e.w, "done")
@@ -2723,7 +2741,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 		when = e.epoch
 	}
 
-	fmt.Fprintf(e.w, "commit refs/heads/%s\n", ref)
+	fmt.Fprintf(e.w, "commit %s%s\n", e.branchPrefix, ref)
 	fmt.Fprintf(e.w, "mark :%d\n", mark)
 	full, email, tz := resolveAuthor(e.authors, c.Author)
 	if e.forceDates {
@@ -2766,6 +2784,17 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 		revpairs := buildRevpairs(ops)
 		if revpairs != "" {
 			fmt.Fprintf(e.w, "property cvs-revisions %d %s", len(revpairs), revpairs)
+		}
+	}
+	if e.revisionMap != nil {
+		revpairs := buildRevpairs(ops)
+		if revpairs != "" {
+			for _, line := range strings.Split(revpairs, "\n") {
+				if line == "" {
+					continue
+				}
+				fmt.Fprintf(e.revisionMap, "%s :%d\n", line, mark)
+			}
 		}
 	}
 	fmt.Fprintln(e.w)
@@ -3430,6 +3459,31 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	if cfg.ExecMode == execSizes {
+		printSizes()
+		os.Exit(0)
+	}
+
+	warnWriter := io.Writer(os.Stderr)
+	var logFile *os.File
+	if cfg.LogPath != "" {
+		logFile, err = os.Create(cfg.LogPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer logFile.Close()
+		warnWriter = logFile
+	}
+	var revisionMap *os.File
+	if cfg.RevisionMapPath != "" {
+		revisionMap, err = os.Create(cfg.RevisionMapPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer revisionMap.Close()
+	}
 
 	if len(cfg.Files) == 0 {
 		// Read file list from stdin, as the C tool does.
@@ -3453,11 +3507,13 @@ func main() {
 	}
 	var inputs []inputFile
 	for _, path := range cfg.Files {
-		if !strings.HasSuffix(path, ",v") {
-			continue
-		}
-		if strings.Contains(path, "CVSROOT") {
-			continue
+		if !cfg.Promiscuous {
+			if !strings.HasSuffix(path, ",v") {
+				continue
+			}
+			if strings.Contains(path, "CVSROOT") {
+				continue
+			}
 		}
 		// Precompute rectified names for stable sorting.
 		inputs = append(inputs, inputFile{
@@ -3478,7 +3534,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
+		allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
 		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder, allowVendorBranches)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -3499,7 +3555,7 @@ func main() {
 			}
 			seenWarn[w] = struct{}{}
 			if !cfg.Quiet {
-				fmt.Fprintf(os.Stderr, "cvs-fast-export: %s\n", w)
+				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
 			}
 		}
 		masterWarnings = nil
@@ -3516,24 +3572,40 @@ func main() {
 	// Collate commits across masters, then emit fast-import.
 	repo := Build(masters, CollateOptions{
 		CommitTimeWindow: cfg.CommitWindow,
-		TrustCommitIDs:   true,
+		TrustCommitIDs:   cfg.TrustCommitIDs,
 	})
 
+	if cfg.ExecMode == execAuthors {
+		exportAuthors(repo, os.Stdout)
+		os.Exit(0)
+	}
+	if cfg.ExecMode == execGraph {
+		dumpCommitGraph(repo, cfg.GraphDiff, os.Stdout)
+		os.Exit(0)
+	}
+
 	if len(repo.Branches) > 0 {
+		branchPrefix := "refs/heads/"
+		if cfg.Remote != "" {
+			branchPrefix = fmt.Sprintf("refs/remotes/%s/", cfg.Remote)
+		}
 		em := NewEmitter(os.Stdout).
 			WithTagTargets(repo.TagTargets).
 			WithOptions(ExportOptions{
-				ForceDates:   cfg.ForceDates,
-				Reposurgeon:  cfg.Reposurgeon,
-				Incremental:  cfg.Incremental,
-				NoIgnores:    cfg.NoIgnores,
-				FromTime:     cfg.FromTime,
-				Quiet:        cfg.Quiet,
-				Verbose:      cfg.Verbose,
-				CommitWindow: cfg.CommitWindow,
-				Authors:      cfg.Authors,
-				SourceType:   cfg.SourceType,
+				ForceDates:    cfg.ForceDates,
+				Reposurgeon:   cfg.Reposurgeon,
+				Incremental:   cfg.Incremental,
+				NoIgnores:     cfg.NoIgnores,
+				FromTime:      cfg.FromTime,
+				Quiet:         cfg.Quiet,
+				Verbose:       cfg.Verbose,
+				CommitWindow:  cfg.CommitWindow,
+				Authors:       cfg.Authors,
+				SourceType:    cfg.SourceType,
 				SyntheticTags: repo.PathologyFixes,
+				BranchPrefix:  branchPrefix,
+				RevisionMap:   revisionMap,
+				Warn:          warnWriter,
 			})
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
@@ -3541,33 +3613,52 @@ func main() {
 
 	// Warn if commitids are missing and skew could occur.
 	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
-		fmt.Fprintf(os.Stderr, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
+		fmt.Fprintf(warnWriter, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
 	}
 
 	os.Exit(0)
 }
 
+// execMode selects the primary output mode.
+type execMode int
+
+const (
+	execExport execMode = iota
+	execGraph
+	execAuthors
+	execSizes
+)
+
 // config captures parsed CLI settings.
 type config struct {
-	Files        []string
-	DumpHeads    bool
-	DumpBranches bool
-	ForceDates   bool
-	Incremental  bool
-	NoIgnores    bool
-	FromTime     int64
-	Reposurgeon  bool
-	Quiet        bool
-	Verbose      bool
-	CommitWindow time.Duration
-	Authors      map[string]Author
-	SourceType   string
+	Files           []string
+	DumpHeads       bool
+	DumpBranches    bool
+	ForceDates      bool
+	Incremental     bool
+	NoIgnores       bool
+	FromTime        int64
+	Reposurgeon     bool
+	Quiet           bool
+	Verbose         bool
+	CommitWindow    time.Duration
+	Authors         map[string]Author
+	SourceType      string
+	Promiscuous     bool
+	TrustCommitIDs  bool
+	ExecMode        execMode
+	GraphDiff       bool
+	LogPath         string
+	RevisionMapPath string
+	Remote          string
 }
 
 // parseArgs interprets CLI flags into a config.
 func parseArgs(args []string) (config, error) {
 	cfg := config{
-		CommitWindow: 300 * time.Second,
+		CommitWindow:   300 * time.Second,
+		TrustCommitIDs: true,
+		ExecMode:       execExport,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -3585,6 +3676,12 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-h" || arg == "--help":
 			printHelp()
 			os.Exit(0)
+		case arg == "-g" || arg == "--graph":
+			if cfg.ExecMode == execGraph {
+				cfg.GraphDiff = true
+			} else {
+				cfg.ExecMode = execGraph
+			}
 		case arg == "--dump-heads":
 			cfg.DumpHeads = true
 		case arg == "--dump-branches":
@@ -3596,7 +3693,7 @@ func parseArgs(args []string) (config, error) {
 			cfg.ForceDates = true
 		case arg == "-r" || arg == "--reposurgeon":
 			cfg.Reposurgeon = true
-		case arg == "-t":
+		case arg == "-w" || arg == "--commit-time-window":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
@@ -3604,9 +3701,11 @@ func parseArgs(args []string) (config, error) {
 			// Parse commit window seconds as integer.
 			secs, err := parseInt(args[i])
 			if err != nil {
-				return cfg, fmt.Errorf("invalid -t value: %w", err)
+				return cfg, fmt.Errorf("invalid %s value: %w", arg, err)
 			}
 			cfg.CommitWindow = time.Duration(secs) * time.Second
+		case arg == "-c" || arg == "--content-only":
+			cfg.TrustCommitIDs = false
 		case arg == "-A" || arg == "--authormap":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
@@ -3618,6 +3717,24 @@ func parseArgs(args []string) (config, error) {
 				return cfg, err
 			}
 			cfg.Authors = authors
+		case arg == "-l":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			cfg.LogPath = args[i]
+		case arg == "-R":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			cfg.RevisionMapPath = args[i]
+		case arg == "-e":
+			if i+1 >= len(args) {
+				return cfg, fmt.Errorf("%s expects an argument", arg)
+			}
+			i++
+			cfg.Remote = args[i]
 		case arg == "-i":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
@@ -3626,9 +3743,15 @@ func parseArgs(args []string) (config, error) {
 			cfg.Incremental = true
 			cfg.NoIgnores = true
 			cfg.FromTime = convertDate(args[i])
-		case arg == "-c", arg == "-g",
-			arg == "-a", arg == "-p",
-			arg == "-P", arg == "-E", arg == "-S", arg == "-N":
+		case arg == "-a" || arg == "--authorlist":
+			cfg.ExecMode = execAuthors
+		case arg == "-P" || arg == "--promiscuous":
+			cfg.Promiscuous = true
+		case arg == "-N" || arg == "--noignores":
+			cfg.NoIgnores = true
+		case arg == "-S" || arg == "--sizes":
+			cfg.ExecMode = execSizes
+		case arg == "-p", arg == "-E":
 			// flags without arguments (ignored for now)
 		case arg == "-v":
 			cfg.Verbose = true
@@ -3643,6 +3766,12 @@ func parseArgs(args []string) (config, error) {
 						return cfg, err
 					}
 					cfg.Authors = authors
+				} else if strings.HasPrefix(arg, "--remote=") {
+					cfg.Remote = strings.SplitN(arg, "=", 2)[1]
+				} else if strings.HasPrefix(arg, "--log=") {
+					cfg.LogPath = strings.SplitN(arg, "=", 2)[1]
+				} else if strings.HasPrefix(arg, "--revision-map=") {
+					cfg.RevisionMapPath = strings.SplitN(arg, "=", 2)[1]
 				}
 				continue
 			}
@@ -3665,6 +3794,12 @@ func parseArgs(args []string) (config, error) {
 							return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
 						}
 						cfg.CommitWindow = time.Duration(secs) * time.Second
+					} else if arg == "--remote" {
+						cfg.Remote = args[i+1]
+					} else if arg == "--log" {
+						cfg.LogPath = args[i+1]
+					} else if arg == "--revision-map" {
+						cfg.RevisionMapPath = args[i+1]
 					} else if arg == "--incremental" {
 						cfg.Incremental = true
 						cfg.NoIgnores = true
@@ -3679,7 +3814,7 @@ func parseArgs(args []string) (config, error) {
 			// short options with arguments
 			if i+1 < len(args) {
 				switch arg {
-				case "-w", "-l", "-R", "-e", "-s", "-d":
+				case "-l", "-R", "-e", "-s", "-t", "-d":
 					i++
 				default:
 					// unknown short option; ignore
@@ -3894,4 +4029,224 @@ func dumpBranches(m *Master) {
 		}
 		fmt.Fprintln(os.Stderr)
 	}
+}
+
+// exportAuthors writes a unique list of author IDs in commit order.
+func exportAuthors(repo *Repo, w io.Writer) {
+	if repo == nil {
+		return
+	}
+	seen := make(map[string]struct{})
+	for _, c := range collectCommits(repo) {
+		if c == nil || c.Author == "" {
+			continue
+		}
+		if _, ok := seen[c.Author]; ok {
+			continue
+		}
+		seen[c.Author] = struct{}{}
+		fmt.Fprintln(w, c.Author)
+	}
+}
+
+// dumpCommitGraph emits a DOT graph of the collated commit history.
+func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
+	if repo == nil {
+		return
+	}
+	commits := collectCommits(repo)
+	id := make(map[*GitCommit]int, len(commits))
+	stateByCommit := make(map[*GitCommit]map[string]fileState)
+	prevByCommit := make(map[*GitCommit]map[string]fileState)
+	opsByCommit := make(map[*GitCommit][]*fileOp)
+	for i, c := range commits {
+		id[c] = i + 1
+		if diff {
+			var prev map[string]fileState
+			if c.Parent != nil {
+				prev = stateByCommit[c.Parent]
+			}
+			if prev == nil {
+				prev = map[string]fileState{}
+			}
+			ops, next := buildOps(prev, c.Files, nil)
+			prevByCommit[c] = prev
+			stateByCommit[c] = next
+			opsByCommit[c] = ops
+		}
+	}
+
+	fmt.Fprintln(w, "strict digraph G {")
+	fmt.Fprintln(w, "newrank=true;")
+	fmt.Fprintln(w, "nodesep=0.1;")
+	fmt.Fprintln(w, "ranksep=0.1;")
+	fmt.Fprintln(w, "edge [dir=none];")
+	fmt.Fprintln(w, "node [shape=box,fontsize=6];")
+
+	// Branch refs.
+	for _, b := range repo.Branches {
+		if b == nil || b.Head == nil {
+			continue
+		}
+		name := b.Name
+		if name == "" {
+			name = "master"
+		}
+		refLabel := dotEscape("branch: " + name)
+		fmt.Fprintf(w, "\t\"%s\" [fontsize=6,fixedsize=false,shape=ellipse];\n", refLabel)
+		if headID, ok := id[b.Head]; ok {
+			fmt.Fprintf(w, "\t\"%s\" -> c%d [weight=100];\n", refLabel, headID)
+		}
+	}
+
+	// Tag refs.
+	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, repo.PathologyFixes)
+	tagNames := append([]string(nil), repo.TagOrder...)
+	if len(tagNames) == 0 {
+		for name := range repo.TagTargets {
+			tagNames = append(tagNames, name)
+		}
+		sort.Strings(tagNames)
+	}
+	for _, name := range tagNames {
+		target := tagAttach[name]
+		if target == nil {
+			continue
+		}
+		label := dotEscape("tag: " + name)
+		fmt.Fprintf(w, "\t\"%s\" [fontsize=6,fixedsize=false,shape=diamond];\n", label)
+		if targetID, ok := id[target]; ok {
+			fmt.Fprintf(w, "\t\"%s\" -> c%d [weight=3];\n", label, targetID)
+		}
+	}
+
+	// Commit nodes and edges.
+	for _, c := range commits {
+		if c == nil {
+			continue
+		}
+		label := dotEscape(commitLabel(c, diff, opsByCommit[c], prevByCommit[c]))
+		fmt.Fprintf(w, "\tc%d [label=\"%s\",fixedsize=false];\n", id[c], label)
+		if c.Parent != nil {
+			if parentID, ok := id[c.Parent]; ok {
+				fmt.Fprintf(w, "\tc%d -> c%d [weight=10];\n", id[c], parentID)
+			}
+		}
+	}
+	fmt.Fprintln(w, "}")
+}
+
+// commitLabel builds a commit node label for DOT output.
+func commitLabel(c *GitCommit, diff bool, ops []*fileOp, prev map[string]fileState) string {
+	if c == nil {
+		return ""
+	}
+	ref := c.RefName
+	if ref == "" {
+		ref = "master"
+	}
+	lines := []string{ref}
+	if !c.Date.IsZero() {
+		lines = append(lines, c.Date.UTC().Format(time.RFC3339))
+	}
+	if snippet := logSnippet(c.Log); snippet != "" {
+		lines = append(lines, snippet)
+	}
+	if diff {
+		for _, op := range ops {
+			if op == nil {
+				continue
+			}
+			switch op.kind {
+			case 'D':
+				lines = append(lines, "-"+op.path)
+			case 'M':
+				prefix := "+"
+				if _, ok := prev[op.path]; ok {
+					prefix = "|"
+				}
+				rev := ""
+				if op.commit != nil {
+					rev = " " + String(op.commit.Number)
+				}
+				lines = append(lines, prefix+op.path+rev)
+			}
+		}
+	} else {
+		files := append([]*Commit(nil), c.Files...)
+		sort.Slice(files, func(i, j int) bool {
+			return PathDeepCompare(files[i].FileName, files[j].FileName) < 0
+		})
+		for _, f := range files {
+			if f == nil {
+				continue
+			}
+			path := f.OrigName
+			if path == "" {
+				path = f.FileName
+			}
+			if path == "" {
+				path = "UNKNOWN"
+			}
+			lines = append(lines, fmt.Sprintf("%s %s", path, String(f.Number)))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// logSnippet truncates a log message to a short printable summary.
+func logSnippet(log string) string {
+	if log == "" {
+		return ""
+	}
+	var out []rune
+	for _, r := range log {
+		if len(out) >= 48 {
+			break
+		}
+		if r == '\n' {
+			if len(out) > 5 {
+				break
+			}
+			continue
+		}
+		if r > unicode.MaxASCII || r < ' ' {
+			continue
+		}
+		switch r {
+		case '(', ')', '[', ']', '{', '}':
+			continue
+		}
+		out = append(out, r)
+		if r == '.' {
+			break
+		}
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// dotEscape prepares a label string for DOT output.
+func dotEscape(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	return s
+}
+
+// printSizes reports approximate Go type sizes for debugging.
+func printSizes() {
+	fmt.Printf("sizeof(uintptr)       = %d\n", unsafe.Sizeof(uintptr(0)))
+	fmt.Printf("sizeof(int)           = %d\n", unsafe.Sizeof(int(0)))
+	fmt.Printf("sizeof(int64)         = %d\n", unsafe.Sizeof(int64(0)))
+	fmt.Printf("sizeof(time.Time)     = %d\n", unsafe.Sizeof(time.Time{}))
+	fmt.Printf("sizeof(Number)        = %d\n", unsafe.Sizeof(Number{}))
+	fmt.Printf("sizeof(Commit)        = %d\n", unsafe.Sizeof(Commit{}))
+	fmt.Printf("sizeof(GitCommit)     = %d\n", unsafe.Sizeof(GitCommit{}))
+	fmt.Printf("sizeof(GitBranch)     = %d\n", unsafe.Sizeof(GitBranch{}))
+	fmt.Printf("sizeof(Master)        = %d\n", unsafe.Sizeof(Master{}))
+	fmt.Printf("sizeof(Symbol)        = %d\n", unsafe.Sizeof(Symbol{}))
+	fmt.Printf("sizeof(Version)       = %d\n", unsafe.Sizeof(Version{}))
+	fmt.Printf("sizeof(fileOp)        = %d\n", unsafe.Sizeof(fileOp{}))
+	fmt.Printf("sizeof(fileState)     = %d\n", unsafe.Sizeof(fileState{}))
 }

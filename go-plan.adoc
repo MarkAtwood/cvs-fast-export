@@ -4080,3 +4080,64 @@ All set. I applied the vendor-branch ordering fixes and the emptytag parent-link
 ----
 
 That looks correct.
+
+What options annd featurs from the C version are not yet
+implemented?
+
+-----
+Here’s the gap list vs the C implementation (from main.c), based on what the Go port currently
+  parses/uses in cmd/cvs-fast-export/monolith.go:
+
+  Not implemented / ignored in Go
+
+  - -c / --content-only (don’t trust commit IDs; Go always trusts them).
+  - -g / --graph (DOT graph output).
+  - -a / --authorlist (dump author IDs).
+  - -l / --log (redirect warnings to a file).
+  - -R / --revision-map (revision map output).
+  - -e / --remote (refs remoting prefix).
+  - -s / --strip (explicit strip prefix; Go only uses longest common prefix).
+  - -p / --progress (progress reporting + stats).
+  - -P / --promiscuous (process files without ,v and with CVSROOT in path).
+  - -t / --threads (threaded analysis scheduler).
+  - -E / --embed-id (embed CVS revisions in commit messages).
+  - -S / --sizes (undocumented sizes report).
+  - -N / --noignores (undocumented; Go only sets NoIgnores for incremental).
+  - -d / --debug (undocumented debug options).
+
+  Option mismatch to call out
+
+  - C uses -w / --commit-time-window. Go implements --commit-time-window, but ignores -w and
+    instead uses -t for commit window. That’s a compatibility bug with the C CLI.
+
+  Intentional divergence
+
+  - Keyword expansion: not implemented (per your earlier guidance).
+
+  If you want, I can fix the CLI compatibility (make -w work, return -t to threadcount/ignored)
+  without touching behavior otherwise.
+----
+
+Fix CLI compatibility. Implement all options except -t, -d, -p, -s and -E 
+
+----
+Implemented the remaining CLI options you requested (except -t, -d, -p, -s, -E) and aligned
+behavior with the C tool:
+
+  - -w/--commit-time-window now works; -t is ignored as requested.
+  - -c/--content-only toggles TrustCommitIDs.
+  - -a/--authorlist outputs unique author IDs in canonical commit order.
+  - -g/--graph emits a DOT graph of the collated commit DAG; double -g shows +/|/- file ops.
+  - -l/--log sends warnings to the specified file.
+  - -R/--revision-map writes revision mappings in the C format.
+  - -e/--remote uses refs/remotes/<remote>/ instead of refs/heads/.
+  - -P/--promiscuous accepts non-,v files and paths containing CVSROOT.
+  - -N/--noignores suppresses default ignore injection.
+  - -S/--sizes prints Go type sizes.
+
+  Changes are all in cmd/cvs-fast-export/monolith.go. Build is clean (go build ./cmd/cvs-fast-
+  export).
+
+  If you want, I can run a quick sanity check on specific flags (e.g., -a, -g, -R, -e) against a
+  small repo.
+----
