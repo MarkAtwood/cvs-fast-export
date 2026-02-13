@@ -4,7 +4,8 @@ Repository head::
    Code ported to Golang; there will be no more heap corruption.
    cvsconvert now has a -s option that passes in a strip prefix.
    Improved fidelity in edge cases of assigning CVS tags to commits.
-   Length of revision numbers and count of branches is no longer limited
+   Length of revision numbers and count of branches is no longer limited.
+   The -s option is gone; the common prefix of all paths is always stripped.
 
 1.68: 2024-07-31::
    Fix minor error in handling of -d argument.

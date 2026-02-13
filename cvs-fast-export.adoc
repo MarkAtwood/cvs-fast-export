@@ -7,8 +7,7 @@ cvs-fast-export - fast-export history from a CVS repository or RCS collection.
 == SYNOPSIS ==
 *cvs-fast-export*
     [-h] [-a] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P]
-    [-i 'date'] [-A 'authormap']
-    [-R 'revmap'] [--reposurgeon] [-e 'remote'] [-s 'stripprefix']
+    [-i 'date'] [-A 'authormap'] [-R 'revmap'] [--reposurgeon] [-e 'remote']
 
 == DESCRIPTION ==
 cvs-fast-export tries to group the per-file commits and tags in an RCS file
@@ -200,9 +199,6 @@ Emit the program version and exit.
 -e 'remote'::
 Exported branch names are prefixed with refs/remotes/'remote' instead of
 refs/heads, making the import appear to come from the named remote.
-
--s 'stripprefix'::
-Strip the given prefix instead of longest common prefix
 
 -p::
 Enable progress reporting. This also dumps statistics (elapsed time
