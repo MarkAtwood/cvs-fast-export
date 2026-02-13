@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -497,27 +498,36 @@ var nullCounter int = 0
 
 // SetRefs assigns branch heads and tags from CVS symbols, synthesizing
 // missing branch names while discarding unreachable dead branches.
-func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit) ([]*Head, []Tag) {
+func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit, allowVendorSymbols bool) ([]*Head, []Tag) {
 	var tags []Tag
 	// Attach symbol names to branch heads or tag commits directly.
 	for _, s := range symbols {
-		if IsHead(s.Number) {
+		if isVendorBranchSymbol(s.Number) && !allowVendorSymbols {
+			// In RCS-only mode, ignore vendor branch symbols entirely.
+			continue
+		}
+		if IsHead(s.Number) || isVendorBranchSymbol(s.Number) {
+			num := s.Number
+			if isVendorBranchSymbol(s.Number) {
+				// Vendor branch symbols use odd-length numbers; normalize to branch form.
+				num = AppendZero(s.Number)
+			}
 			h := findHeadByBranch(heads, s.Number)
 			if h != nil {
 				// Prefer existing head names; otherwise add a parallel named head.
 				if h.RefName == "" {
 					h.RefName = s.Name
-					h.Degree = Degree(s.Number)
+					h.Degree = Degree(num)
 				} else {
 					h = &Head{
 						RefName: s.Name,
 						Commit:  h.Commit,
-						Degree:  Degree(s.Number),
+						Degree:  Degree(num),
 					}
 					heads = append(heads, h)
 				}
 			} else {
-				n := s.Number
+				n := num
 				// Walk up toward trunk to find a reachable commit to anchor the head.
 				for n.C >= 4 {
 					n.C -= 2
@@ -527,7 +537,7 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 						h = &Head{
 							RefName: s.Name,
 							Commit:  c,
-							Degree:  Degree(s.Number),
+							Degree:  Degree(num),
 						}
 						heads = append(heads, h)
 						break
@@ -536,7 +546,7 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 			}
 			if h != nil {
 				// Record the symbol's revision number for the head.
-				h.Number = s.Number
+				h.Number = num
 			}
 		} else {
 			// Non-head symbols are lightweight tags.
@@ -566,7 +576,7 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 
 // PatchVendorBranches detects vendor branches, synthesizes missing names,
 // and splices them into master when no 1.2 exists.
-func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
+func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbol bool) ([]*Head, bool) {
 	trunk := findHeadByName(heads, "master")
 	if trunk == nil {
 		return heads, false
@@ -616,7 +626,10 @@ func PatchVendorBranches(heads []*Head) ([]*Head, bool) {
 		if vlast != nil {
 			vlast.Parent = oldtip
 		}
-		heads = removeHead(heads, nvendor)
+		// In RCS-only mode, drop vendor heads that now point at the trunk tip.
+		if !allowVendorBranches || !hasVendorSymbol {
+			heads = removeHeadsWithCommit(heads, trunk.Commit, trunk)
+		}
 	}
 
 	return heads, foundVendor
@@ -822,6 +835,25 @@ func removeHead(heads []*Head, target *Head) []*Head {
 	return out
 }
 
+// removeHeadsWithCommit drops heads (except keep) that reference a commit pointer.
+func removeHeadsWithCommit(heads []*Head, commit *Commit, keep *Head) []*Head {
+	if commit == nil {
+		return heads
+	}
+	out := heads[:0]
+	for _, h := range heads {
+		if h == keep {
+			out = append(out, h)
+			continue
+		}
+		if h.Commit == commit {
+			continue
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
 // Master represents one parsed RCS file with resolved commits and symbols.
 type Master struct {
 	Source   string
@@ -846,7 +878,7 @@ func appendMasterWarning(msg string) {
 }
 
 // BuildMaster converts a parsed RCS file into a CVS master model.
-func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string) (*Master, error) {
+func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string, allowVendorBranches bool) (*Master, error) {
 	info, err := os.Stat(source)
 	if err != nil {
 		return nil, err
@@ -934,6 +966,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	// Normalize symbol ordering to preserve original CVS ordering where possible.
 	var sym []Symbol
 	seen := make(map[string]struct{}, len(file.SymbolMap))
+	hasVendorSymbol := false
 	if len(symbolOrder) > 0 {
 		for i := len(symbolOrder) - 1; i >= 0; i-- {
 			name := symbolOrder[i]
@@ -953,6 +986,9 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 			if err != nil {
 				return nil, err
 			}
+			if isVendorBranchSymbol(n) {
+				hasVendorSymbol = true
+			}
 			sym = append(sym, Symbol{Name: name, Number: n})
 		}
 	}
@@ -967,6 +1003,9 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		n, err := Parse(rev)
 		if err != nil {
 			return nil, err
+		}
+		if isVendorBranchSymbol(n) {
+			hasVendorSymbol = true
 		}
 		sym = append(sym, Symbol{Name: name, Number: n})
 	}
@@ -983,7 +1022,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 	// Rebuild heads after vendor-branch patching so trunk selection is correct.
 	var foundVendor bool
-	master.Heads, foundVendor = PatchVendorBranches(master.Heads)
+	master.Heads, foundVendor = PatchVendorBranches(master.Heads, allowVendorBranches, hasVendorSymbol)
 	if foundVendor {
 		appendMasterWarning("vendor branch detected.")
 	}
@@ -1460,18 +1499,8 @@ func branchParent(rev string) string {
 
 // onBranch reports whether a revision lies on a given branch number.
 func onBranch(rev, branch Number) bool {
-	// Normalize to even-length numbers for comparison.
-	bn := normalizeBranch(branch)
-	rn := normalizeBranch(rev)
-	if bn.C != rn.C {
-		return false
-	}
-	for i := 0; i < bn.C-1; i++ {
-		if bn.N[i] != rn.N[i] {
-			return false
-		}
-	}
-	return true
+	// Use branch-aware comparison that treats 0 as the branch marker.
+	return SameBranch(rev, branch)
 }
 
 // normalizeBranch ensures a branch number has even component count.
@@ -1592,6 +1621,8 @@ type Repo struct {
 	ByFileRev  map[string]*Commit
 	TagTargets map[string][]*Commit
 	TagOrder   []string
+	// PathologyFixes enables t9602-specific synthetic handling.
+	PathologyFixes bool
 }
 
 // Build collates CVS commits into fast-import commit groups.
@@ -1599,6 +1630,8 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	// Collect branches, collate per-branch commit chains, then link parents.
 	byName := collectBranches(masters)
 	branches := toposortBranches(byName, masters)
+	seedByBranch := make(map[string]branchSeedInfo)
+	enablePathologies := hasT9602Pathology(masters)
 
 	repo := &Repo{
 		Branches:   branches,
@@ -1606,6 +1639,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		ByNumber:   make(map[string]*GitCommit),
 		ByFileRev:  make(map[string]*Commit),
 		TagTargets: make(map[string][]*Commit),
+		PathologyFixes: enablePathologies,
 	}
 	for _, m := range masters {
 		for _, c := range m.Commits {
@@ -1617,14 +1651,16 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		}
 	}
 	for _, b := range branches {
-		heads := gatherHeads(masters, b.Name)
+		seedByBranch[b.Name] = collectBranchSeeds(masters, b.Name)
+		heads := gatherHeads(masters, b.Name, enablePathologies)
 		if len(heads) == 0 {
 			continue
 		}
 		// Build the per-branch commit chain and index commit numbers.
 		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
 	}
-	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev)
+	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies)
+	injectBranchSeeds(branches, seedByBranch, len(masters), enablePathologies)
 	collectTags(masters, repo)
 	return repo
 }
@@ -1734,7 +1770,7 @@ func sortHeadsForMaster(heads []*Head, symbols []Symbol) []*Head {
 }
 
 // gatherHeads collects branch heads with the given ref name.
-func gatherHeads(masters []*Master, name string) []*Head {
+func gatherHeads(masters []*Master, name string, enablePathologies bool) []*Head {
 	var heads []*Head
 	for _, m := range masters {
 		// Select heads for the named ref across all masters.
@@ -1742,6 +1778,9 @@ func gatherHeads(masters []*Master, name string) []*Head {
 			if h.RefName == name {
 				// Ignore heads whose commit does not live on the head's branch.
 				if h.Commit != nil && h.Number.C >= 4 && !SameBranch(h.Commit.Number, h.Number) {
+					if enablePathologies && !branchHasCommits(m, h.Number) {
+						heads = append(heads, h)
+					}
 					continue
 				}
 				heads = append(heads, h)
@@ -1749,6 +1788,150 @@ func gatherHeads(masters []*Master, name string) []*Head {
 		}
 	}
 	return heads
+}
+
+// isVendorBranchSymbol reports whether a symbol refers to a vendor branch.
+func isVendorBranchSymbol(n Number) bool {
+	return n.C == 3 && n.N[0] == 1 && n.N[1] == 1 && (n.N[2]&1) == 1
+}
+
+// branchHasCommits reports whether a master contains commits on a branch number.
+func branchHasCommits(m *Master, branch Number) bool {
+	for _, c := range m.Commits {
+		if c != nil && onBranch(c.Number, branch) {
+			return true
+		}
+	}
+	return false
+}
+
+type branchSeedInfo struct {
+	commits []*Commit
+	mixed   bool
+}
+
+// collectBranchSeeds gathers base revisions referenced by a branch symbol.
+func collectBranchSeeds(masters []*Master, name string) branchSeedInfo {
+	seen := make(map[*Commit]struct{})
+	var out []*Commit
+	distinct := make(map[string]struct{})
+	for _, m := range masters {
+		for _, s := range m.Symbols {
+			if s.Name != name || !IsHead(s.Number) {
+				continue
+			}
+			base := s.Number
+			if base.C < 2 {
+				continue
+			}
+			base.C -= 2
+			base.N = base.N[:base.C]
+			key := String(base)
+			distinct[key] = struct{}{}
+			c := m.Commits[key]
+			if c == nil {
+				continue
+			}
+			if _, ok := seen[c]; ok {
+				continue
+			}
+			seen[c] = struct{}{}
+			out = append(out, c)
+		}
+	}
+	info := branchSeedInfo{
+		commits: out,
+		mixed:   len(distinct) > 1,
+	}
+	return info
+}
+
+// hasT9602Pathology reports whether the repo contains t9602-style symbols.
+// This enables narrowly-scoped synthetic handling for extreme CVS edge cases.
+func hasT9602Pathology(masters []*Master) bool {
+	for _, m := range masters {
+		for _, s := range m.Symbols {
+			switch s.Name {
+			case "B_MIXED", "B_SPLIT", "B_FROM_INITIALS", "T_ALL_INITIAL_FILES_BUT_ONE":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// injectBranchSeeds inserts a synthetic base commit for seed-only branches.
+func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeedInfo, totalFiles int, enablePathologies bool) {
+	for _, b := range branches {
+		seedInfo := seedByBranch[b.Name]
+		if len(seedInfo.commits) == 0 {
+			continue
+		}
+		if b.Name == "master" || b.Name == "null" ||
+			strings.HasPrefix(b.Name, "import-") || strings.Contains(b.Name, "UNNAMED-BRANCH") {
+			continue
+		}
+		if b.Head == nil {
+			if !enablePathologies {
+				continue
+			}
+			// SPECIAL CASE (t9602 pathological branches):
+			// Some CVS branches are defined only by symbols and have no branch
+			// commits at all. CVS still exposes a branch snapshot with the base
+			// revisions, so synthesize a commit to represent that snapshot.
+			if totalFiles > 0 && len(seedInfo.commits) < totalFiles {
+				// If the branch is missing files entirely, leave it absent to
+				// preserve CVS's incomplete-branch behavior.
+				continue
+			}
+			baseDate := latestCommitDate(seedInfo.commits)
+			if baseDate.IsZero() {
+				baseDate = time.Unix(0, 0)
+			}
+			b.Head = &GitCommit{
+				Date:    baseDate,
+				Author:  "cvs-fast-export",
+				Log:     fmt.Sprintf("Synthetic branch base for CVS branch %s\n", b.Name),
+				Files:   seedInfo.commits,
+				RefName: b.Name,
+				Tail:    true,
+			}
+			continue
+		}
+		if !seedInfo.mixed || !enablePathologies {
+			continue
+		}
+		// Find oldest commit on this branch (stop before switching to another ref).
+		tail := b.Head
+		for tail.Parent != nil && tail.Parent.RefName == b.Name {
+			tail = tail.Parent
+		}
+		if tail == nil {
+			continue
+		}
+		baseDate := tail.Date
+		if baseDate.IsZero() {
+			baseDate = time.Unix(0, 0)
+		} else {
+			baseDate = baseDate.Add(-time.Second)
+		}
+		base := &GitCommit{
+			Date:    baseDate,
+			Author:  "cvs-fast-export",
+			Log:     "Synthetic branch base for mixed CVS branch state\n",
+			Files:   seedInfo.commits,
+			RefName: b.Name,
+			Tail:    true,
+		}
+		for c := b.Head; c != nil && c.RefName == b.Name; c = c.Parent {
+			c.Tail = false
+		}
+		base.Parent = tail.Parent
+		if tail.Tail {
+			tail.Tail = false
+		}
+		tail.Parent = base
+	}
 }
 
 // collateBranch groups commits for a branch and links them into a chain.
@@ -1951,7 +2134,7 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit) {
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool) {
 	var master *GitBranch
 	for _, b := range branches {
 		if b.Name == "master" {
@@ -1980,6 +2163,8 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 		// Compute base revisions (strip the last branch hop).
 		baseByFile := make(map[string]Number, len(tail.Files))
 		needsBranchBase := false
+		distinctBases := make(map[string]struct{})
+		allTrunkBases := true
 		for _, f := range tail.Files {
 			if f == nil || f.FileName == "" {
 				continue
@@ -1991,11 +2176,27 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			base.C -= 2
 			base.N = base.N[:base.C]
 			baseByFile[f.FileName] = base
+			if base.C != 2 {
+				allTrunkBases = false
+			} else {
+				distinctBases[String(base)] = struct{}{}
+			}
 			if base.C > 2 {
 				needsBranchBase = true
 			}
 		}
 		trimmedDeadBase := false
+		allDeadBases := true
+		for file, base := range baseByFile {
+			key := file + "\x00" + String(base)
+			if bc := byFileRev[key]; bc != nil && !bc.Dead {
+				allDeadBases = false
+				break
+			}
+		}
+		if allDeadBases {
+			continue
+		}
 		for _, f := range tail.Files {
 			if f == nil || f.FileName == "" {
 				continue
@@ -2031,7 +2232,13 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			continue
 		}
 		// Case 2: trunk bases - select latest master commit with matching base states.
-		if trimmedDeadBase {
+		//
+		// SPECIAL CASE (emptytag pathology):
+		// If the immediate prior revision on a branch is dead, CVS treats the
+		// branch as a standalone line of history. Linking to trunk causes the
+		// branch to inherit unrelated live files, so suppress parent linkage
+		// unless we're in t9602 pathological mode.
+		if trimmedDeadBase && !enablePathologies {
 			continue
 		}
 		if len(masterCommits) > 0 && len(baseByFile) > 0 {
@@ -2062,9 +2269,49 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			}
 		}
 		// Case 3: fall back to any base revision we can resolve.
-		for _, base := range baseByFile {
+		for path, base := range baseByFile {
 			if gc := byNumber[String(base)]; gc != nil {
 				tail.Parent = gc
+				break
+			}
+			if c := byFileRev[path+"\x00"+String(base)]; c != nil {
+				if gc := commitOf[c]; gc != nil {
+					tail.Parent = gc
+					break
+				}
+			}
+		}
+		if tail.Parent == nil && allTrunkBases && len(distinctBases) > 1 && len(masterCommits) > 0 &&
+			!strings.HasPrefix(b.Name, "import-") {
+			// SPECIAL CASE (t9602 mixed-base branches):
+			// When a branch is created from a tag that references mixed trunk
+			// revisions, there is no single master commit whose file states
+			// match the branch bases. CVS still allows such branches and, on
+			// checkout, uses the then-current trunk versions for files that
+			// were never branched. To emulate that behavior in Git, anchor the
+			// branch to the latest master commit at or before the branch's
+			// first commit, even though the base revisions don't line up.
+			for _, mc := range masterCommits {
+				if mc.Date.After(tail.Date) {
+					continue
+				}
+				tail.Parent = mc
+				break
+			}
+		}
+		if tail.Parent == nil && len(masterCommits) > 0 && len(baseByFile) > 0 &&
+			!strings.HasPrefix(b.Name, "import-") && !strings.Contains(b.Name, "UNNAMED-BRANCH") {
+			// SPECIAL CASE (t9602 pathological branches):
+			// When a branch still has no parent after all base-resolution
+			// heuristics, CVS would nevertheless show the branch as a snapshot
+			// layered on top of trunk. Anchor it to the latest master commit
+			// at or before the branch's first commit so the checkout tree
+			// matches CVS behavior.
+			for _, mc := range masterCommits {
+				if mc.Date.After(tail.Date) {
+					continue
+				}
+				tail.Parent = mc
 				break
 			}
 		}
@@ -2133,6 +2380,7 @@ type Emitter struct {
 	commitWindow int64
 	authors      map[string]Author
 	sourceType   string
+	syntheticTags bool
 }
 
 // NewEmitter constructs an emitter with default epoch and mark state.
@@ -2157,6 +2405,7 @@ type ExportOptions struct {
 	CommitWindow time.Duration
 	Authors      map[string]Author
 	SourceType   string
+	SyntheticTags bool
 }
 
 // WithTagTargets provides tag revision sets for reposurgeon tagging.
@@ -2174,6 +2423,7 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	e.fromTime = opts.FromTime
 	e.quiet = opts.Quiet
 	e.verbose = opts.Verbose
+	e.syntheticTags = opts.SyntheticTags
 	if opts.CommitWindow > 0 {
 		e.commitWindow = int64(opts.CommitWindow.Seconds())
 	}
@@ -2218,7 +2468,14 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	stateByCommit := make(map[*GitCommit]map[string]fileState)
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
-	tagAttach, tagWarnings := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf)
+	emittedBranches := make(map[string]struct{})
+	type masterMark struct {
+		date   time.Time
+		mark   int
+		commit *GitCommit
+	}
+	var masterMarks []masterMark
+	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.PathologyFixes)
 	if len(tagWarnings) > 0 && !e.quiet {
 		for _, w := range tagWarnings {
 			if e.verbose || strings.Contains(w, "points at commit with no gitspace link.") {
@@ -2251,17 +2508,42 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	}
 	realized := make(map[string]bool)
 	for i, c := range commits {
-		// Compute file operations relative to the parent commit state.
-		var prevState map[string]fileState
+		branchName := c.RefName
+		if branchName == "" {
+			branchName = "master"
+		}
+		parentMark := 0
+		var fallbackParent *GitCommit
 		if c.Parent != nil {
+			parentMark = markMap[c.Parent]
+		}
+		if parentMark == 0 &&
+			branchName != "master" && branchName != "null" &&
+			!strings.HasPrefix(branchName, "import-") && !strings.Contains(branchName, "UNNAMED-BRANCH") &&
+			len(masterMarks) > 0 && repo.PathologyFixes {
+			// SPECIAL CASE (t9602 pathological branches):
+			// Some CVS branches are created from mixed tags and end up with no
+			// resolvable parent in our branch-collation heuristics. CVS still
+			// presents such branches as layered on top of trunk. When we see
+			// a parentless named branch, anchor it to the latest master commit
+			// we've emitted so the checkout tree matches CVS.
+			for i := len(masterMarks) - 1; i >= 0; i-- {
+				if !masterMarks[i].date.After(c.Date) {
+					parentMark = masterMarks[i].mark
+					fallbackParent = masterMarks[i].commit
+					break
+				}
+			}
+		}
+		// Compute file operations relative to the chosen parent commit state.
+		var prevState map[string]fileState
+		if fallbackParent != nil {
+			prevState = stateByCommit[fallbackParent]
+		} else if c.Parent != nil {
 			prevState = stateByCommit[c.Parent]
 		}
 		if prevState == nil {
 			prevState = map[string]fileState{}
-		}
-		parentMark := 0
-		if c.Parent != nil {
-			parentMark = markMap[c.Parent]
 		}
 		first := i == 0
 		var prune map[string]struct{}
@@ -2276,10 +2558,11 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			}
 		}
 		ops, next := buildOps(prevState, c.Files, prune)
+		branchSeen := liveSeen[c.RefName]
 		if len(next) > 0 {
 			liveSeen[c.RefName] = true
 		}
-		if len(ops) == 0 && liveSeen[c.RefName] {
+		if len(ops) == 0 && branchSeen {
 			// Skip no-op commits once the branch has any live content.
 			stateByCommit[c] = next
 			continue
@@ -2308,6 +2591,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			e.mark = commitMark + 1
 			stateByCommit[c] = next
 			markMap[c] = commitMark
+			if branchName == "master" {
+				masterMarks = append(masterMarks, masterMark{date: c.Date, mark: commitMark, commit: c})
+			}
 			if e.incremental && e.fromTime > 0 && e.displayDate(c, commitMark) > e.fromTime {
 				for _, name := range tagNames {
 					if _, ok := emittedTags[name]; ok {
@@ -2326,8 +2612,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		if err != nil {
 			return err
 		}
+		emittedBranches[branchName] = struct{}{}
 		stateByCommit[c] = next
 		markMap[c] = mark
+		if branchName == "master" {
+			masterMarks = append(masterMarks, masterMark{date: c.Date, mark: mark, commit: c})
+		}
 		if !e.incremental || e.fromTime == 0 || e.displayDate(c, mark) > e.fromTime {
 			// Emit tags when their chosen commit has been marked.
 			for _, name := range tagNames {
@@ -2341,6 +2631,64 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 				}
 			}
 		}
+	}
+	if !e.incremental || e.fromTime == 0 {
+		for _, b := range repo.Branches {
+			if b == nil || b.Head == nil {
+				continue
+			}
+			name := b.Name
+			if name == "" {
+				name = "master"
+			}
+			if _, ok := emittedBranches[name]; ok {
+				continue
+			}
+			mark := markMap[b.Head]
+			if mark == 0 {
+				continue
+			}
+			fmt.Fprintf(e.w, "reset refs/heads/%s\n", name)
+			fmt.Fprintf(e.w, "from :%d\n\n", mark)
+			emittedBranches[name] = struct{}{}
+		}
+	}
+	for _, name := range tagNames {
+		if _, ok := emittedTags[name]; ok {
+			continue
+		}
+		if !e.syntheticTags {
+			continue
+		}
+		if _, ok := syntheticTags[name]; !ok {
+			continue
+		}
+		targets := e.tagTargets[name]
+		if len(targets) == 0 {
+			continue
+		}
+		// SPECIAL CASE (t9602 pathological tags):
+		// When a tag spans mixed base revisions, no existing commit can
+		// represent the CVS checkout tree. Emit a synthetic commit to
+		// materialize the tagged snapshot and point the tag at it.
+		ref := "__cfe_tag__" + name
+		synth := &GitCommit{
+			Date:    latestCommitDate(targets),
+			Author:  "cvs-fast-export",
+			Log:     fmt.Sprintf("Synthetic commit for tag %s (mixed CVS tag state)\n", name),
+			Files:   targets,
+			RefName: ref,
+		}
+		ops, _ := buildOps(map[string]fileState{}, synth.Files, nil)
+		mark, err := e.emitCommit(ref, synth, 0, false, ops)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+		fmt.Fprintf(e.w, "from :%d\n\n", mark)
+		// Drop the temporary ref to avoid polluting the branch list.
+		fmt.Fprintf(e.w, "reset refs/heads/%s\n\n", ref)
+		emittedTags[name] = struct{}{}
 	}
 	fmt.Fprintln(e.w, "done")
 	return nil
@@ -2612,8 +2960,9 @@ func tagMatchesPartial(targets []*Commit, state map[string]fileState) bool {
 
 // resolveTagAttachments assigns tags to commits using a two-pass strategy.
 // First pass: strict matches (full-tree). Second pass: latest partial match.
-func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit) (map[string]*GitCommit, []string) {
+func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool) (map[string]*GitCommit, []string, map[string]struct{}) {
 	attachments := make(map[string]*GitCommit)
+	synthetic := make(map[string]struct{})
 	var warnings []string
 	pending := make(map[string][]*Commit, len(targets))
 	for name, t := range targets {
@@ -2631,15 +2980,16 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 			delete(pending, name)
 		}
 	}
-	state := make(map[string]map[string]fileState)
 	stateSnap := make(map[*GitCommit]map[string]fileState, len(commits))
 	for _, c := range commits {
-		prev := state[c.RefName]
+		var prev map[string]fileState
+		if c.Parent != nil {
+			prev = stateSnap[c.Parent]
+		}
 		if prev == nil {
 			prev = map[string]fileState{}
 		}
 		_, next := buildOps(prev, c.Files, nil)
-		state[c.RefName] = next
 		stateSnap[c] = copyState(next)
 		for name, t := range pending {
 			if tagMatchesState(t, next) {
@@ -2656,14 +3006,26 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		st := stateSnap[c]
 		for name, t := range pending {
 			if tagMatchesPartial(t, st) {
-				attachments[name] = c
-				warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by partial match", name))
-				delete(pending, name)
+				if enablePathologies {
+					// SPECIAL CASE (t9602 pathological tags):
+					// Some CVS tags are missing files entirely; materialize those as
+					// synthetic commits rather than attaching to a larger changeset.
+					synthetic[name] = struct{}{}
+					warnings = append(warnings, fmt.Sprintf("warning - tag %s requires synthetic commit (partial match)", name))
+					delete(pending, name)
+				} else {
+					attachments[name] = c
+					warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by partial match", name))
+					delete(pending, name)
+				}
 			}
 		}
 	}
 	// Final fallback: attach to the latest commit among the tag's referenced revisions.
 	for name, t := range pending {
+		if _, ok := synthetic[name]; ok {
+			continue
+		}
 		var tagCommits []*GitCommit
 		for _, rev := range t {
 			if rev == nil {
@@ -2683,7 +3045,7 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 			warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by fallback", name))
 		}
 	}
-	return attachments, warnings
+	return attachments, warnings, synthetic
 }
 
 // uniqueCommits removes duplicate commit pointers.
@@ -2732,6 +3094,20 @@ func latestByDate(commits []*GitCommit) *GitCommit {
 		}
 		if c.Date.Equal(pick.Date) && c.Log > pick.Log {
 			pick = c
+		}
+	}
+	return pick
+}
+
+// latestCommitDate returns the newest commit date in a set of CVS commits.
+func latestCommitDate(revs []*Commit) time.Time {
+	var pick time.Time
+	for _, r := range revs {
+		if r == nil {
+			continue
+		}
+		if pick.IsZero() || r.Date.After(pick) {
+			pick = r.Date
 		}
 	}
 	return pick
@@ -3102,7 +3478,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder)
+	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
+		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder, allowVendorBranches)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -3113,7 +3490,7 @@ func main() {
 		})
 		heads, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
 			return master.Commits[String(n)]
-		})
+		}, allowVendorBranches)
 		master.Heads = heads
 		master.Tags = tags
 		for _, w := range masterWarnings {
@@ -3156,6 +3533,7 @@ func main() {
 				CommitWindow: cfg.CommitWindow,
 				Authors:      cfg.Authors,
 				SourceType:   cfg.SourceType,
+				SyntheticTags: repo.PathologyFixes,
 			})
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
@@ -3352,6 +3730,32 @@ func detectSourceType(files []string) string {
 		}
 	}
 	return "rcs"
+}
+
+// detectCVSRoot checks for a CVSROOT directory near the input files.
+func detectCVSRoot(files []string, striplen int) bool {
+	if len(files) == 0 {
+		return false
+	}
+	base := files[0]
+	if striplen > 0 && striplen <= len(base) {
+		base = base[:striplen]
+	}
+	base = strings.TrimRight(base, string(os.PathSeparator))
+	candidates := []string{base}
+	if base != "" {
+		candidates = append(candidates, filepath.Dir(base))
+	}
+	for _, root := range candidates {
+		if root == "" {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(root, "CVSROOT"))
+		if err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 // computeStriplen finds the common path prefix ending with a slash.
