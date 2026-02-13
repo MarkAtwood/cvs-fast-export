@@ -2,6 +2,7 @@
 
 Repository head::
    Code ported to Golang; there will be no more heap corruption.
+   No more branch cycle errors or stack-smashing.
    cvsconvert now has a -s option that passes in a strip prefix.
    Improved fidelity in edge cases of assigning CVS tags to commits.
    Length of revision numbers and count of branches is no longer limited.
