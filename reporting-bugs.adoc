@@ -11,70 +11,6 @@ These are relatively simple to fix.  Specify your build environment:
 OS, compiler version, and platform.  Include a transcript of the compiler
 errors.
 
-== Stack-smashing errors
-
-If you get a crash message that says
-
-------------------------------------------
-*** stack smashing detected ***: terminated
-------------------------------------------
-
-you probably have revision identifiers with more branch elements than
-a stock build of cvs-fast-export can handle.  The limit is set by the
-symbol CVS_MAX_BRANCHWIDTH in cvs.h and is normally 10. Try increasing
-it.
-
-The reason the default isn't higher is that increasing this limit
-blows up the program's working-set size. You'll know you've pushed it
-too far if the program OOMs.
-
-== Core dumps
-
-If cvs-fast-export core dumps on you, try the same invocation with -t
-0 to force it to run single-threaded. It is fairly likely you will get
-a message telling you you have overrun one of the hard limits in
-cvs.h. If this happens, build from source with the limit raised.
-
-== Branch cycle errors
-
-Sorry, these are a hard fail.  These errors are rare and mysterious.
-If you stumble over one, none of your options are good.
-
-The branch-cycle error is a symptom of some problem deep in the core
-clique-resolution logic in cvs-fast-export, and unfortunately nobody
-actually understands that code. Yes, even the person who originally
-wrote it doesn't. Until that changes, there are some limitations that
-can't be fixed.  Whatever causes the "branch cycle error" is the worst
-of these.
-
-Here are the possibilities:
-
-1. Remove one of the masters involved in the cycle.  This is probably
-the right thing to do if one of them is an Attic file.
-+
-A master goes to an Attic directory when the file it controls is
-deleted. CVS's data representation for deletions is brittle and
-its implementation has a history of buggy behavior in this area.  It 
-is possible that damaged or ambiguous metadata in the Attic file
-is the cause of error.
-+
-By definition, deleting an Attic master cannot affect the content at
-the head revision. But deleting it removes the entire past history
-of whatever file it controls.
-
-2. You may be able to convert with cvs2git.
-+
-cvs-fast-export has many advantages over cvs2git. It converts
-.cvsignore files, it sanity-checks tag names, it doesn't generate
-superfluous TAG.FIXUP branches, it delivers an entire well-formed git
-stream that can be fed to git-fast-import directly (rather than two
-disconnected chunks that can't) and it is orders of magnitude faster.
-If you have a choice between these tools, cvs-fast-export will
-almost always do a better and faster job.
-+
-But, it has been reported that cv2git can sometimes break branch
-cycles.
-
 == Branch commits landing on trunk
 
 This is probably caused by past imports to a vendor branch.
@@ -105,6 +41,11 @@ and documentation as well.)
 
 == Other translation errors ==
 
+File a bug at https://gitlab.com/esr/cvs-fast-export/-/issues
+
+Attach a reproduder.  That is, a tar archive of a reduced version
+of your CVS repository.
+
 === Reduction ===
 
 First, reduce the test case to a minimal set of CVS files that will
@@ -127,34 +68,6 @@ errors as the original did (except for ignorable ones involving CVS
 keyword expansion, which will all go away when the file is
 skeletonized).  If it does not, try skeletonizing with -t instead
 to preserve non-sticky tags
-
-If you have a core dump that persists after a master has had cvsstrip
-applied, there is probably a garbled diff in the revision sequence
-somewhere.  Here's an example:
-
------
-@
-text
-@d7 1
-a7 1
-......
-d9 2
-a13 1
-@
------
-
-The last two lines are incorrect.  If they were replaced by three
-lines that are parallel to the earlier append command...
-
------
-a13 1
-humpty dumpty
-@
------
-
-...that would work.  CVS occasionally drops these broken diff sections
-in masters, but has an unknown interpretation rule (or possibly an
-outright bug) that masks them.
 
 Now try to make the skeletonized repository as small as possible by
 removing swathes of files from it, checking each time to make sure the
