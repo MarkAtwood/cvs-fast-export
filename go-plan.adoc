@@ -4206,6 +4206,8 @@ Here’s what the manual page currently claims that is not true for the Go versi
     progress output.
   -t threadcount: documented as threaded scheduler; Go ignores -t and runs single-threaded
     analysis.
+  -s strip prefix: documented as overriding common-prefix stripping; Go ignores -s and always
+    uses longest common prefix.
   -E / --embed-id: documented as embedding CVS revision IDs in commit messages; Go ignores -E and
     never embeds IDs.
   -g graph mode details: doc says -g dumps DOT, double -g tags +/|/-, and -r graphing avoids
@@ -4221,10 +4223,23 @@ Here’s what the manual page currently claims that is not true for the Go versi
 
 I removed the threadcount option verbiage.
 
-FIXME: Implement -E and -p.
 FIXME: implement -g -g and -g -r.
 FIXME: write regression tests for -g.
 FIXME: test branch_cycle_errorm, hang-1 and the Mozilla repo at untried
 FIXME: clear the buglist on Gitlab
 FIXME: Make PR for golang-rcs.
 
+Implement -p and -e options analogous to the C version.
+
+----
+  Implemented -p progress reporting and wired it through parsing, collation, and export, with
+  progress interruptions before warning output; -e already routes branches to refs/remotes/
+  <remote>/ and is used in emission.
+
+  Code changes are all in cvs-fast-export.go:
+
+  - Added progress state + printing helpers.
+  - -p/--progress now enables status output.
+  - Parsing loop, branch collation, and export now report progress.
+  - Warnings interrupt progress output to avoid overwriting.
+----

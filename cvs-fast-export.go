@@ -1593,6 +1593,7 @@ func parseSymbolTokens(s string) []string {
 type CollateOptions struct {
 	CommitTimeWindow time.Duration
 	TrustCommitIDs   bool
+	Progress         *progressState
 }
 
 // GitCommit groups CVS file revisions into a single fast-import commit.
@@ -1651,7 +1652,10 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 			repo.ByFileRev[key] = c
 		}
 	}
-	for _, b := range branches {
+	if opts.Progress != nil {
+		opts.Progress.Begin("Collating branches...", len(branches))
+	}
+	for i, b := range branches {
 		seedByBranch[b.Name] = collectBranchSeeds(masters, b.Name)
 		heads := gatherHeads(masters, b.Name, enablePathologies)
 		if len(heads) == 0 {
@@ -1659,6 +1663,12 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		}
 		// Build the per-branch commit chain and index commit numbers.
 		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
+		if opts.Progress != nil {
+			opts.Progress.Jump(i + 1)
+		}
+	}
+	if opts.Progress != nil {
+		opts.Progress.End("done")
 	}
 	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies)
 	injectBranchSeeds(branches, seedByBranch, len(masters), enablePathologies)
@@ -2385,6 +2395,7 @@ type Emitter struct {
 	syntheticTags bool
 	branchPrefix  string
 	revisionMap   io.Writer
+	progress      *progressState
 }
 
 // NewEmitter constructs an emitter with default epoch and mark state.
@@ -2415,6 +2426,7 @@ type ExportOptions struct {
 	BranchPrefix  string
 	RevisionMap   io.Writer
 	Warn          io.Writer
+	Progress      *progressState
 }
 
 // WithTagTargets provides tag revision sets for reposurgeon tagging.
@@ -2446,6 +2458,9 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	}
 	if opts.Warn != nil {
 		e.warn = opts.Warn
+	}
+	if opts.Progress != nil {
+		e.progress = opts.Progress
 	}
 	return e
 }
@@ -2495,6 +2510,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	var masterMarks []masterMark
 	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.PathologyFixes)
 	if len(tagWarnings) > 0 && !e.quiet {
+		if e.progress != nil {
+			e.progress.Interrupt()
+		}
 		for _, w := range tagWarnings {
 			if e.verbose || strings.Contains(w, "points at commit with no gitspace link.") {
 				fmt.Fprintf(e.warn, "cvs-fast-export: %s\n", w)
@@ -2525,6 +2543,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		tagNames = append(tagNames, extra...)
 	}
 	realized := make(map[string]bool)
+	if e.progress != nil {
+		e.progress.Begin("Exporting commits...", len(commits))
+	}
 	for i, c := range commits {
 		branchName := c.RefName
 		if branchName == "" {
@@ -2649,6 +2670,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 				}
 			}
 		}
+		if e.progress != nil {
+			e.progress.Jump(i + 1)
+		}
+	}
+	if e.progress != nil {
+		e.progress.End("done")
 	}
 	if !e.incremental || e.fromTime == 0 {
 		for _, b := range repo.Branches {
@@ -3484,6 +3511,7 @@ func main() {
 		}
 		defer revisionMap.Close()
 	}
+	progress := newProgress(cfg.Progress, os.Stderr)
 
 	if len(cfg.Files) == 0 {
 		// Read file list from stdin, as the C tool does.
@@ -3527,6 +3555,9 @@ func main() {
 
 	var masters []*Master
 	seenWarn := make(map[string]struct{})
+	if progress != nil {
+		progress.Begin("Parsing masters...", len(inputs))
+	}
 	for _, in := range inputs {
 		// Parse each RCS file and build the per-file master model.
 		rcsFile, symbolOrder, err := LoadFile(in.path)
@@ -3555,6 +3586,9 @@ func main() {
 			}
 			seenWarn[w] = struct{}{}
 			if !cfg.Quiet {
+				if progress != nil {
+					progress.Interrupt()
+				}
 				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
 			}
 		}
@@ -3567,12 +3601,19 @@ func main() {
 			dumpBranches(master)
 		}
 		masters = append(masters, master)
+		if progress != nil {
+			progress.Step()
+		}
+	}
+	if progress != nil {
+		progress.End("done, %d files", len(inputs))
 	}
 
 	// Collate commits across masters, then emit fast-import.
 	repo := Build(masters, CollateOptions{
 		CommitTimeWindow: cfg.CommitWindow,
 		TrustCommitIDs:   cfg.TrustCommitIDs,
+		Progress:         progress,
 	})
 
 	if cfg.ExecMode == execAuthors {
@@ -3606,6 +3647,7 @@ func main() {
 				BranchPrefix:  branchPrefix,
 				RevisionMap:   revisionMap,
 				Warn:          warnWriter,
+				Progress:      progress,
 			})
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
@@ -3613,6 +3655,9 @@ func main() {
 
 	// Warn if commitids are missing and skew could occur.
 	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
+		if progress != nil {
+			progress.Interrupt()
+		}
 		fmt.Fprintf(warnWriter, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
 	}
 
@@ -3644,6 +3689,7 @@ type config struct {
 	Reposurgeon     bool
 	Quiet           bool
 	Verbose         bool
+	Progress        bool
 	CommitWindow    time.Duration
 	Authors         map[string]Author
 	SourceType      string
@@ -3696,6 +3742,8 @@ func parseArgs(args []string) (config, error) {
 			cfg.ForceDates = true
 		case arg == "-r" || arg == "--reposurgeon":
 			cfg.Reposurgeon = true
+		case arg == "--progress":
+			cfg.Progress = true
 		case arg == "-w" || arg == "--commit-time-window":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
@@ -3755,7 +3803,11 @@ func parseArgs(args []string) (config, error) {
 		case arg == "-S" || arg == "--sizes":
 			cfg.ExecMode = execSizes
 		case arg == "-p", arg == "-E":
-			// flags without arguments (ignored for now)
+			if arg == "-p" {
+				cfg.Progress = true
+			} else {
+				// ignored for now
+			}
 		case arg == "-v":
 			cfg.Verbose = true
 		case arg == "-q":
@@ -4031,6 +4083,106 @@ func dumpBranches(m *Master) {
 			}
 		}
 		fmt.Fprintln(os.Stderr)
+	}
+}
+
+// progressState tracks load-status reporting when -p is enabled.
+type progressState struct {
+	enabled    bool
+	msg        string
+	count      int
+	max        int
+	start      time.Time
+	inProgress bool
+	out        io.Writer
+}
+
+func newProgress(enabled bool, out io.Writer) *progressState {
+	if !enabled {
+		return nil
+	}
+	if out == nil {
+		out = os.Stderr
+	}
+	return &progressState{enabled: true, out: out}
+}
+
+func (p *progressState) Begin(msg string, max int) {
+	if p == nil || !p.enabled {
+		return
+	}
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	p.msg = fmt.Sprintf("%s: %s", now, msg)
+	p.count = 0
+	p.max = max
+	p.inProgress = true
+	p.start = time.Now()
+	p.print(false, "")
+}
+
+func (p *progressState) Step() {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.inProgress = true
+	p.count++
+	p.print(false, "")
+}
+
+func (p *progressState) Jump(count int) {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.inProgress = true
+	p.count = count
+	p.print(false, "")
+}
+
+func (p *progressState) End(format string, args ...interface{}) {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.inProgress = false
+	p.max = p.count
+	msg := ""
+	if format != "" {
+		msg = fmt.Sprintf(format, args...)
+	}
+	p.print(true, msg)
+}
+
+func (p *progressState) Interrupt() {
+	if p == nil || !p.enabled {
+		return
+	}
+	if p.inProgress {
+		fmt.Fprint(p.out, "\n")
+		p.inProgress = false
+	}
+}
+
+func (p *progressState) print(newline bool, trailer string) {
+	if p == nil || !p.enabled {
+		return
+	}
+	switch {
+	case trailer != "":
+		fmt.Fprintf(p.out, "\r%s%s", p.msg, trailer)
+	case p.max > 0:
+		fmt.Fprintf(p.out, "\r%s%d of %d(%d%%)   ", p.msg, p.count, p.max, p.count*100/p.max)
+	case p.count > 0:
+		fmt.Fprintf(p.out, "\r%s%d", p.msg, p.count)
+	case p.count == p.max:
+		fmt.Fprintf(p.out, "\r%sdone ", p.msg)
+	default:
+		fmt.Fprintf(p.out, "\r%s", p.msg)
+	}
+	if newline {
+		elapsed := time.Since(p.start).Seconds()
+		fmt.Fprintf(p.out, " (%.3fsec)\n", elapsed)
+	}
+	if f, ok := p.out.(interface{ Flush() error }); ok {
+		_ = f.Flush()
 	}
 }
 
