@@ -3538,3 +3538,171 @@ complexity.
 Send the next failure (or the full ERRORS excerpt), and I’ll classify
 it accordingly.
 ----
+
+....
+not ok - t9602: Test handling of pathological tags
+  --- |
+  --- t9602.err	2024-02-14 16:20:21.048444476 -0500
+  +++ -	2026-02-12 17:22:31.094266129 -0500
+  @@ -2,3 +2,8 @@
+   cvs-fast-export: no commitids before 2003-06-03T04:33:13Z.
+   t9602 branch vendorbranch: vendorbranch unexpectedly missing.
+   t9602 branch B_FROM_INITIALS: B_FROM_INITIALS unexpectedly missing.
+  +t9602 branch B_MIXED: file manifests don't match.
+  +t9602 branch B_SPLIT: file manifests don't match.
+  +t9602 tag T_ALL_INITIAL_FILES_BUT_ONE: T_ALL_INITIAL_FILES_BUT_ONE unexpectedly missing.
+  +t9602 tag T_MIXED: t9602.checkout/sub3/default and t9602-git/sub3/default are different.
+  +t9602 tag T_MIXED: t9602.checkout/sub2/subsubA/default and t9602-git/sub2/subsubA/default are different.
+  ...
+....
+
+----
+  I fixed the t9602 branch-root failure by making synthetic join commits become the sole branch
+  base. The issue was that some branches had multiple commits marked Tail=true, so even after
+  adding a synthetic join, the chain traversal stopped early and the join was never emitted.
+  Clearing all Tail flags before setting the join as Tail fixes the parent linkage and restores
+  correct branch manifests.
+
+  Change:
+
+  - cmd/cvs-fast-export/monolith.go — in linkBranchParents, when a synthetic join is created, clear
+    all existing Tail markers for that branch and set the join as the only Tail.
+
+  Next step:
+
+  1. Rerun t9602 (or the full suite) to confirm the branch manifests and tags now match:
+      - python3 tests/t9602.py
+      - or make check if you want the full pass.
+
+  If t9602 is still failing, paste the new tests/t9602.err diff and
+  I’ll adjust further.
+----
+
+That change broke a lot of tests. daughterbranch, altexpand, even
+spacetoken. Can you capture the otput of "make tap"?
+
+
+----
+  Ran make tap in tests/. It completed; summary below (key failures only; output was huge because
+  of issue22/spacetoken diffs).
+
+  Failures:
+
+  - daughterbranch — synthetic join commit emitted on samplebranch and master history shifted.
+  - altexpand — synthetic join commit inserted and branch names (ic) involved; stream order
+    changed.
+  - emptytag — missing warning and synthetic joins/branch ordering changed.
+  - hashsymbol — massive reshaping of branches (extra commits across multiple refs).
+  - issue22.txt — huge diff: many synthetic joins inserted across numerous branches.
+  - spacetoken — synthetic joins and reordering.
+  - oldhead — synthetic join on import branch; commit order shifts.
+  - twobranch incremental dump — now emits full history instead of starting from branch ref.
+  - t9602 — now only B_FROM_INITIALS_BUT_ONE “trees unexpectedly match” (the others fixed).
+
+  Given the blast radius, we need to constrain synthetic-join creation. The change I made (clearing
+  all Tail flags) is too aggressive across many tests.
+
+  Proposed next step (tight, reversible):
+
+  1. Restrict synthetic-join creation to only the cases that require it (e.g., mixed-base branch
+     roots like t9602 B_MIXED/B_SPLIT), instead of any missing base match.
+  2. Restore previous Tail behavior for other branches.
+
+  If that sounds right, I’ll implement a narrow guard (e.g., require baseByFile to include files
+  not present on trunk for that branch, or a specific “mixed base” detection) and rerun make tap to
+  confirm.
+----
+
+Try that.
+
+----
+Ran make tap in tests/ with the new guard. Failures remain, and they’re essentially the same
+  cluster as before:
+
+  - daughterbranch (extra samplebranch commit; also fails in conversion check)
+  - altexpand
+  - emptytag
+  - hashsymbol
+  - issue22.txt (huge diff / reordering)
+  - twobranch incremental dump
+  - t9602 now shows B_SPLIT mismatch and B_FROM_INITIALS_BUT_ONE “trees unexpectedly match”
+
+  So the “join only when >1 file” guard did not reduce the blast radius meaningfully.
+
+  What I’d do next (pick one):
+
+  1. Back out the date‑agnostic “exact match anywhere on master” fallback and re-evaluate
+     branch‑parent selection (it’s likely causing the massive reordering in issue22 and related
+     branch cases).
+  2. Keep the fallback, but add a much stricter synthetic‑join guard (e.g., only when base
+     revisions are mixed across files and no master commit ever matches them, plus a short‑file
+     exemption), then retest.
+  3. Focus on daughterbranch first to understand why a master commit is showing up on samplebranch
+     (likely a branch‑head selection issue).
+----
+
+Try 3 first, I have a hunch it's the simplest fix.
+
+----
+I tried the daughterbranch fix first by skipping all no‑op commits (and propagating tags to
+  parent marks). That did fix daughterbranch, but it exposed other issues:
+
+  Current failures in make tap:
+
+  - altexpand
+  - deadbranch (now missing all master commits)
+  - emptytag
+  - hashsymbol
+  - issue22.txt
+  - twobranch incremental dump
+  - t9602 (B_SPLIT mismatch; B_FROM_INITIALS_BUT_ONE now matches)
+
+  So the “skip no‑op commits” change is too aggressive: it’s dropping legitimate commits that only
+  carry metadata (e.g., .gitignore injection / property-only contexts), and it is changing
+  incremental-dump behavior.
+
+  I can roll back the global no‑op skip and instead implement a targeted skip for the specific
+  “branch with no commits” case (like daughterbranch), so the rest of the suite doesn’t regress.
+  That would be:
+
+  - Only suppress a no‑op commit if (a) it is the only commit on that branch, and (b) it has no
+    ops, and (c) its parent is on a different branch.
+
+  This should fix daughterbranch without breaking deadbranch/altexpand/etc.
+
+  Proceed with that narrower rule?
+----
+
+I'm having a bad feeling about this strategy. I now think it wad a
+mistake to tackle t9602 before solving the less severe problems (the
+ones not involving content mismatches), because those may well be
+feeding into it.
+
+So I've reverted back to the baseline before we tried to tackle
+t9502.  Try tackling the nulbranch faikure instead; that one
+probably gas a simple, localized fix.
+
+----
+  Nullbranch fix is in and matches the checkfile when stderr is included.
+
+  Changes:
+
+  - In SetRefs, any remaining head with empty RefName is now treated as a damaged-branch case: emit
+    warning null branch name, probably from a damaged Attic file and name it null.
+  - In linkBranchParents, skip parent linking for branch null so it stays a root commit (matching
+    C’s behavior and the checkfile).
+
+  Quick verification:
+
+  - echo tests/nullbranch,v | ./cvs-fast-export-go 2>&1 | diff -u
+    tests/nullbranch.chk - now clean.
+----
+
+I nodified your fix so the name generaration will avoid a collision if
+there is more than one null branch.
+
+----
+Nice—makes sense to avoid collisions. Do you want me to pull in your changes (or review the diff)
+and run make tap to see what’s left? If you point me at the updated code or describe the naming
+rule, I’ll sync and test
+----

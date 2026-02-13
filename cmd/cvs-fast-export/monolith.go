@@ -493,6 +493,8 @@ type Version struct {
 	Branches []Number
 }
 
+var nullCounter int = 0
+
 // SetRefs assigns branch heads and tags from CVS symbols, synthesizing
 // missing branch names while discarding unreachable dead branches.
 func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit) ([]*Head, []Tag) {
@@ -548,6 +550,16 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit)
 	heads = fixUnnamedHeads(heads)
 	heads = discardZeroHeads(heads)
 	linkParents(heads)
+	for _, h := range heads {
+		if h.RefName == "" {
+			appendMasterWarning("null branch name, probably from a damaged Attic file")
+			h.RefName = "null"
+			if nullCounter > 0 {
+				h.RefName += fmt.Sprintf("%d", nullCounter)
+			}
+			nullCounter += 1
+		}
+	}
 	heads = pruneUnnamedBranches(heads)
 	return heads, tags
 }
@@ -1787,15 +1799,15 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			})
 			var prev *GitCommit
 			for _, c := range noID {
-			if prev != nil && commitsMatch(prev, c, opts) {
-				prev.Files = append(prev.Files, c)
-				if c.Tail {
-					prev.Tail = true
+				if prev != nil && commitsMatch(prev, c, opts) {
+					prev.Files = append(prev.Files, c)
+					if c.Tail {
+						prev.Tail = true
+					}
+					commitOf[c] = prev
+					byNumber[String(c.Number)] = prev
+					continue
 				}
-				commitOf[c] = prev
-				byNumber[String(c.Number)] = prev
-				continue
-			}
 				g := &GitCommit{
 					Date:    c.Date,
 					Author:  c.Author,
@@ -1929,7 +1941,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit) {
 		}
 	}
 	for _, b := range branches {
-		if b.Name == "master" || b.Head == nil {
+		if b.Name == "master" || b.Name == "null" || b.Head == nil {
 			continue
 		}
 		// Find oldest commit on branch.
@@ -2606,6 +2618,7 @@ func latestByDate(commits []*GitCommit) *GitCommit {
 	}
 	return pick
 }
+
 // copyState clones a fileState map.
 func copyState(in map[string]fileState) map[string]fileState {
 	out := make(map[string]fileState, len(in))
