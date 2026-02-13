@@ -44,8 +44,8 @@ VERSION=$(shell sed -n <NEWS.adoc '/::/s/^\([0-9][^:]*\).*/\1/p' | head -1)
 all: cvs-fast-export-go man html
 
 GOFLAGS=-ldflags='-X main.version=$(VERSION)'
-cvs-fast-export-go: cmd/cvs-fast-export/monolith.go go.mod go.sum
-	go build $(GOFLAGS) -o cvs-fast-export-go ./cmd/cvs-fast-export
+cvs-fast-export-go: cvs-fast-export.go go.mod go.sum
+	go build $(GOFLAGS) -o cvs-fast-export-go cvs-fast-export.go
 
 rcs-refresh:
 	go get github.com/arran4/golang-rcs
