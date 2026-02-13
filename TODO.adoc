@@ -58,10 +58,8 @@ This didn't work with the old or new vendor branch code.
 
 Smaller items:
 
-FIXME: test branch_cycle_error, hang-1 and the Mozilla repo at untried
+FIXME: test hang-1 and the Mozilla repo at untried
 
 FIXME: clear the buglist on Gitlab
-
-FIXME: Make PR for golang-rcs.
 
 FIXME: concurrent reading of masters?
