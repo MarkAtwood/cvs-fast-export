@@ -4345,6 +4345,78 @@ runtine.NumCPU().
   - The parsing loop is now concurrent with a bounded semaphore and WaitGroup.
 ----
 
+In Build(), does the loop over Branches utate any shated state that
+wuld prevent it from being paralellized?
+
+----
+  Yes. The loop over branches in Build() mutates shared state that would race under parallel
+  execution:
+
+  - seedByBranch[b.Name] = … writes to a shared map.
+  - b.Head = collateBranch(...) mutates the shared branches slice elements.
+  - collateBranch writes into repo.CommitOf and repo.ByNumber (shared maps).
+  - Progress calls (opts.Progress.Jump) are shared state.
+
+  So it isn’t safe to parallelize as-is without adding synchronization or restructuring to collect
+  per-branch results and merge afterward.
+----
+
+Aren't the progress calls already concurrency-safe?
+
+----
+Partially. Jump (and Step/Interrupt) are now concurrency-safe because they take the mutex, but
+Begin and End still mutate fields without locking. So progress calls are not fully concurrency-
+safe yet, and even if they were, the loop still races on shared maps and branch structs
+----
+
+Begin and end aren't called inside this loop.
+
+----
+Correct — inside that loop it’s only Jump, which is now concurrency-safe. But that doesn’t
+address the other shared state mutations (seedByBranch, repo.CommitOf, repo.ByNumber, and
+b.Head). So the loop still isn’t safe to parallelize as-is.
+----
+
+
+Parallelize that loop, adding whatever locking is requred.  Limit the
+number of concurrent threads at any one time to 2 * runtine.NumCPU().
+
+----
+Done. The branch-collation loop in Build() now runs concurrently with a worker cap of 2 *
+  runtime.NumCPU(), using locking where needed.
+
+  Changes:
+
+  - Added a collateIndex struct with an internal mutex to guard writes to repo.CommitOf and
+    repo.ByNumber.
+  - Guarded seedByBranch updates with a mutex.
+  - Parallelized the loop with a semaphore + WaitGroup.
+  - Progress is driven by an atomic counter with Jump.
+
+  File changed:
+
+  - cvs-fast-export.go
+
+  If you want me to also preserve branch processing order for determinism (even while
+  parallelizing), say the word and I’ll add an ordered results merge.
+----
+
+Only preserve branch processing order if that's required to keep the
+order of commit and tag emission stable.
+
+----
+No. Emission order does not depend on the order that Build() processes branches:
+
+  - Commit emission order comes from collectCommits(repo), which walks repo.Branches in its
+    existing order (set earlier by toposortBranches) and then canonicalizes by topology/time. The
+    branch-processing loop doesn’t reorder repo.Branches.
+  - Tag emission order comes from collectTags(masters, repo), which depends on masters order, not
+    branch loop order.
+
+  So we don’t need to preserve branch loop ordering to keep commit/tag
+  emission stable.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

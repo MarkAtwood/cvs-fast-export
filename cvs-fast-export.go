@@ -1649,18 +1649,41 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.Begin("Collating branches...", len(branches))
 	}
-	for i, b := range branches {
-		seedByBranch[b.Name] = collectBranchSeeds(masters, b.Name)
-		heads := gatherHeads(masters, b.Name, enablePathologies)
-		if len(heads) == 0 {
-			continue
-		}
-		// Build the per-branch commit chain and index commit numbers.
-		b.Head = collateBranch(b.Name, heads, opts, repo.CommitOf, repo.ByNumber)
-		if opts.Progress != nil {
-			opts.Progress.Jump(i + 1)
-		}
+	maxWorkers := 2 * runtime.NumCPU()
+	if maxWorkers < 1 {
+		maxWorkers = 1
 	}
+	var progressCount int64
+	var seedMu sync.Mutex
+	index := &collateIndex{
+		commitOf: repo.CommitOf,
+		byNumber: repo.ByNumber,
+	}
+	sem := make(chan struct{}, maxWorkers)
+	var wg sync.WaitGroup
+	for _, b := range branches {
+		b := b
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			seed := collectBranchSeeds(masters, b.Name)
+			seedMu.Lock()
+			seedByBranch[b.Name] = seed
+			seedMu.Unlock()
+			heads := gatherHeads(masters, b.Name, enablePathologies)
+			if len(heads) > 0 {
+				// Build the per-branch commit chain and index commit numbers.
+				b.Head = collateBranch(b.Name, heads, opts, index)
+			}
+			if opts.Progress != nil {
+				count := atomic.AddInt64(&progressCount, 1)
+				opts.Progress.Jump(int(count))
+			}
+		}()
+	}
+	wg.Wait()
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 	}
@@ -1940,7 +1963,20 @@ func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeed
 }
 
 // collateBranch groups commits for a branch and links them into a chain.
-func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf map[*Commit]*GitCommit, byNumber map[string]*GitCommit) *GitCommit {
+type collateIndex struct {
+	commitOf map[*Commit]*GitCommit
+	byNumber map[string]*GitCommit
+	mu       sync.Mutex
+}
+
+func (ci *collateIndex) set(c *Commit, g *GitCommit) {
+	ci.mu.Lock()
+	ci.commitOf[c] = g
+	ci.byNumber[String(c.Number)] = g
+	ci.mu.Unlock()
+}
+
+func collateBranch(branch string, heads []*Head, opts CollateOptions, index *collateIndex) *GitCommit {
 	seen := make(map[*Commit]struct{})
 	var commits []*Commit
 	// Collect unique commits reachable from branch heads.
@@ -1996,8 +2032,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 					g.Date = c.Date
 				}
 			}
-			commitOf[c] = g
-			byNumber[String(c.Number)] = g
+			index.set(c, g)
 		}
 		// Second pass: coalesce no-commitid revisions via time window and metadata.
 		if len(noID) > 0 {
@@ -2017,8 +2052,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 					if c.Tail {
 						prev.Tail = true
 					}
-					commitOf[c] = prev
-					byNumber[String(c.Number)] = prev
+					index.set(c, prev)
 					continue
 				}
 				g := &GitCommit{
@@ -2030,8 +2064,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 				}
 				prev = g
 				order = append(order, g)
-				commitOf[c] = g
-				byNumber[String(c.Number)] = g
+				index.set(c, g)
 			}
 		}
 		// Order grouped commits chronologically and link parent pointers.
@@ -2068,7 +2101,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 	for _, c := range commits {
 		if prev != nil && commitsMatch(prev, c, opts) {
 			prev.Files = append(prev.Files, c)
-			commitOf[c] = prev
+			index.set(c, prev)
 			continue
 		}
 		g := &GitCommit{
@@ -2083,8 +2116,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, commitOf m
 			first = g
 		}
 		prev = g
-		commitOf[c] = g
-		byNumber[String(c.Number)] = g
+		index.set(c, g)
 	}
 	if first != nil {
 		first.Tail = true
