@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unsafe"
@@ -3938,6 +3939,7 @@ type progressState struct {
 	start      time.Time
 	inProgress bool
 	out        io.Writer
+	mu         sync.Mutex
 }
 
 func newProgress(enabled bool, out io.Writer) *progressState {
@@ -3963,22 +3965,40 @@ func (p *progressState) Begin(msg string, max int) {
 	p.print(false, "")
 }
 
+func (p *progressState) Lock() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+}
+
+func (p *progressState) Unlock() {
+	if p == nil {
+		return
+	}
+	p.mu.Unlock()
+}
+
 func (p *progressState) Step() {
 	if p == nil || !p.enabled {
 		return
 	}
+	p.Lock()
+	defer p.Unlock()
 	p.inProgress = true
 	p.count++
-	p.print(false, "")
+	p.printLocked(false, "")
 }
 
 func (p *progressState) Jump(count int) {
 	if p == nil || !p.enabled {
 		return
 	}
+	p.Lock()
+	defer p.Unlock()
 	p.inProgress = true
 	p.count = count
-	p.print(false, "")
+	p.printLocked(false, "")
 }
 
 func (p *progressState) End(format string, args ...interface{}) {
@@ -3998,6 +4018,8 @@ func (p *progressState) Interrupt() {
 	if p == nil || !p.enabled {
 		return
 	}
+	p.Lock()
+	defer p.Unlock()
 	if p.inProgress {
 		fmt.Fprint(p.out, "\n")
 		p.inProgress = false
@@ -4005,6 +4027,15 @@ func (p *progressState) Interrupt() {
 }
 
 func (p *progressState) print(newline bool, trailer string) {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.Lock()
+	defer p.Unlock()
+	p.printLocked(newline, trailer)
+}
+
+func (p *progressState) printLocked(newline bool, trailer string) {
 	if p == nil || !p.enabled {
 		return
 	}
@@ -4361,12 +4392,18 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		if progress != nil {
+			progress.Lock()
+		}
 		if cfg.DumpHeads {
 			dumpHeads(master)
 			dumpChains(master)
 		}
 		if cfg.DumpBranches {
 			dumpBranches(master)
+		}
+		if progress != nil {
+			progress.Unlock()
 		}
 		masters = append(masters, master)
 		if progress != nil {
