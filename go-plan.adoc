@@ -4306,6 +4306,17 @@ ahd returns a Naster structure.
   the word.
 ----
 
+The dataflow in main() is unecessarily complicated.  Add a SortName
+member to Master and abolish the InputFile structure; instead, fill the
+SortName member with the path's export name in pathToMaster abd sort
+on that member
+
+----
+Done. I added SortName to Master, removed the inputFile struct, and now set SortName in
+pathToMaster. Sorting happens on master.SortName immediately before
+Build.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

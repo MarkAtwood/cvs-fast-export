@@ -859,6 +859,7 @@ func removeHeadsWithCommit(heads []*Head, commit *Commit, keep *Head) []*Head {
 type Master struct {
 	Source   string
 	FileName string
+	SortName string
 	Heads    []*Head
 	Symbols  []Symbol
 	Tags     []Tag
@@ -1233,11 +1234,6 @@ func exportName(source string, striplen int) string {
 		cleaned = append(cleaned, part)
 	}
 	return strings.Join(cleaned, "/")
-}
-
-// ExportName is a public wrapper for exportName.
-func ExportName(source string, striplen int) string {
-	return exportName(source, striplen)
 }
 
 // fileopName applies .cvsignore to .gitignore mapping for output paths.
@@ -4303,11 +4299,7 @@ func main() {
 	cfg.SourceType = detectSourceType(cfg.Files)
 	striplen := computeStriplen(cfg.Files)
 
-	type inputFile struct {
-		path      string
-		rectified string
-	}
-	var inputs []inputFile
+	var inputPaths []string
 	for _, path := range cfg.Files {
 		if !cfg.Promiscuous {
 			if !strings.HasSuffix(path, ",v") {
@@ -4317,11 +4309,7 @@ func main() {
 				continue
 			}
 		}
-		// Precompute rectified names for stable sorting.
-		inputs = append(inputs, inputFile{
-			path:      path,
-			rectified: ExportName(path, striplen),
-		})
+		inputPaths = append(inputPaths, path)
 	}
 
 	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
@@ -4334,6 +4322,7 @@ func main() {
 		if err != nil {
 			return nil, err
 		}
+		master.SortName = exportName(path, striplen)
 		// Resolve branches and symbol refs.
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
 			return master.Commits[String(n)]
@@ -4346,18 +4335,14 @@ func main() {
 		return master, nil
 	}
 
-	type masterInput struct {
-		master    *Master
-		rectified string
-	}
-	var mastersByRectified []masterInput
+	var masters []*Master
 	seenWarn := make(map[string]struct{})
 	if progress != nil {
-		progress.Begin("Parsing masters...", len(inputs))
+		progress.Begin("Parsing masters...", len(inputPaths))
 	}
-	for _, in := range inputs {
+	for _, path := range inputPaths {
 		// Parse each RCS file and build the per-file master model.
-		master, err := pathToMaster(in.path)
+		master, err := pathToMaster(path)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -4382,26 +4367,19 @@ func main() {
 		if cfg.DumpBranches {
 			dumpBranches(master)
 		}
-		mastersByRectified = append(mastersByRectified, masterInput{
-			master:    master,
-			rectified: in.rectified,
-		})
+		masters = append(masters, master)
 		if progress != nil {
 			progress.Step()
 		}
 	}
 	if progress != nil {
-		progress.End("done, %d files", len(inputs))
+		progress.End("done, %d files", len(inputPaths))
 	}
 
 	// Collate commits across masters, then emit fast-import.
-	sort.Slice(mastersByRectified, func(i, j int) bool {
-		return PathDeepCompare(mastersByRectified[i].rectified, mastersByRectified[j].rectified) < 0
+	sort.Slice(masters, func(i, j int) bool {
+		return PathDeepCompare(masters[i].SortName, masters[j].SortName) < 0
 	})
-	masters := make([]*Master, 0, len(mastersByRectified))
-	for _, in := range mastersByRectified {
-		masters = append(masters, in.master)
-	}
 	repo := Build(masters, CollateOptions{
 		CommitTimeWindow: cfg.CommitWindow,
 		TrustCommitIDs:   cfg.TrustCommitIDs,
@@ -4446,7 +4424,7 @@ func main() {
 	}
 
 	// Warn if commitids are missing and skew could occur.
-	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
+	if skew := skewVulnerable(masters); skew != nil && len(inputPaths) > 1 && !cfg.ForceDates && !cfg.Quiet {
 		if progress != nil {
 			progress.Interrupt()
 		}
