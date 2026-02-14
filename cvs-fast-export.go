@@ -3479,191 +3479,6 @@ func gitignoreDataLen(text string) int {
 	return len(text) - escapes
 }
 
-// main executes the cvs-fast-export pipeline over the input masters.
-func main() {
-	cfg, err := parseArgs(os.Args[1:])
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if cfg.ExecMode == execSizes {
-		printSizes()
-		os.Exit(0)
-	}
-
-	warnWriter := io.Writer(os.Stderr)
-	var logFile *os.File
-	if cfg.LogPath != "" {
-		logFile, err = os.Create(cfg.LogPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer logFile.Close()
-		warnWriter = logFile
-	}
-	var revisionMap *os.File
-	if cfg.RevisionMapPath != "" {
-		revisionMap, err = os.Create(cfg.RevisionMapPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer revisionMap.Close()
-	}
-	progress := newProgress(cfg.Progress, os.Stderr)
-
-	if len(cfg.Files) == 0 {
-		// Read file list from stdin, as the C tool does.
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			cfg.Files = append(cfg.Files, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-	}
-
-	// Determine input flavor and the common prefix to strip from paths.
-	cfg.SourceType = detectSourceType(cfg.Files)
-	striplen := computeStriplen(cfg.Files)
-
-	type inputFile struct {
-		path      string
-		rectified string
-	}
-	var inputs []inputFile
-	for _, path := range cfg.Files {
-		if !cfg.Promiscuous {
-			if !strings.HasSuffix(path, ",v") {
-				continue
-			}
-			if strings.Contains(path, "CVSROOT") {
-				continue
-			}
-		}
-		// Precompute rectified names for stable sorting.
-		inputs = append(inputs, inputFile{
-			path:      path,
-			rectified: ExportName(path, striplen),
-		})
-	}
-	sort.Slice(inputs, func(i, j int) bool {
-		return PathDeepCompare(inputs[i].rectified, inputs[j].rectified) < 0
-	})
-
-	var masters []*Master
-	seenWarn := make(map[string]struct{})
-	if progress != nil {
-		progress.Begin("Parsing masters...", len(inputs))
-	}
-	for _, in := range inputs {
-		// Parse each RCS file and build the per-file master model.
-		rcsFile, symbolOrder, err := LoadFile(in.path)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
-		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder, allowVendorBranches)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		// Resolve branches and symbol refs.
-		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
-			return master.Commits[String(n)]
-		})
-		heads, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
-			return master.Commits[String(n)]
-		}, allowVendorBranches)
-		master.Heads = heads
-		master.Tags = tags
-		for _, w := range masterWarnings {
-			if _, ok := seenWarn[w]; ok {
-				continue
-			}
-			seenWarn[w] = struct{}{}
-			if !cfg.Quiet {
-				if progress != nil {
-					progress.Interrupt()
-				}
-				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
-			}
-		}
-		masterWarnings = nil
-		if cfg.DumpHeads {
-			dumpHeads(master)
-			dumpChains(master)
-		}
-		if cfg.DumpBranches {
-			dumpBranches(master)
-		}
-		masters = append(masters, master)
-		if progress != nil {
-			progress.Step()
-		}
-	}
-	if progress != nil {
-		progress.End("done, %d files", len(inputs))
-	}
-
-	// Collate commits across masters, then emit fast-import.
-	repo := Build(masters, CollateOptions{
-		CommitTimeWindow: cfg.CommitWindow,
-		TrustCommitIDs:   cfg.TrustCommitIDs,
-		Progress:         progress,
-	})
-
-	if cfg.ExecMode == execAuthors {
-		exportAuthors(repo, os.Stdout)
-		os.Exit(0)
-	}
-	if cfg.ExecMode == execGraph {
-		dumpCommitGraph(repo, cfg.GraphDiff, os.Stdout)
-		os.Exit(0)
-	}
-
-	if len(repo.Branches) > 0 {
-		branchPrefix := "refs/heads/"
-		if cfg.Remote != "" {
-			branchPrefix = fmt.Sprintf("refs/remotes/%s/", cfg.Remote)
-		}
-		em := NewEmitter(os.Stdout).
-			WithTagTargets(repo.TagTargets).
-			WithOptions(ExportOptions{
-				ForceDates:    cfg.ForceDates,
-				Reposurgeon:   cfg.Reposurgeon,
-				Incremental:   cfg.Incremental,
-				NoIgnores:     cfg.NoIgnores,
-				FromTime:      cfg.FromTime,
-				Quiet:         cfg.Quiet,
-				Verbose:       cfg.Verbose,
-				CommitWindow:  cfg.CommitWindow,
-				Authors:       cfg.Authors,
-				SourceType:    cfg.SourceType,
-				SyntheticTags: repo.PathologyFixes,
-				BranchPrefix:  branchPrefix,
-				RevisionMap:   revisionMap,
-				Warn:          warnWriter,
-				Progress:      progress,
-			})
-		_ = em.EmitRepo(repo)
-		_ = em.Flush()
-	}
-
-	// Warn if commitids are missing and skew could occur.
-	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
-		if progress != nil {
-			progress.Interrupt()
-		}
-		fmt.Fprintf(warnWriter, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
-	}
-
-	os.Exit(0)
-}
-
 // Set with an -X option
 var version string
 
@@ -3709,15 +3524,47 @@ func parseArgs(args []string) (config, error) {
 		TrustCommitIDs: true,
 		ExecMode:       execExport,
 	}
+	addInputPath := func(path string) error {
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			cfg.Files = append(cfg.Files, path)
+			return nil
+		}
+		return filepath.WalkDir(path, func(p string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if strings.HasPrefix(d.Name(), ".") {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			cfg.Files = append(cfg.Files, p)
+			return nil
+		})
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			// Treat all remaining args as input paths.
-			cfg.Files = append(cfg.Files, args[i+1:]...)
+			for _, path := range args[i+1:] {
+				if err := addInputPath(path); err != nil {
+					return cfg, err
+				}
+			}
 			break
 		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			cfg.Files = append(cfg.Files, arg)
+			if err := addInputPath(arg); err != nil {
+				return cfg, err
+			}
 			continue
 		}
 
@@ -4405,3 +4252,190 @@ func printSizes() {
 	fmt.Printf("sizeof(fileOp)        = %d\n", unsafe.Sizeof(fileOp{}))
 	fmt.Printf("sizeof(fileState)     = %d\n", unsafe.Sizeof(fileState{}))
 }
+
+// main executes the cvs-fast-export pipeline over the input masters.
+func main() {
+	cfg, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if cfg.ExecMode == execSizes {
+		printSizes()
+		os.Exit(0)
+	}
+
+	warnWriter := io.Writer(os.Stderr)
+	var logFile *os.File
+	if cfg.LogPath != "" {
+		logFile, err = os.Create(cfg.LogPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer logFile.Close()
+		warnWriter = logFile
+	}
+	var revisionMap *os.File
+	if cfg.RevisionMapPath != "" {
+		revisionMap, err = os.Create(cfg.RevisionMapPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer revisionMap.Close()
+	}
+	progress := newProgress(cfg.Progress, os.Stderr)
+
+	if len(cfg.Files) == 0 {
+		// Read file list from stdin, as the C tool does.
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			cfg.Files = append(cfg.Files, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
+	// Determine input flavor and the common prefix to strip from paths.
+	cfg.SourceType = detectSourceType(cfg.Files)
+	striplen := computeStriplen(cfg.Files)
+
+	type inputFile struct {
+		path      string
+		rectified string
+	}
+	var inputs []inputFile
+	for _, path := range cfg.Files {
+		if !cfg.Promiscuous {
+			if !strings.HasSuffix(path, ",v") {
+				continue
+			}
+			if strings.Contains(path, "CVSROOT") {
+				continue
+			}
+		}
+		// Precompute rectified names for stable sorting.
+		inputs = append(inputs, inputFile{
+			path:      path,
+			rectified: ExportName(path, striplen),
+		})
+	}
+	sort.Slice(inputs, func(i, j int) bool {
+		return PathDeepCompare(inputs[i].rectified, inputs[j].rectified) < 0
+	})
+
+	var masters []*Master
+	seenWarn := make(map[string]struct{})
+	if progress != nil {
+		progress.Begin("Parsing masters...", len(inputs))
+	}
+	for _, in := range inputs {
+		// Parse each RCS file and build the per-file master model.
+		rcsFile, symbolOrder, err := LoadFile(in.path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
+		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder, allowVendorBranches)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		// Resolve branches and symbol refs.
+		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		})
+		heads, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
+			return master.Commits[String(n)]
+		}, allowVendorBranches)
+		master.Heads = heads
+		master.Tags = tags
+		for _, w := range masterWarnings {
+			if _, ok := seenWarn[w]; ok {
+				continue
+			}
+			seenWarn[w] = struct{}{}
+			if !cfg.Quiet {
+				if progress != nil {
+					progress.Interrupt()
+				}
+				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
+			}
+		}
+		masterWarnings = nil
+		if cfg.DumpHeads {
+			dumpHeads(master)
+			dumpChains(master)
+		}
+		if cfg.DumpBranches {
+			dumpBranches(master)
+		}
+		masters = append(masters, master)
+		if progress != nil {
+			progress.Step()
+		}
+	}
+	if progress != nil {
+		progress.End("done, %d files", len(inputs))
+	}
+
+	// Collate commits across masters, then emit fast-import.
+	repo := Build(masters, CollateOptions{
+		CommitTimeWindow: cfg.CommitWindow,
+		TrustCommitIDs:   cfg.TrustCommitIDs,
+		Progress:         progress,
+	})
+
+	if cfg.ExecMode == execAuthors {
+		exportAuthors(repo, os.Stdout)
+		os.Exit(0)
+	}
+	if cfg.ExecMode == execGraph {
+		dumpCommitGraph(repo, cfg.GraphDiff, os.Stdout)
+		os.Exit(0)
+	}
+
+	if len(repo.Branches) > 0 {
+		branchPrefix := "refs/heads/"
+		if cfg.Remote != "" {
+			branchPrefix = fmt.Sprintf("refs/remotes/%s/", cfg.Remote)
+		}
+		em := NewEmitter(os.Stdout).
+			WithTagTargets(repo.TagTargets).
+			WithOptions(ExportOptions{
+				ForceDates:    cfg.ForceDates,
+				Reposurgeon:   cfg.Reposurgeon,
+				Incremental:   cfg.Incremental,
+				NoIgnores:     cfg.NoIgnores,
+				FromTime:      cfg.FromTime,
+				Quiet:         cfg.Quiet,
+				Verbose:       cfg.Verbose,
+				CommitWindow:  cfg.CommitWindow,
+				Authors:       cfg.Authors,
+				SourceType:    cfg.SourceType,
+				SyntheticTags: repo.PathologyFixes,
+				BranchPrefix:  branchPrefix,
+				RevisionMap:   revisionMap,
+				Warn:          warnWriter,
+				Progress:      progress,
+			})
+		_ = em.EmitRepo(repo)
+		_ = em.Flush()
+	}
+
+	// Warn if commitids are missing and skew could occur.
+	if skew := skewVulnerable(masters); skew != nil && len(inputs) > 1 && !cfg.ForceDates && !cfg.Quiet {
+		if progress != nil {
+			progress.Interrupt()
+		}
+		fmt.Fprintf(warnWriter, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
+	}
+
+	os.Exit(0)
+}
+
+// end

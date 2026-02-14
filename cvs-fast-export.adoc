@@ -7,7 +7,8 @@ cvs-fast-export - fast-export history from a CVS repository or RCS collection.
 == SYNOPSIS ==
 *cvs-fast-export*
     [-h] [-a] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P]
-    [-i 'date'] [-A 'authormap'] [-R 'revmap'] [--reposurgeon] [-e 'remote']
+    [-i 'date'] [-A 'authormap'] [-R 'revmap'] [--reposurgeon] [-e  'remote']
+    [file-or-dir...]
 
 == DESCRIPTION ==
 cvs-fast-export tries to group the per-file commits and tags in an RCS file
@@ -25,10 +26,11 @@ conversion, including reference lifting and various sorts of artifact
 cleanup.
 
 If arguments are supplied, the program assumes all ending with the
-extension ",v" are master files and reads them in. If no arguments are
-supplied, the program reads filenames from stdin, one per
-line. Directories and files not ending in ",v" are skipped.  (But see
-the description of the -P option for how to change this behavior.)
+extension ",v" are master files and reads them in; directory
+arguments read in all paths matching ",v" beneath the directory. If no
+arguments are supplied, the program reads filenames from stdin, one
+per line. Directories and files not ending in ",v" are skipped.  (But
+see the description of the -P option for how to change this behavior.)
 
 Files from either Unix CVS or CVS-NT are handled. If a collection of
 files has commitid fields, changesets will be constructed reliably

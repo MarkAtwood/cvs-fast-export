@@ -4261,6 +4261,38 @@ The generated DOT is fine, I was just surprised that it was different.
 
 The Go port was finished at about 2026-10-13T14:15:00.
 
+Replace the line cfg.Files = append(cfg.Files, args[i+1:]...) in
+ParseArgs with code that detects if an argumrnt is a directory.
+If so, apppend all paths in the directory to cfg.Files. Append
+a non-directory path to cfg.Files as before.
+
+----
+Done. I updated parseArgs to expand directory arguments by appending all entries in that
+directory, and to append non-directory paths as before. This applies both for normal positional
+args and for args after --.
+----
+
+Yes, expansion shold recurse. Tge inition ius to append all paths
+under a surectory argument
+
+----
+Updated to recurse. Directory args now walk all nested files and append every non-directory path.
+
+  File changed:
+
+  - cvs-fast-export.go
+
+  If you want to skip hidden dirs/files or only include ,v files, tell
+  me the rule.
+----
+
+Skip hidden files.
+
+----
+Done. Hidden files are skipped, and hidden directories are pruned
+during the walk
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
