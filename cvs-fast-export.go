@@ -3604,9 +3604,9 @@ func parseArgs(args []string) (config, error) {
 			} else {
 				cfg.ExecMode = execGraph
 			}
-		case arg == "--dump-heads":
+		case arg == "--dump-heads": // Uncocumented
 			cfg.DumpHeads = true
-		case arg == "--dump-branches":
+		case arg == "--dump-branches": // Undocumented
 			cfg.DumpBranches = true
 		case arg == "-V" || arg == "--version":
 			fmt.Println("cvs-fast-export ", version)
@@ -4108,7 +4108,7 @@ func exportAuthors(repo *Repo, w io.Writer) {
 }
 
 // dumpCommitGraph emits a DOT graph of the collated commit history.
-func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
+func dumpCommitGraph(repo *Repo, diff bool, forceDates bool, commitWindow time.Duration, w io.Writer) {
 	if repo == nil {
 		return
 	}
@@ -4117,9 +4117,10 @@ func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
 	stateByCommit := make(map[*GitCommit]map[string]fileState)
 	prevByCommit := make(map[*GitCommit]map[string]fileState)
 	opsByCommit := make(map[*GitCommit][]*fileOp)
+	needOps := diff || forceDates
 	for i, c := range commits {
 		id[c] = i + 1
-		if diff {
+		if needOps {
 			var prev map[string]fileState
 			if c.Parent != nil {
 				prev = stateByCommit[c.Parent]
@@ -4131,6 +4132,33 @@ func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
 			prevByCommit[c] = prev
 			stateByCommit[c] = next
 			opsByCommit[c] = ops
+		}
+	}
+	timeByCommit := make(map[*GitCommit]time.Time)
+	if forceDates {
+		window := commitWindow
+		if window <= 0 {
+			window = 300 * time.Second
+		}
+		mark := 1
+		for _, c := range commits {
+			ops := opsByCommit[c]
+			blobMarks := 0
+			for _, op := range ops {
+				if op != nil && op.kind == 'M' {
+					blobMarks++
+				}
+			}
+			commitMark := mark + blobMarks
+			when := 100000 + int64(commitMark)*int64(window.Seconds())*2
+			timeByCommit[c] = time.Unix(when, 0).UTC()
+			mark = commitMark + 1
+		}
+	} else {
+		for _, c := range commits {
+			if c != nil {
+				timeByCommit[c] = c.Date.UTC()
+			}
 		}
 	}
 
@@ -4183,7 +4211,7 @@ func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
 		if c == nil {
 			continue
 		}
-		label := dotEscape(commitLabel(c, diff, opsByCommit[c], prevByCommit[c]))
+		label := dotEscape(commitLabel(c, diff, opsByCommit[c], prevByCommit[c], timeByCommit[c]))
 		fmt.Fprintf(w, "\tc%d [label=\"%s\",fixedsize=false];\n", id[c], label)
 		if c.Parent != nil {
 			if parentID, ok := id[c.Parent]; ok {
@@ -4195,7 +4223,7 @@ func dumpCommitGraph(repo *Repo, diff bool, w io.Writer) {
 }
 
 // commitLabel builds a commit node label for DOT output.
-func commitLabel(c *GitCommit, diff bool, ops []*fileOp, prev map[string]fileState) string {
+func commitLabel(c *GitCommit, diff bool, ops []*fileOp, prev map[string]fileState, when time.Time) string {
 	if c == nil {
 		return ""
 	}
@@ -4204,7 +4232,9 @@ func commitLabel(c *GitCommit, diff bool, ops []*fileOp, prev map[string]fileSta
 		ref = "master"
 	}
 	lines := []string{ref}
-	if !c.Date.IsZero() {
+	if !when.IsZero() {
+		lines = append(lines, when.UTC().Format(time.RFC3339))
+	} else if !c.Date.IsZero() {
 		lines = append(lines, c.Date.UTC().Format(time.RFC3339))
 	}
 	if snippet := logSnippet(c.Log); snippet != "" {
@@ -4495,7 +4525,7 @@ func main() {
 		os.Exit(0)
 	}
 	if cfg.ExecMode == execGraph {
-		dumpCommitGraph(repo, cfg.GraphDiff, os.Stdout)
+		dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
 		os.Exit(0)
 	}
 
