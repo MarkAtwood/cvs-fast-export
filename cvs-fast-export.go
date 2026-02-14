@@ -4313,6 +4313,8 @@ func main() {
 	}
 
 	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
+
+	seenWarn := make(map[string]struct{})
 	pathToMaster := func(path string) (*Master, error) {
 		rcsFile, symbolOrder, err := LoadFile(path)
 		if err != nil {
@@ -4332,21 +4334,6 @@ func main() {
 		}, allowVendorBranches)
 		master.Heads = heads
 		master.Tags = tags
-		return master, nil
-	}
-
-	var masters []*Master
-	seenWarn := make(map[string]struct{})
-	if progress != nil {
-		progress.Begin("Parsing masters...", len(inputPaths))
-	}
-	for _, path := range inputPaths {
-		// Parse each RCS file and build the per-file master model.
-		master, err := pathToMaster(path)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
 		for _, w := range masterWarnings {
 			if _, ok := seenWarn[w]; ok {
 				continue
@@ -4360,6 +4347,20 @@ func main() {
 			}
 		}
 		masterWarnings = nil
+		return master, nil
+	}
+
+	var masters []*Master
+	if progress != nil {
+		progress.Begin("Parsing masters...", len(inputPaths))
+	}
+	for _, path := range inputPaths {
+		// Parse each RCS file and build the per-file master model.
+		master, err := pathToMaster(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		if cfg.DumpHeads {
 			dumpHeads(master)
 			dumpChains(master)
