@@ -43,5 +43,3 @@ Smaller items:
 FIXME: test hang-1 and the Mozilla repo at untried
 
 FIXME: clear the buglist on Gitlab
-
-FIXME: concurrent reading of masters?

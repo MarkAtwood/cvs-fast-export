@@ -11,10 +11,12 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unsafe"
@@ -496,11 +498,11 @@ type Version struct {
 	Branches []Number
 }
 
-var nullCounter int = 0
+var nullCounter uint64
 
 // SetRefs assigns branch heads and tags from CVS symbols, synthesizing
 // missing branch names while discarding unreachable dead branches.
-func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit, allowVendorSymbols bool) ([]*Head, []Tag) {
+func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit, allowVendorSymbols bool, warn *warningCollector) ([]*Head, []Tag) {
 	var tags []Tag
 	// Attach symbol names to branch heads or tag commits directly.
 	for _, s := range symbols {
@@ -559,17 +561,17 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit,
 	}
 
 	// Post-process unnamed heads, then link the resulting branch tree.
-	heads = fixUnnamedHeads(heads)
+	heads = fixUnnamedHeads(heads, warn)
 	heads = discardZeroHeads(heads)
-	linkParents(heads)
+	linkParents(heads, warn)
 	for _, h := range heads {
 		if h.RefName == "" {
-			appendMasterWarning("null branch name, probably from a damaged Attic file")
+			warn.Add("null branch name, probably from a damaged Attic file")
 			h.RefName = "null"
-			if nullCounter > 0 {
-				h.RefName += fmt.Sprintf("%d", nullCounter)
+			n := atomic.AddUint64(&nullCounter, 1) - 1
+			if n > 0 {
+				h.RefName += fmt.Sprintf("%d", n)
 			}
-			nullCounter += 1
 		}
 	}
 	heads = pruneUnnamedBranches(heads)
@@ -673,7 +675,7 @@ func GraftBranches(heads []*Head, versions []Version, findRevision func(Number) 
 }
 
 // fixUnnamedHeads synthesizes branch numbers for unnamed heads.
-func fixUnnamedHeads(heads []*Head) []*Head {
+func fixUnnamedHeads(heads []*Head, warn *warningCollector) []*Head {
 	for _, h := range heads {
 		if h.RefName != "" {
 			continue
@@ -683,7 +685,7 @@ func fixUnnamedHeads(heads []*Head) []*Head {
 		if c == nil {
 			// Mark fully-dead branches for removal.
 			if h.Commit != nil {
-				appendMasterWarning(fmt.Sprintf("discarding dead untagged branch %s in %s",
+				warn.Add(fmt.Sprintf("discarding dead untagged branch %s in %s",
 					String(h.Commit.Number), h.Commit.FileName))
 			}
 			h.Number = Zero
@@ -714,7 +716,7 @@ func discardZeroHeads(heads []*Head) []*Head {
 }
 
 // linkParents attaches parent heads based on CVS branch numbering.
-func linkParents(heads []*Head) {
+func linkParents(heads []*Head, warn *warningCollector) {
 	for _, h := range heads {
 		// Only branch numbers (>=4) have parents.
 		if h.Number.C < 4 {
@@ -736,7 +738,7 @@ func linkParents(heads []*Head) {
 			}
 			if h.Commit != nil {
 				base := path.Base(h.Commit.Source)
-				appendMasterWarning(fmt.Sprintf("warning - putting %s rev %s on unnamed branch %s off %s",
+				warn.Add(fmt.Sprintf("warning - putting %s rev %s on unnamed branch %s off %s",
 					base, String(h.Number), branchName, p.RefName))
 			}
 			h.RefName = branchName
@@ -861,6 +863,7 @@ type Master struct {
 	Source   string
 	FileName string
 	SortName string
+	Warnings []string
 	Heads    []*Head
 	Symbols  []Symbol
 	Tags     []Tag
@@ -869,19 +872,21 @@ type Master struct {
 	Root     *Commit
 }
 
-var masterWarnings []string
+type warningCollector struct {
+	warnings []string
+}
 
-func appendMasterWarning(msg string) {
-	for _, w := range masterWarnings {
-		if w == msg {
+func (w *warningCollector) Add(msg string) {
+	for _, existing := range w.warnings {
+		if existing == msg {
 			return
 		}
 	}
-	masterWarnings = append(masterWarnings, msg)
+	w.warnings = append(w.warnings, msg)
 }
 
 // BuildMaster converts a parsed RCS file into a CVS master model.
-func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string, allowVendorBranches bool) (*Master, error) {
+func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string, allowVendorBranches bool, warn *warningCollector) (*Master, error) {
 	info, err := os.Stat(source)
 	if err != nil {
 		return nil, err
@@ -900,7 +905,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	rectified := exportName(source, striplen)
 	fileName := fileopName(rectified)
 	if hasEmptyBranchHeader(source) {
-		appendMasterWarning("ignoring empty branch")
+		warn.Add("ignoring empty branch")
 	}
 	fulltext, err := reconstructTexts(file, contents)
 	if err != nil {
@@ -958,13 +963,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 
 	// Create branch head chains and locate the root commit (pre-vendor patch).
-	pendingWarnings = nil
-	branchHeads, root := buildBranchHeads(commits, versions)
-	if len(pendingWarnings) > 0 {
-		for _, w := range pendingWarnings {
-			appendMasterWarning(w)
-		}
-	}
+	branchHeads, root := buildBranchHeads(commits, versions, warn)
 
 	// Normalize symbol ordering to preserve original CVS ordering where possible.
 	var sym []Symbol
@@ -1027,12 +1026,10 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	var foundVendor bool
 	master.Heads, foundVendor = PatchVendorBranches(master.Heads, allowVendorBranches, hasVendorSymbol)
 	if foundVendor {
-		appendMasterWarning("vendor branch detected.")
+		warn.Add("vendor branch detected.")
 	}
 	return master, nil
 }
-
-var pendingWarnings []string
 
 // normalizeAuthor replaces whitespace with underscores for author tokens.
 // Yes. RCS masters have been seen in the wild with spaces embedded in
@@ -1072,13 +1069,13 @@ func hasEmptyBranchHeader(path string) bool {
 }
 
 // buildBranchHeads constructs branch head links and returns the trunk root.
-func buildBranchHeads(commits map[string]*Commit, versions []Version) ([]*Head, *Commit) {
+func buildBranchHeads(commits map[string]*Commit, versions []Version, warn *warningCollector) ([]*Head, *Commit) {
 	trunkNum, ok := findTrunkStart(commits)
 	var heads []*Head
 	var root *Commit
 	if ok {
 		// Build the master trunk chain from the earliest trunk revision.
-		trunk := buildBranchChain(commits, trunkNum)
+		trunk := buildBranchChain(commits, trunkNum, warn)
 		if trunk != nil {
 			root = lastCommit(trunk)
 			heads = append(heads, &Head{
@@ -1099,7 +1096,7 @@ func buildBranchHeads(commits map[string]*Commit, versions []Version) ([]*Head, 
 				continue
 			}
 			seen[key] = struct{}{}
-			head := buildBranchChain(commits, br)
+			head := buildBranchChain(commits, br, warn)
 			if head == nil {
 				continue
 			}
@@ -1127,7 +1124,7 @@ func findTrunkStart(commits map[string]*Commit) (Number, bool) {
 }
 
 // buildBranchChain orders commits on a branch and links parents.
-func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
+func buildBranchChain(commits map[string]*Commit, branch Number, warn *warningCollector) *Commit {
 	var chain []*Commit
 	for _, c := range commits {
 		// Filter commits that belong to this branch number.
@@ -1161,7 +1158,7 @@ func buildBranchChain(commits map[string]*Commit, branch Number) *Commit {
 	}
 	warnings := adjustDates(chain)
 	for _, w := range warnings {
-		pendingWarnings = append(pendingWarnings, w)
+		warn.Add(w)
 	}
 	return chain[len(chain)-1]
 }
@@ -3962,7 +3959,7 @@ func (p *progressState) Begin(msg string, max int) {
 	p.max = max
 	p.inProgress = true
 	p.start = time.Now()
-	p.print(false, "")
+	p.Print(false, "")
 }
 
 func (p *progressState) Lock() {
@@ -4011,7 +4008,7 @@ func (p *progressState) End(format string, args ...interface{}) {
 	if format != "" {
 		msg = fmt.Sprintf(format, args...)
 	}
-	p.print(true, msg)
+	p.Print(true, msg)
 }
 
 func (p *progressState) Interrupt() {
@@ -4026,7 +4023,7 @@ func (p *progressState) Interrupt() {
 	}
 }
 
-func (p *progressState) print(newline bool, trailer string) {
+func (p *progressState) Print(newline bool, trailer string) {
 	if p == nil || !p.enabled {
 		return
 	}
@@ -4345,13 +4342,13 @@ func main() {
 
 	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
 
-	seenWarn := make(map[string]struct{})
 	pathToMaster := func(path string) (*Master, error) {
+		warnings := &warningCollector{}
 		rcsFile, symbolOrder, err := LoadFile(path)
 		if err != nil {
 			return nil, err
 		}
-		master, err := BuildMaster(path, rcsFile, striplen, symbolOrder, allowVendorBranches)
+		master, err := BuildMaster(path, rcsFile, striplen, symbolOrder, allowVendorBranches, warnings)
 		if err != nil {
 			return nil, err
 		}
@@ -4362,36 +4359,49 @@ func main() {
 		})
 		heads, tags := SetRefs(master.Heads, master.Symbols, func(n Number) *Commit {
 			return master.Commits[String(n)]
-		}, allowVendorBranches)
+		}, allowVendorBranches, warnings)
 		master.Heads = heads
 		master.Tags = tags
-		for _, w := range masterWarnings {
-			if _, ok := seenWarn[w]; ok {
-				continue
-			}
-			seenWarn[w] = struct{}{}
-			if !cfg.Quiet {
-				if progress != nil {
-					progress.Interrupt()
-				}
-				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
-			}
-		}
-		masterWarnings = nil
+		master.Warnings = warnings.warnings
 		return master, nil
 	}
 
 	var masters []*Master
+	seenWarn := make(map[string]struct{})
 	if progress != nil {
 		progress.Begin("Parsing masters...", len(inputPaths))
 	}
+	maxWorkers := 2 * runtime.NumCPU()
+	if maxWorkers < 1 {
+		maxWorkers = 1
+	}
+	sem := make(chan struct{}, maxWorkers)
+	results := make(chan *Master, len(inputPaths))
+	errs := make(chan error, 1)
+	var wg sync.WaitGroup
 	for _, path := range inputPaths {
-		// Parse each RCS file and build the per-file master model.
-		master, err := pathToMaster(path)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
+		path := path
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			master, err := pathToMaster(path)
+			if err != nil {
+				select {
+				case errs <- err:
+				default:
+				}
+				return
+			}
+			results <- master
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+	for master := range results {
 		if progress != nil {
 			progress.Lock()
 		}
@@ -4405,10 +4415,34 @@ func main() {
 		if progress != nil {
 			progress.Unlock()
 		}
+		for _, w := range master.Warnings {
+			if _, ok := seenWarn[w]; ok {
+				continue
+			}
+			seenWarn[w] = struct{}{}
+			if !cfg.Quiet {
+				if progress != nil {
+					progress.Interrupt()
+				}
+				fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
+			}
+		}
 		masters = append(masters, master)
 		if progress != nil {
 			progress.Step()
 		}
+	}
+	var parseErr error
+	select {
+	case parseErr = <-errs:
+	default:
+	}
+	if parseErr != nil {
+		if progress != nil {
+			progress.Interrupt()
+		}
+		fmt.Fprintln(os.Stderr, parseErr)
+		os.Exit(1)
 	}
 	if progress != nil {
 		progress.End("done, %d files", len(inputPaths))

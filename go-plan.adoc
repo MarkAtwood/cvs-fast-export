@@ -4317,6 +4317,34 @@ pathToMaster. Sorting happens on master.SortName immediately before
 Build.
 ----
 
+The Progress print, Step, Jump, and Interrupt metods need to be
+concurrency-safe Give Progress a mutex, give it Lock and Unlock
+methods, and use it to wrap those. Step, Jump, and Interrupt,
+
+----
+Done. progressState now has a mutex plus Lock/Unlock, and Print, Step, Jump, and Interrupt are wrapped
+with it. I added sync to imports.
+----
+
+Make the loop that calls pathToMaster concurrent rather than serial.
+Limit the number of concurrent threads at any one time to 2 *
+runtine.NumCPU().
+
+----
+  I’ll make the loop concurrent with a worker limit of 2 * runtime.NumCPU(), and I also refactored
+  warnings/null-branch handling to be per-master so it’s race-free under concurrency. That required
+  removing the global masterWarnings/pendingWarnings and adding a lightweight per-master warning
+  collector.
+
+  Here’s what changed:
+
+  - Master now has a Warnings []string field to carry per-master warnings back to main().
+  - Warning collection is now per-master via warningCollector.
+  - pendingWarnings and masterWarnings globals removed.
+  - nullCounter is now uint64 with atomic updates to avoid data races.
+  - The parsing loop is now concurrent with a bounded semaphore and WaitGroup.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
