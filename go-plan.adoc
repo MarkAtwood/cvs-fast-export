@@ -4293,6 +4293,19 @@ Done. Hidden files are skipped, and hidden directories are pruned
 during the walk
 ----
 
+In main(), move the step that sorts by rectified path to just before the Build
+call. Then factor out a function named pathToMaster that takes a path
+ahd returns a Naster structure.
+
+----
+  Done. The rectified-path sort now happens immediately before Build, and I factored a pathToMaster
+  function (local in main()) that takes only a path and returns a *Master.
+
+
+  If you want pathToMaster promoted to a package-level function, say
+  the word.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

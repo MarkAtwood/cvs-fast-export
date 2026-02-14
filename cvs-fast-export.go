@@ -4323,27 +4323,16 @@ func main() {
 			rectified: ExportName(path, striplen),
 		})
 	}
-	sort.Slice(inputs, func(i, j int) bool {
-		return PathDeepCompare(inputs[i].rectified, inputs[j].rectified) < 0
-	})
 
-	var masters []*Master
-	seenWarn := make(map[string]struct{})
-	if progress != nil {
-		progress.Begin("Parsing masters...", len(inputs))
-	}
-	for _, in := range inputs {
-		// Parse each RCS file and build the per-file master model.
-		rcsFile, symbolOrder, err := LoadFile(in.path)
+	allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
+	pathToMaster := func(path string) (*Master, error) {
+		rcsFile, symbolOrder, err := LoadFile(path)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return nil, err
 		}
-		allowVendorBranches := cfg.SourceType == "cvs" || detectCVSRoot(cfg.Files, striplen)
-		master, err := BuildMaster(in.path, rcsFile, striplen, symbolOrder, allowVendorBranches)
+		master, err := BuildMaster(path, rcsFile, striplen, symbolOrder, allowVendorBranches)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return nil, err
 		}
 		// Resolve branches and symbol refs.
 		GraftBranches(master.Heads, master.Versions, func(n Number) *Commit {
@@ -4354,6 +4343,25 @@ func main() {
 		}, allowVendorBranches)
 		master.Heads = heads
 		master.Tags = tags
+		return master, nil
+	}
+
+	type masterInput struct {
+		master    *Master
+		rectified string
+	}
+	var mastersByRectified []masterInput
+	seenWarn := make(map[string]struct{})
+	if progress != nil {
+		progress.Begin("Parsing masters...", len(inputs))
+	}
+	for _, in := range inputs {
+		// Parse each RCS file and build the per-file master model.
+		master, err := pathToMaster(in.path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 		for _, w := range masterWarnings {
 			if _, ok := seenWarn[w]; ok {
 				continue
@@ -4374,7 +4382,10 @@ func main() {
 		if cfg.DumpBranches {
 			dumpBranches(master)
 		}
-		masters = append(masters, master)
+		mastersByRectified = append(mastersByRectified, masterInput{
+			master:    master,
+			rectified: in.rectified,
+		})
 		if progress != nil {
 			progress.Step()
 		}
@@ -4384,6 +4395,13 @@ func main() {
 	}
 
 	// Collate commits across masters, then emit fast-import.
+	sort.Slice(mastersByRectified, func(i, j int) bool {
+		return PathDeepCompare(mastersByRectified[i].rectified, mastersByRectified[j].rectified) < 0
+	})
+	masters := make([]*Master, 0, len(mastersByRectified))
+	for _, in := range mastersByRectified {
+		masters = append(masters, in.master)
+	}
 	repo := Build(masters, CollateOptions{
 		CommitTimeWindow: cfg.CommitWindow,
 		TrustCommitIDs:   cfg.TrustCommitIDs,
