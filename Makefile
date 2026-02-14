@@ -81,7 +81,7 @@ cleancheck:
 
 # Needs clean first because reflowing generated .c and .h files produces ungappy results
 reflow: clean
-	@clang-format --style="{IndentWidth: 8, UseTab: ForIndentation}" -i $$(find . -name "*.[chl]")
+	gofmt -s -d cvs-fast-export.go | patch -p0
 
 fixme:
 	@if command -v rg; then \
