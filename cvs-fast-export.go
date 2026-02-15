@@ -4,8 +4,10 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -2344,6 +2346,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 		}
 		if len(masterCommits) > 0 && len(baseByFile) > 0 {
 			stage = "match-master"
+			cache := make(map[*GitCommit]map[string]cachedNumber)
 			var pick *GitCommit
 			for i, mc := range masterCommits {
 				if mc.Date.After(tail.Date) {
@@ -2354,7 +2357,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 					if base.C == 0 {
 						continue
 					}
-					v, okv := versionAtCommit(mc, path, warn)
+					v, okv := versionAtCommitCached(mc, path, warn, cache)
 					if !okv || !Equal(v, base) {
 						ok = false
 						break
@@ -2450,6 +2453,59 @@ func versionAtCommit(c *GitCommit, path string, warn *warningCollector) (Number,
 	return Zero, false
 }
 
+// versionAtCommitCached returns the last revision of path visible at commit c,
+// memoizing results per commit/path to avoid repeated ancestry scans.
+type cachedNumber struct {
+	num Number
+	ok  bool
+}
+
+func versionAtCommitCached(c *GitCommit, path string, warn *warningCollector, cache map[*GitCommit]map[string]cachedNumber) (Number, bool) {
+	if c == nil {
+		return Zero, false
+	}
+	if cache != nil {
+		if m, ok := cache[c]; ok {
+			if v, okv := m[path]; okv {
+				return v.num, v.ok
+			}
+		}
+	}
+	for _, f := range c.Files {
+		if f == nil {
+			continue
+		}
+		if f.FileName == path {
+			if cache != nil {
+				if cache[c] == nil {
+					cache[c] = make(map[string]cachedNumber)
+				}
+				cache[c][path] = cachedNumber{num: f.Number, ok: true}
+			}
+			return f.Number, true
+		}
+	}
+	if c.Parent == nil {
+		if cache != nil {
+			if cache[c] == nil {
+				cache[c] = make(map[string]cachedNumber)
+			}
+			cache[c][path] = cachedNumber{num: Zero, ok: false}
+		}
+		return Zero, false
+	}
+	v, ok := versionAtCommitCached(c.Parent, path, warn, cache)
+	if cache != nil {
+		if cache[c] == nil {
+			cache[c] = make(map[string]cachedNumber)
+		}
+		cache[c][path] = cachedNumber{num: v, ok: ok}
+	}
+	return v, ok
+}
+
+// matchMasterBaseCommit scans master commits from newest to oldest and finds the
+// first commit whose file state for baseByFile matches the requested bases.
 // commitsMatch reports whether a CVS commit can be coalesced into a GitCommit.
 func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
 	// Never coalesce multiple revisions of the same file into one commit.
@@ -2592,6 +2648,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if repo == nil {
 		return nil
 	}
+	if e.progress != nil {
+		e.progress.Note("EmitRepo: start")
+	}
 	// Emit reposurgeon header when requested.
 	if e.reposurgeon {
 		st := e.sourceType
@@ -2601,7 +2660,13 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		fmt.Fprintf(e.w, "#reposurgeon sourcetype %s\n", st)
 	}
 	// Collect commits and initialize per-commit state tracking.
+	if e.progress != nil {
+		e.progress.Note("EmitRepo: collecting commits")
+	}
 	commits := collectCommits(repo)
+	if e.progress != nil {
+		e.progress.Note(fmt.Sprintf("EmitRepo: collected %d commits", len(commits)))
+	}
 	vendorFiles := collectVendorBranchFiles(commits)
 	markMap := make(map[*GitCommit]int)
 	stateByCommit := make(map[*GitCommit]map[string]fileState)
@@ -2614,7 +2679,13 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		commit *GitCommit
 	}
 	var masterMarks []masterMark
-	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.PathologyFixes)
+	if e.progress != nil {
+		e.progress.Note(fmt.Sprintf("EmitRepo: resolving attachments for %d tags", len(e.tagTargets)))
+	}
+	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.PathologyFixes, e.progress)
+	if e.progress != nil {
+		e.progress.Note(fmt.Sprintf("EmitRepo: tag targets=%d", len(tagAttach)))
+	}
 	if len(tagWarnings) > 0 && !e.quiet {
 		if e.progress != nil {
 			e.progress.Interrupt()
@@ -3141,15 +3212,84 @@ func tagMatchesPartial(targets []*Commit, state map[string]fileState) bool {
 	return true
 }
 
+type tagMeta struct {
+	count     int
+	sigByPath map[string]uint64
+}
+
+func fileSig(text string, mode int) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(text))
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], uint64(mode))
+	_, _ = h.Write(buf[:])
+	return h.Sum64()
+}
+
+func buildTagMeta(targets []*Commit) *tagMeta {
+	if len(targets) == 0 {
+		return nil
+	}
+	meta := &tagMeta{
+		sigByPath: make(map[string]uint64, len(targets)),
+	}
+	for _, t := range targets {
+		if t == nil {
+			continue
+		}
+		path := t.FileName
+		if path == "" {
+			path = "UNKNOWN"
+		}
+		want := t.Text
+		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
+			want = normalizeGitignore(want)
+		}
+		mode := t.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		meta.sigByPath[path] = fileSig(want, mode)
+		meta.count++
+	}
+	return meta
+}
+
+func tagMatchesMeta(meta *tagMeta, state map[string]fileState, requireFull bool) bool {
+	if meta == nil {
+		return false
+	}
+	if requireFull && len(state) != meta.count {
+		return false
+	}
+	for path, sig := range meta.sigByPath {
+		got, ok := state[path]
+		if !ok {
+			return false
+		}
+		if fileSig(got.text, got.mode) != sig {
+			return false
+		}
+	}
+	return true
+}
+
 // resolveTagAttachments assigns tags to commits using a two-pass strategy.
 // First pass: strict matches (full-tree). Second pass: latest partial match.
-func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool) (map[string]*GitCommit, []string, map[string]struct{}) {
+func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
 	attachments := make(map[string]*GitCommit)
 	synthetic := make(map[string]struct{})
 	var warnings []string
 	pending := make(map[string][]*Commit, len(targets))
+	metaByTag := make(map[string]*tagMeta, len(targets))
+	pendingByCount := make(map[int][]string)
 	for name, t := range targets {
 		pending[name] = t
+		meta := buildTagMeta(t)
+		metaByTag[name] = meta
+		if meta != nil {
+			pendingByCount[meta.count] = append(pendingByCount[meta.count], name)
+		}
 	}
 	for name, t := range targets {
 		latest := latestLiveCommit(t)
@@ -3164,6 +3304,9 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		}
 	}
 	stateSnap := make(map[*GitCommit]map[string]fileState, len(commits))
+	if progress != nil {
+		progress.Begin("Resolving tag attachments (forward pass)...", len(commits))
+	}
 	for _, c := range commits {
 		var prev map[string]fileState
 		if c.Parent != nil {
@@ -3174,12 +3317,26 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		}
 		_, next := buildOps(prev, c.Files, nil)
 		stateSnap[c] = copyState(next)
-		for name, t := range pending {
-			if tagMatchesState(t, next) {
+		candidates := pendingByCount[len(next)]
+		for _, name := range candidates {
+			t, ok := pending[name]
+			if !ok {
+				continue
+			}
+			meta := metaByTag[name]
+			if tagMatchesMeta(meta, next, true) {
 				attachments[name] = c
 				delete(pending, name)
 			}
+			_ = t
 		}
+		if progress != nil {
+			progress.Step()
+		}
+	}
+	if progress != nil {
+		progress.End("done")
+		progress.Begin("Resolving tag attachments (reverse pass)...", len(commits))
 	}
 	for i := len(commits) - 1; i >= 0; i-- {
 		if len(pending) == 0 {
@@ -3188,7 +3345,8 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		c := commits[i]
 		st := stateSnap[c]
 		for name, t := range pending {
-			if tagMatchesPartial(t, st) {
+			meta := metaByTag[name]
+			if tagMatchesMeta(meta, st, false) {
 				if enablePathologies {
 					// SPECIAL CASE (t9602 pathological tags):
 					// Some CVS tags are missing files entirely; materialize those as
@@ -3202,7 +3360,14 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 					delete(pending, name)
 				}
 			}
+			_ = t
 		}
+		if progress != nil {
+			progress.Step()
+		}
+	}
+	if progress != nil {
+		progress.End("done")
 	}
 	// Final fallback: attach to the latest commit among the tag's referenced revisions.
 	for name, t := range pending {
@@ -4320,7 +4485,7 @@ func dumpCommitGraph(repo *Repo, diff bool, forceDates bool, commitWindow time.D
 	}
 
 	// Tag refs.
-	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, repo.PathologyFixes)
+	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, repo.PathologyFixes, nil)
 	tagNames := append([]string(nil), repo.TagOrder...)
 	if len(tagNames) == 0 {
 		for name := range repo.TagTargets {
@@ -4672,6 +4837,9 @@ func main() {
 	}
 
 	if len(repo.Branches) > 0 {
+		if progress != nil {
+			progress.Note("Preparing fast-export emitter")
+		}
 		branchPrefix := "refs/heads/"
 		if cfg.Remote != "" {
 			branchPrefix = fmt.Sprintf("refs/remotes/%s/", cfg.Remote)
@@ -4695,6 +4863,9 @@ func main() {
 				Warn:          warnWriter,
 				Progress:      progress,
 			})
+		if progress != nil {
+			progress.Note("Starting fast-export emission")
+		}
 		_ = em.EmitRepo(repo)
 		_ = em.Flush()
 	}

@@ -4574,6 +4574,199 @@ Add a total branch count to the "Collating branches" messsage
 Added total branch count to the Collating branches progress message.
 ----
 
+New symptoms: bursts of "linking branch parents" messages
+separated by long pauses.
+
+With the new instrumentation, it looks like this may not be a hard
+hang but rather a sub-computation inlinkBranchParents() that is
+ridiculously expensive in compute time, so muchg so that full branch
+linking can take hours.  We should try to identify hot spots, looking
+for loops that are O(n**2) or worse in the number of branches or
+commits.
+
+----
+  I replaced the O(branches * masterCommits * files * ancestry) scan with a
+  linear‑in‑master‑commits matcher for Case 2.
+
+  New helper matchMasterBaseCommit walks master commits once, incrementally building
+  the state for just the branch’s base files, then compares when all needed files are
+  seen. This reduces the hot path to roughly O(masterCommits * touchedFiles +
+  masterCommits * baseFiles) per branch, instead of repeatedly calling
+  versionAtCommit (which scanned ancestry for each file on each commit).
+
+  I left versionAtCommit in place for other cases.
+
+  Rebuild and rerun with -p; the “match‑master” stage should move much faster now. If
+  it still stalls, the new progress notes will show where.
+----
+
+That change brewks branch rooting.
+
+....
+
+make -k check
+go build -ldflags='-X main.version=1.68' -o cvs-fast-export cvs-fast-export.go
+..F..............................F........................
+not ok - branchy: A branchy repo with deletions and only valid tags
+  --- |
+  --- branchy.chk	2024-02-14 16:20:13.616199357 -0500
+  +++ -	2026-02-15 15:33:50.169312933 -0500
+  @@ -239,7 +239,7 @@
+   committer foo <foo> 112600 +0000
+   data 34
+   Do we get branch detection right?
+  -from :19
+  +from :17
+   M 100644 :20 README
+   property cvs-revisions 15 README 1.4.2.1
+   
+  ...
+....
+
+You can see this is incorrect by looking at tests/branchy.tst.
+
+----
+  You’re right — the branchy test relies on the precise semantics of versionAtCommit
+  along the master chain, and my linear matcher changed those semantics. I’ve
+  reverted the matching logic to the original behavior, but kept a cache to avoid the
+  worst‑case O(n²) ancestry scans.
+
+  Changes:
+
+  - Restored the original “scan master commits, call versionAtCommit” logic.
+  - Added versionAtCommitCached to memoize per‑commit/path lookups, so repeated
+    ancestry scans are avoided.
+  - Removed the matchMasterBaseCommit shortcut.
+
+  This should preserve branchy behavior while still reducing the compute cost. Please
+  rebuild and rerun with -p; if it still crawls, the per‑branch notes will show
+  where.
+
+  If you want, I can add a simple counter to report cache hit rate so we can verify
+  it’s actually helping on the big repo.
+----
+
+....
+make -k check
+go build -ldflags='-X main.version=1.68' -o cvs-fast-export cvs-fast-export.go
+# command-line-arguments
+./cvs-fast-export.go:2463:8: invalid operation: v == Zero (struct containing []int cannot be compared)
+make: *** [Makefile:48: cvs-fast-export] Error 1
+make: Target 'check' not remade because of errors.
+....
+
+----
+  Fixed the compile error by switching the cache sentinel to a cachedNumber{num, ok}
+  struct (since Number contains a slice and isn’t comparable). Updated the cache map
+  types accordingly and gofmt’d.
+
+  Rebuild again with your go build ... command. If it still fails,
+  paste the error.
+----
+
+That sped up the branch-linking phase on an extremely large repository
+dramatically. Tag collection was fast. I'm now seeing it stall after
+"Collecting tags". What should the next message be?
+
+----
+  With -p, the next messages after:
+
+  Collecting tags...done
+
+  should be:
+
+  Exporting commits... <progress>
+  Emitting tag refs... <progress>
+
+  If you don’t see “Exporting commits…”, we’re stalling before EmitRepo starts. That
+  would narrow it to the transition from Build() to the export path in main (e.g.,
+  somewhere just before the emitter is constructed). If you do see “Exporting
+  commits…” but it stalls, the hotspot is in EmitRepo or emitCommit.
+
+  Tell me the last line you see and I’ll instrument the next segment.
+----
+
+"Collecting tags" is the lat message I see.
+We’re stalling before EmitRepo starts
+
+----
+  Added two progress notes right before and after emitter setup:
+
+  - “Preparing fast-export emitter”
+  - “Starting fast-export emission”
+
+  Rebuild and rerun with -p. If it stalls before the first note, the hang is in main
+  before emitter setup; if it stalls between those notes, it’s in emitter
+  construction; if it stalls after “Starting…”, it’s inside EmitRepo.
+----
+
+Now stalling after "Starting fast-export emission".
+After 5 minutes or so it hasn't written anyting to stdout.
+
+----
+Added instrumentation at the top of EmitRepo:
+
+  - “EmitRepo: start”
+  - “EmitRepo: collecting commits”
+  - “EmitRepo: collected N commits”
+  - “EmitRepo: resolving tag attachments”
+  - “EmitRepo: tag targets=N”
+
+  Rebuild and rerun with -p. The last message you see will pinpoint whether it’s
+  stuck in collectCommits or resolveTagAttachments or later.
+----
+
+The stall is npw where I was half-expecting it. in
+tag attachment reolution.  We probanly want progress meters for
+both the forwaes and passes of the tag attacment scan. Also,
+chane "resolving tag attachments" to
+"resolving attachments for N tags".
+
+----
+  - The status note now says: “EmitRepo: resolving attachments for N tags”.
+  - Added progress meters for both forward and reverse passes in
+    resolveTagAttachments.
+
+  Rebuild and rerun with -p; you should see:
+
+  EmitRepo: resolving attachments for <N> tags
+  Resolving tag attachments (forward pass)... <progress>
+  Resolving tag attachments (reverse pass)... <progress>
+
+  If it still stalls, the progress percentage will tell us exactly where.
+----
+
+It's clear from the new messages that tagMatchesState() is painfully
+slow on a repositort with 240K commits. Probably there;s an O(n**2)
+in tagMatchesPartial(). Can we find an algorithmic improvement?
+
+----
+  I implemented a real algorithmic improvement for tag attachment:
+
+  - Precompute per‑tag metadata (tagMeta) with per‑file signature hashes.
+  - For the forward pass, only consider tags whose file count matches the current
+    state (pendingByCount[len(state)]), then compare required paths/signatures
+    without scanning the entire state.
+  - For the reverse pass, use the same precomputed signatures for partial matches.
+  - This removes the O(state‑size) loop from tagMatchesState and avoids recomputing
+    per‑tag normalization on every commit.
+
+  I added encoding/binary + hash/fnv imports and gofmt’d.
+
+  Rebuild and rerun with -p; tag attachment should be much faster now. If it still
+  crawls, we can profile the forward vs reverse pass from the new
+  progress meters.
+---
+
+That is significantly faster. Waiting to see if there are any further
+hard stalls.
+
+----
+Great. Keep me posted on the next stall point (if any) and the last progress line
+you see. If it completes but is still slow, I can add simple timing summaries per
+phase to quantify where the remaining cost is.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
