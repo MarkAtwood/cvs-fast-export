@@ -1,8 +1,5 @@
-*.o
-gram.[ch]
-lex.[ch]
-cmd/cvs-fast-export
-test
+cvs-fast-export
+tests
 *.1
 *.html
-docbook-xsl.css
+
