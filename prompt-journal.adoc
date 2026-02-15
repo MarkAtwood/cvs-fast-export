@@ -4456,7 +4456,7 @@ go build -ldflags='-X main.version=1.68' -o cvs-fast-export cvs-fast-export.go
 make: *** [Makefile:48: cvs-fast-export] Error 1
 
 -----
-Fixed the undefined symbol by routing the new cycle warnings through a
+  Fixed the undefined symbol by routing the new cycle warnings through a
   warningCollector and exposing them via Repo.Warnings, which are now emitted in main
   (respecting -q and interrupting progress).
 
@@ -4469,6 +4469,47 @@ Fixed the undefined symbol by routing the new cycle warnings through a
 
   Rebuild with your command; it should compile now. If you want the warnings to be -v
   only, say so.
+-----
+
+Still hanging inside the code that linkss branch parents.
+With 0% done, which may be significant.
+
+----
+  I added progress stepping inside linkBranchParents, so you’ll now see progress
+  advance from 0% as each branch is processed. This should show whether it’s hanging
+  on a specific branch (progress stalls at some percentage) or before any branches
+  are actually processed.
+
+  Rebuild and rerun with -p. If it still hangs at 0%, that means we’re stuck before
+  the per-branch loop—likely in building masterCommits or in earlier collation. Let
+  me know the last progress line you see.
+----
+
+Now hangs here after processing one branch:
+
+.....
+2026-02-15T19:52:42Z: Parsing masters...done, 131052 files (41.511sec)
+2026-02-15T19:53:29Z: Collating branches...done (44.071sec)%)
+2026-02-15T19:54:13Z: Linking branch parents...1 of 1147(0%)
+.....
+
+As a separate issue, it would be good to know where the extra "%)"
+at the end of the previous message comes from and remove it.
+
+-----
+I made two changes:
+
+  1. Fixed the trailing “% )” artifact by padding progress lines to clear leftovers.
+  2. Added per-branch notes during linkBranchParents so you’ll see exactly which
+     branch name it hangs on.
+
+  Rebuild and rerun with -p. The output should now include lines like:
+
+  2026-02-15T19:54:13Z: Linking branch parents...1 of 1147(0%)
+  2026-02-15T19:54:13Z: linking branch parents: <branch-name>
+
+  If it hangs again, the last “linking branch parents:” line tells us the exact
+  branch to isolate.
 -----
 
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485

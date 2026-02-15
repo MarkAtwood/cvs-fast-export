@@ -1692,7 +1692,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.Begin("Linking branch parents...", len(branches))
 	}
-	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings)
+	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings, opts.Progress)
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 		opts.Progress.Begin("Injecting branch seeds...", len(branches))
@@ -2188,7 +2188,7 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector) {
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector, progress *progressState) {
 	emitWarn := func(msg string) {
 		if warn != nil {
 			warn.Add(msg)
@@ -2215,7 +2215,13 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 	}
 	for _, b := range branches {
 		if b.Name == "master" || b.Name == "null" || b.Head == nil {
+			if progress != nil {
+				progress.Step()
+			}
 			continue
+		}
+		if progress != nil {
+			progress.Note(fmt.Sprintf("linking branch parents: %s", b.Name))
 		}
 		// Find oldest commit on branch.
 		var tail *GitCommit
@@ -2229,6 +2235,9 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			tail = c
 		}
 		if tail == nil || len(tail.Files) == 0 {
+			if progress != nil {
+				progress.Step()
+			}
 			continue
 		}
 		// Compute base revisions (strip the last branch hop).
@@ -2266,6 +2275,9 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			}
 		}
 		if allDeadBases {
+			if progress != nil {
+				progress.Step()
+			}
 			continue
 		}
 		for _, f := range tail.Files {
@@ -2385,6 +2397,9 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 				tail.Parent = mc
 				break
 			}
+		}
+		if progress != nil {
+			progress.Step()
 		}
 	}
 }
@@ -4032,6 +4047,7 @@ type progressState struct {
 	inProgress bool
 	out        io.Writer
 	mu         sync.Mutex
+	lastLen    int
 }
 
 func newProgress(enabled bool, out io.Writer) *progressState {
@@ -4131,22 +4147,54 @@ func (p *progressState) printLocked(newline bool, trailer string) {
 	if p == nil || !p.enabled {
 		return
 	}
+	line := ""
 	switch {
 	case trailer != "":
-		fmt.Fprintf(p.out, "\r%s%s", p.msg, trailer)
+		line = p.msg + trailer
 	case p.max > 0:
-		fmt.Fprintf(p.out, "\r%s%d of %d(%d%%)   ", p.msg, p.count, p.max, p.count*100/p.max)
+		line = fmt.Sprintf("%s%d of %d(%d%%)   ", p.msg, p.count, p.max, p.count*100/p.max)
 	case p.count > 0:
-		fmt.Fprintf(p.out, "\r%s%d", p.msg, p.count)
+		line = fmt.Sprintf("%s%d", p.msg, p.count)
 	case p.count == p.max:
-		fmt.Fprintf(p.out, "\r%sdone ", p.msg)
+		line = fmt.Sprintf("%sdone ", p.msg)
 	default:
-		fmt.Fprintf(p.out, "\r%s", p.msg)
+		line = p.msg
 	}
 	if newline {
 		elapsed := time.Since(p.start).Seconds()
-		fmt.Fprintf(p.out, " (%.3fsec)\n", elapsed)
+		line = fmt.Sprintf("%s (%.3fsec)", line, elapsed)
 	}
+	if pad := p.lastLen - len(line); pad > 0 {
+		line = line + strings.Repeat(" ", pad)
+	}
+	if newline {
+		line += "\n"
+	}
+	fmt.Fprintf(p.out, "\r%s", line)
+	if newline {
+		p.lastLen = 0
+	} else {
+		p.lastLen = len(line)
+	}
+	if f, ok := p.out.(interface{ Flush() error }); ok {
+		_ = f.Flush()
+	}
+}
+
+// Note prints a timestamped message without affecting counters.
+func (p *progressState) Note(msg string) {
+	if p == nil || !p.enabled {
+		return
+	}
+	p.Lock()
+	defer p.Unlock()
+	if p.inProgress {
+		fmt.Fprint(p.out, "\n")
+		p.inProgress = false
+		p.lastLen = 0
+	}
+	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	fmt.Fprintf(p.out, "%s: %s\n", now, msg)
 	if f, ok := p.out.(interface{ Flush() error }); ok {
 		_ = f.Flush()
 	}
