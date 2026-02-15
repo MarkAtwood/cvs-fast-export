@@ -4512,6 +4512,68 @@ I made two changes:
   branch to isolate.
 -----
 
+....
+cvs-fast-export: warning - putting nsBinaryStream.cpp,v rev 1.1.0.2 on unnamed branch master-UNNAMED-BRANCH off master
+2026-02-15T20:03:40Z: Parsing masters...done, 131052 files (48.928sec)
+2026-02-15T20:04:34Z: Collating branches...done (51.325sec)
+2026-02-15T20:05:26Z: Linking branch parents...1 of 1147(0%)
+2026-02-15T20:05:26Z: linking branch parents: RDF_BRANCH_060398
+2026-02-15T20:05:26Z: linking branch parents: import-1.1.1
+2026-02-15T20:05:26Z: linking branch parents: MKS_SHELL_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: SeaMonkey_M14_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: BUG22251_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: travisWebshell_20000308_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: nscp_beta1_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: SeaMonkey_M15_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: M15-OJI-05292000
+2026-02-15T20:05:26Z: linking branch parents: SeaMonkey_M16_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: EMBEDDING_06192000_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: M16-OJI-07102000
+2026-02-15T20:05:26Z: Linking branch parents...2 of 1147(0%)
+2026-02-15T20:05:26Z: linking branch parents: M16-OJI-07232000
+2026-02-15T20:05:26Z: linking branch parents: SeaMonkey_M17_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: IBMBIDI_20000809_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: DOMAPISTRING_20000811_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: jar_restructuring_branch
+2026-02-15T20:05:26Z: linking branch parents: Netscape_20000922_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: JUD_PROMPT_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: Netscape_Shrimp_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: EMBEDDING_08042000_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: SeaMonkey_M18_BRANCH
+2026-02-15T20:05:26Z: Linking branch parents...3 of 1147(0%)
+2026-02-15T20:05:26Z: linking branch parents: XBL_FORMS_20001013_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: GFX2_20001016_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: logging_102900_branch
+2026-02-15T20:05:26Z: linking branch parents: CONRAD_DYN_PROFILE_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: MOZILLA_0_6_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: Netscape_6_0_OEM_BRANCH
+2026-02-15T20:05:26Z: Linking branch parents...4 of 1147(0%)
+2026-02-15T20:05:26Z: linking branch parents: MOZILLA_0_7_BRANCH
+2026-02-15T20:05:26Z: linking branch parents: DARIN_AsyncWrite_20001227_BRANCH
+....
+
+----
+Added time‑based progress notes inside linkBranchParents to pinpoint where it
+  stalls within a branch. It now reports:
+
+  - stage (scan-tail, nested-base, match-master, fallback-base)
+  - and progress through master commits during the match phase
+
+  Every 5s it emits a new note for the current branch/stage.
+
+  Rebuild and rerun with -p; the last “linking branch parents: …” line will identify
+  the exact stage and (if in match‑master) the master‑commit index where it’s stuck.
+
+  Also, the % ) artifact is fixed by padding progress lines so old characters are
+  cleared.
+----
+
+Add a total branch count to the "Collating branches" messsage
+
+----
+Added total branch count to the Collating branches progress message.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

@@ -1648,7 +1648,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		}
 	}
 	if opts.Progress != nil {
-		opts.Progress.Begin("Collating branches...", len(branches))
+		opts.Progress.Begin(fmt.Sprintf("Collating branches (%d)...", len(branches)), len(branches))
 	}
 	maxWorkers := 2 * runtime.NumCPU()
 	if maxWorkers < 1 {
@@ -2220,8 +2220,21 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			}
 			continue
 		}
+		branchStart := time.Now()
+		lastReport := branchStart
+		stage := "scan-tail"
 		if progress != nil {
 			progress.Note(fmt.Sprintf("linking branch parents: %s", b.Name))
+		}
+		maybeReport := func(detail string) {
+			if progress == nil {
+				return
+			}
+			if time.Since(lastReport) < 5*time.Second {
+				return
+			}
+			lastReport = time.Now()
+			progress.Note(fmt.Sprintf("linking branch parents: %s (%s%s)", b.Name, stage, detail))
 		}
 		// Find oldest commit on branch.
 		var tail *GitCommit
@@ -2233,6 +2246,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			}
 			seen[c] = struct{}{}
 			tail = c
+			maybeReport("")
 		}
 		if tail == nil || len(tail.Files) == 0 {
 			if progress != nil {
@@ -2264,6 +2278,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			if base.C > 2 {
 				needsBranchBase = true
 			}
+			maybeReport("")
 		}
 		trimmedDeadBase := false
 		allDeadBases := true
@@ -2273,6 +2288,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 				allDeadBases = false
 				break
 			}
+			maybeReport("")
 		}
 		if allDeadBases {
 			if progress != nil {
@@ -2297,9 +2313,11 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 				trimmedDeadBase = true
 				break
 			}
+			maybeReport("")
 		}
 		// Case 1: nested branch base (non-trunk).
 		if needsBranchBase {
+			stage = "nested-base"
 			for _, base := range baseByFile {
 				if base.C > 2 {
 					if gc := byNumber[String(base)]; gc != nil {
@@ -2325,8 +2343,9 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			continue
 		}
 		if len(masterCommits) > 0 && len(baseByFile) > 0 {
+			stage = "match-master"
 			var pick *GitCommit
-			for _, mc := range masterCommits {
+			for i, mc := range masterCommits {
 				if mc.Date.After(tail.Date) {
 					continue
 				}
@@ -2345,6 +2364,9 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 					pick = mc
 					break
 				}
+				if i%500 == 0 {
+					maybeReport(fmt.Sprintf(", %d/%d master commits", i, len(masterCommits)))
+				}
 			}
 			if pick != nil {
 				tail.Parent = pick
@@ -2352,6 +2374,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 			}
 		}
 		// Case 3: fall back to any base revision we can resolve.
+		stage = "fallback-base"
 		for path, base := range baseByFile {
 			if gc := byNumber[String(base)]; gc != nil {
 				tail.Parent = gc
