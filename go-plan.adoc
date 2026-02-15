@@ -4495,8 +4495,30 @@ not ok - branchy: DOT regression test
 
 Use "make clean; make cvs-fast-export" to force a build.
 
-This patch is a partial solution. But
-[label="master\n1970-01-02T04:06:40Z doesn't look quite 
+This patch is a partial solution. But node content is still missing
+from the DOT generated from the branchy test.
+
+----
+  About the missing nodes in branchy.dot: in this workspace there is no branchy.repo, so I can’t
+  reproduce locally. The only way the DOT output collapses to just the header is if the commit list
+  is empty (no branches/heads detected) or input files weren’t actually ingested.
+
+  Can you run this in the tree where branchy.repo exists and share the outputs?
+
+  find branchy.repo/module -name '*,v' | ./cvs-fast-export -g -T -A neutralize.map --reposurgeon > /
+  tmp/branchy.dot 2> /tmp/branchy.err
+  wc -l /tmp/branchy.dot /tmp/branchy.err
+  head -n 20 /tmp/branchy.dot
+
+  That will tell us whether it’s an ingestion issue, a graph emission issue, or warnings suppressing
+  output. If you want me to diagnose it directly, point me at the repo path in this workspace and
+  I’ll run it here.
+----
+
+I rebuilt the test repo; that fixed the problem.
+
+
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

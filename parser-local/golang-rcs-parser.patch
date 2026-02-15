@@ -1,0 +1,36 @@
+diff --git a/home/esr/go/pkg/mod/github.com/arran4/golang-rcs@v0.0.15/parser.go b/mnt/ssd/home/esr/public_html/cvs-fast-export/tmp/golang-rcs-upstream/parser.go
+index 68b97d3..a3669d8 100644
+--- a/home/esr/go/pkg/mod/github.com/arran4/golang-rcs@v0.0.15/parser.go
++++ b/mnt/ssd/home/esr/public_html/cvs-fast-export/tmp/golang-rcs-upstream/parser.go
+@@ -398,7 +398,7 @@ func ParseRevisionHeader(s *Scanner) (*RevisionHead, bool, bool, error) {
+ 		return nil, false, true, nil
+ 	}
+ 	for {
+-		if err := ScanStrings(s, "branches", "date", "next", "commitid", "\n\n", "\r\n\r\n", "\n", "\r\n"); err != nil {
++		if err := ScanStrings(s, "branches", "date", "next", "commitid", "owner", "group", "permissions", "hardlinks", "\n\n", "\r\n\r\n", "\n", "\r\n"); err != nil {
+ 			return nil, false, false, fmt.Errorf("finding revision header field: %w", err)
+ 		}
+ 		nt := s.Text()
+@@ -423,6 +423,10 @@ func ParseRevisionHeader(s *Scanner) (*RevisionHead, bool, bool, error) {
+ 			} else {
+ 				rh.CommitID = c
+ 			}
++		case "owner", "group", "permissions", "hardlinks":
++			if _, err := ParseProperty(s, true, nt, true); err != nil {
++				return nil, false, false, fmt.Errorf("token %#v: %w", nt, err)
++			}
+ 		case "\n\n", "\r\n\r\n":
+ 			return rh, true, false, nil
+ 		case "\n", "\r\n":
+@@ -459,7 +463,10 @@ func ParseRevisionContent(s *Scanner) (*RevisionContent, bool, error) {
+ 	}
+ 	rh.Revision = s.Text()
+ 	if rh.Revision == "" {
+-		return nil, false, ErrRevisionEmpty
++		if err := ScanNewLine(s, false); err != nil {
++			return nil, false, err
++		}
++		return nil, true, nil
+ 	}
+ 	if err := ScanNewLine(s, false); err != nil {
+ 		return nil, false, err
