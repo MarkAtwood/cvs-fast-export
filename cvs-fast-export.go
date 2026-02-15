@@ -1687,9 +1687,23 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 	}
+	if opts.Progress != nil {
+		opts.Progress.Begin("Linking branch parents...", len(branches))
+	}
 	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies)
+	if opts.Progress != nil {
+		opts.Progress.End("done")
+		opts.Progress.Begin("Injecting branch seeds...", len(branches))
+	}
 	injectBranchSeeds(branches, seedByBranch, len(masters), enablePathologies)
+	if opts.Progress != nil {
+		opts.Progress.End("done")
+		opts.Progress.Begin("Collecting tags...", len(masters))
+	}
 	collectTags(masters, repo)
+	if opts.Progress != nil {
+		opts.Progress.End("done")
+	}
 	return repo
 }
 
@@ -2724,18 +2738,33 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			emittedBranches[name] = struct{}{}
 		}
 	}
+	if e.progress != nil {
+		e.progress.Begin("Emitting tag refs...", len(tagNames))
+	}
 	for _, name := range tagNames {
 		if _, ok := emittedTags[name]; ok {
+			if e.progress != nil {
+				e.progress.Step()
+			}
 			continue
 		}
 		if !e.syntheticTags {
+			if e.progress != nil {
+				e.progress.Step()
+			}
 			continue
 		}
 		if _, ok := syntheticTags[name]; !ok {
+			if e.progress != nil {
+				e.progress.Step()
+			}
 			continue
 		}
 		targets := e.tagTargets[name]
 		if len(targets) == 0 {
+			if e.progress != nil {
+				e.progress.Step()
+			}
 			continue
 		}
 		// SPECIAL CASE (t9602 pathological tags):
@@ -2760,6 +2789,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		// Drop the temporary ref to avoid polluting the branch list.
 		fmt.Fprintf(e.w, "reset %s%s\n\n", e.branchPrefix, ref)
 		emittedTags[name] = struct{}{}
+		if e.progress != nil {
+			e.progress.Step()
+		}
+	}
+	if e.progress != nil {
+		e.progress.End("done")
 	}
 	fmt.Fprintln(e.w, "done")
 	return nil

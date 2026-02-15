@@ -4417,107 +4417,20 @@ No. Emission order does not depend on the order that Build() processes branches:
   emission stable.
 ----
 
-There's been a regression in -g mode output.  At least part of it
-seems to be that graph dumping doesesn't honor the -T option.
-
-....
-not ok - basic: DOT regression test
-  --- |
-  --- basic.dot	2026-02-13 14:52:10.077498571 -0500
-  +++ -	2026-02-14 11:40:32.128656285 -0500
-  @@ -6,5 +6,5 @@
-   node [shape=box,fontsize=6];
-   	"branch: master" [fontsize=6,fixedsize=false,shape=ellipse];
-   	"branch: master" -> c1 [weight=100];
-  -	c1 [label="master\n2026-02-13T19:42:33Z\nThis is a sample commit\nREADME 1.1",fixedsize=false];
-  +	c1 [label="master\n2026-02-14T16:30:09Z\nThis is a sample commit\nREADME 1.1",fixedsize=false];
-   }
-  ...
-not ok - branchy: DOT regression test
-  --- |
-  --- branchy.dot	2026-02-13 14:52:10.082498744 -0500
-  +++ -	2026-02-14 11:40:32.135318343 -0500
-  @@ -4,39 +4,4 @@
-   ranksep=0.1;
-   edge [dir=none];
-   node [shape=box,fontsize=6];
-  -	"branch: master" [fontsize=6,fixedsize=false,shape=ellipse];
-  -	"branch: master" -> c12 [weight=100];
-  -	"branch: samplebranch" [fontsize=6,fixedsize=false,shape=ellipse];
-  -	"branch: samplebranch" -> c11 [weight=100];
-  -	"tag: foo" [fontsize=6,fixedsize=false,shape=diamond];
-  -	"tag: foo" -> c4 [weight=3];
-  -	"tag: illegal" [fontsize=6,fixedsize=false,shape=diamond];
-  -	"tag: illegal" -> c12 [weight=3];
-  -	"tag: random" [fontsize=6,fixedsize=false,shape=diamond];
-  -	"tag: random" -> c10 [weight=3];
-  -	"tag: samplebranch_root" [fontsize=6,fixedsize=false,shape=diamond];
-  -	"tag: samplebranch_root" -> c10 [weight=3];
-  -	c1 [label="master\n2026-02-13T19:42:36Z\nThis is a sample commit\nREADME 1.1",fixedsize=false];
-  -	c2 [label="master\n2026-02-13T19:42:39Z\nThis is another sample commit\nREADME 1.2",fixedsize=false];
-  -	c2 -> c1 [weight=10];
-  -	c3 [label="master\n2026-02-13T19:42:42Z\nCreate a doomed file\ndoomed 1.1",fixedsize=false];
-  -	c3 -> c2 [weight=10];
-  -	c4 [label="master\n2026-02-13T19:42:45Z\nAdd a spacer commit\ndoomed 1.2",fixedsize=false];
-  -	c4 -> c3 [weight=10];
-  -	c5 [label="master\n2026-02-13T19:42:48Z\nCheck that .\n.cvsignore 1.1",fixedsize=false];
-  -	c5 -> c4 [weight=10];
-  -	c6 [label="master\n2026-02-13T19:42:51Z\nCheck that .\n.cvsignore 1.2",fixedsize=false];
-  -	c6 -> c5 [weight=10];
-  -	c7 [label="master\n2026-02-13T19:42:54Z\nThe obligatory Monty Python reference\nREADME 1.3",fixedsize=false];
-  -	c7 -> c6 [weight=10];
-  -	c8 [label="master\n2026-02-13T19:42:57Z\nTesting file removal\ndoomed 1.3",fixedsize=false];
-  -	c8 -> c7 [weight=10];
-  -	c9 [label="master\n2026-02-13T19:42:59Z\nOnly README should be visible here.\nREADME 1.4",fixedsize=false];
-  -	c9 -> c8 [weight=10];
-  -	c10 [label="master\n2026-02-13T19:43:02Z\nShould not generate an extra fileop after branch\nsuperfluous 1.1",fixedsize=false];
-  -	c10 -> c9 [weight=10];
-  -	c11 [label="samplebranch\n2026-02-13T19:43:05Z\nDo we get branch detection right?\nREADME 1.4.2.1",fixedsize=false];
-  -	c11 -> c10 [weight=10];
-  -	c12 [label="master\n2026-02-13T19:43:09Z\nThis commit should alter the master branch.\nREADME 1.5",fixedsize=false];
-  -	c12 -> c10 [weight=10];
-   }
-  ...
-....
+I have a bug reporg about a large reposiry that hangs later in
+processing; the last message "I see is Collating branches...done".
+Add progress messages that can narrow dpen the location of the hang.
 
 ----
-  Fixed -g to honor -T by computing deterministic timestamps from simulated fast‑import marks (same
-  formula as export). Change is in cvs-fast-export.go (graph path now takes ForceDates + commit
-  window).
+-Added finer‑grained -p progress messages around the likely hang points:
 
-  That should stop the date drift in basic.dot. It doesn’t yet explain the “branchy.dot only header”
-  regression; if that persists after rebuilding, please capture the new branchy.dot output so I can
-  see what it’s actually emitting now.
+  - “Linking branch parents…”
+  - “Injecting branch seeds…”
+  - “Collecting tags…”
+  - “Emitting tag refs…”
 
-  Note: go build ./... hung again; I attempted to stop it. If you want me to run a narrower build (go
-  build ./cvs-fast-export.go), I can.
-----
-
-Use "make clean; make cvs-fast-export" to force a build.
-
-This patch is a partial solution. But node content is still missing
-from the DOT generated from the branchy test.
-
-----
-  About the missing nodes in branchy.dot: in this workspace there is no branchy.repo, so I can’t
-  reproduce locally. The only way the DOT output collapses to just the header is if the commit list
-  is empty (no branches/heads detected) or input files weren’t actually ingested.
-
-  Can you run this in the tree where branchy.repo exists and share the outputs?
-
-  find branchy.repo/module -name '*,v' | ./cvs-fast-export -g -T -A neutralize.map --reposurgeon > /
-  tmp/branchy.dot 2> /tmp/branchy.err
-  wc -l /tmp/branchy.dot /tmp/branchy.err
-  head -n 20 /tmp/branchy.dot
-
-  That will tell us whether it’s an ingestion issue, a graph emission issue, or warnings suppressing
-  output. If you want me to diagnose it directly, point me at the repo path in this workspace and
-  I’ll run it here.
-----
-
-I rebuilt the test repo; that fixed the problem.
-
-
+  Changes are in cvs-fast-export.go, formatted with gofmt.
+---
 
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
