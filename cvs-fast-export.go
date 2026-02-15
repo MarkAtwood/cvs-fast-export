@@ -1619,6 +1619,7 @@ type Repo struct {
 	TagOrder   []string
 	// PathologyFixes enables t9602-specific synthetic handling.
 	PathologyFixes bool
+	Warnings       []string
 }
 
 // Build collates CVS commits into fast-import commit groups.
@@ -1687,10 +1688,11 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 	}
+	collateWarnings := &warningCollector{}
 	if opts.Progress != nil {
 		opts.Progress.Begin("Linking branch parents...", len(branches))
 	}
-	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies)
+	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings)
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 		opts.Progress.Begin("Injecting branch seeds...", len(branches))
@@ -1704,6 +1706,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 	}
+	repo.Warnings = collateWarnings.warnings
 	return repo
 }
 
@@ -2185,7 +2188,12 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool) {
+func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector) {
+	emitWarn := func(msg string) {
+		if warn != nil {
+			warn.Add(msg)
+		}
+	}
 	var master *GitBranch
 	for _, b := range branches {
 		if b.Name == "master" {
@@ -2195,7 +2203,13 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 	}
 	var masterCommits []*GitCommit
 	if master != nil {
+		seen := make(map[*GitCommit]struct{})
 		for c := master.Head; c != nil; c = c.Parent {
+			if _, ok := seen[c]; ok {
+				emitWarn("warning - cycle detected in master branch history")
+				break
+			}
+			seen[c] = struct{}{}
 			masterCommits = append(masterCommits, c)
 		}
 	}
@@ -2205,7 +2219,13 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 		}
 		// Find oldest commit on branch.
 		var tail *GitCommit
+		seen := make(map[*GitCommit]struct{})
 		for c := b.Head; c != nil; c = c.Parent {
+			if _, ok := seen[c]; ok {
+				emitWarn(fmt.Sprintf("warning - cycle detected in branch %s history", b.Name))
+				break
+			}
+			seen[c] = struct{}{}
 			tail = c
 		}
 		if tail == nil || len(tail.Files) == 0 {
@@ -2303,7 +2323,7 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 					if base.C == 0 {
 						continue
 					}
-					v, okv := versionAtCommit(mc, path)
+					v, okv := versionAtCommit(mc, path, warn)
 					if !okv || !Equal(v, base) {
 						ok = false
 						break
@@ -2370,8 +2390,16 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 }
 
 // versionAtCommit returns the last revision of path visible at commit c.
-func versionAtCommit(c *GitCommit, path string) (Number, bool) {
+func versionAtCommit(c *GitCommit, path string, warn *warningCollector) (Number, bool) {
+	seen := make(map[*GitCommit]struct{})
 	for cur := c; cur != nil; cur = cur.Parent {
+		if _, ok := seen[cur]; ok {
+			if warn != nil {
+				warn.Add("warning - cycle detected while resolving commit ancestry")
+			}
+			break
+		}
+		seen[cur] = struct{}{}
 		for _, f := range cur.Files {
 			if f == nil {
 				continue
@@ -4562,6 +4590,14 @@ func main() {
 	if cfg.ExecMode == execGraph {
 		dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
 		os.Exit(0)
+	}
+	if len(repo.Warnings) > 0 && !cfg.Quiet {
+		if progress != nil {
+			progress.Interrupt()
+		}
+		for _, w := range repo.Warnings {
+			fmt.Fprintf(warnWriter, "cvs-fast-export: %s\n", w)
+		}
 	}
 
 	if len(repo.Branches) > 0 {
