@@ -4610,6 +4610,94 @@ func dumpCommitGraph(repo *Repo, diff bool, forceDates bool, commitWindow time.D
 	fmt.Fprintln(w, "}")
 }
 
+// dumpCVSForest emits a DOT graph of the per-file CVS revision forest.
+func dumpCVSForest(masters []*Master, forceDates bool, commitWindow time.Duration, w io.Writer) {
+	if len(masters) == 0 {
+		return
+	}
+	window := commitWindow
+	if window <= 0 {
+		window = 300 * time.Second
+	}
+	fmt.Fprintln(w, "strict digraph G {")
+	fmt.Fprintln(w, "newrank=true;")
+	fmt.Fprintln(w, "nodesep=0.1;")
+	fmt.Fprintln(w, "ranksep=0.1;")
+	fmt.Fprintln(w, "edge [dir=none];")
+	fmt.Fprintln(w, "node [shape=box,fontsize=6];")
+
+	nextID := 1
+	for _, m := range masters {
+		if m == nil {
+			continue
+		}
+		fileLabel := m.SortName
+		if fileLabel == "" {
+			fileLabel = m.FileName
+		}
+		if fileLabel == "" {
+			fileLabel = "UNKNOWN"
+		}
+		clusterID := fmt.Sprintf("cluster_%d", nextID)
+		nextID++
+		fmt.Fprintf(w, "\tsubgraph %s {\n", clusterID)
+		fmt.Fprintf(w, "\t\tlabel=\"%s\";\n", dotEscape(fileLabel))
+		fmt.Fprintln(w, "\t\tfontsize=8;")
+
+		commits := make([]*Commit, 0, len(m.Commits))
+		for _, c := range m.Commits {
+			if c != nil {
+				commits = append(commits, c)
+			}
+		}
+		sort.Slice(commits, func(i, j int) bool {
+			return Compare(commits[i].Number, commits[j].Number) < 0
+		})
+		id := make(map[*Commit]int, len(commits))
+		for _, c := range commits {
+			id[c] = nextID
+			nextID++
+			when := c.Date.UTC()
+			if forceDates {
+				ordinal := int64(id[c])
+				seconds := int64(window.Seconds())
+				when = time.Unix(100000+ordinal*seconds*2, 0).UTC()
+			}
+			lines := []string{fileLabel, String(c.Number)}
+			if !when.IsZero() {
+				lines = append(lines, when.Format(time.RFC3339))
+			}
+			if snippet := logSnippet(c.Log); snippet != "" {
+				lines = append(lines, snippet)
+			}
+			label := dotEscape(strings.Join(lines, "\n"))
+			fmt.Fprintf(w, "\t\tc%d [label=\"%s\",fixedsize=false];\n", id[c], label)
+		}
+		for _, c := range commits {
+			if c == nil || c.Parent == nil {
+				continue
+			}
+			if parentID, ok := id[c.Parent]; ok {
+				fmt.Fprintf(w, "\t\tc%d -> c%d [weight=10];\n", id[c], parentID)
+			}
+		}
+		for _, h := range m.Heads {
+			if h == nil || h.Commit == nil || h.RefName == "" {
+				continue
+			}
+			refID := fmt.Sprintf("r%d", nextID)
+			nextID++
+			refLabel := dotEscape("branch: " + h.RefName)
+			fmt.Fprintf(w, "\t\t%s [fontsize=6,fixedsize=false,shape=ellipse,label=\"%s\"];\n", refID, refLabel)
+			if headID, ok := id[h.Commit]; ok {
+				fmt.Fprintf(w, "\t\t%s -> c%d [weight=100];\n", refID, headID)
+			}
+		}
+		fmt.Fprintln(w, "\t}")
+	}
+	fmt.Fprintln(w, "}")
+}
+
 // commitLabel builds a commit node label for DOT output.
 func commitLabel(c *GitCommit, diff bool, ops []*fileOp, prev map[string]fileState, when time.Time) string {
 	if c == nil {
@@ -4913,7 +5001,11 @@ func main() {
 		os.Exit(0)
 	}
 	if cfg.ExecMode == execGraph {
-		dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
+		if cfg.Reposurgeon {
+			dumpCVSForest(masters, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
+		} else {
+			dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
+		}
 		os.Exit(0)
 	}
 	if len(repo.Warnings) > 0 && !cfg.Quiet {
