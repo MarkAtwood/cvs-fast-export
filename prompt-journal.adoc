@@ -5372,6 +5372,21 @@ Do the semantic pass.
   code actually does.
 ----
 
+The C version had a feature that when boyth -g and =r were chosen, it would graph not the
+translated Gitspace tpology but the CVS forest. Can you restore
+that?
+
+----
+  Restored the C behavior: when -g and -r are both set, the DOT output now graphs the CVS
+  per‑file revision forest instead of the collated gitspace.
+
+  Changes:
+
+  - Added dumpCVSForest(masters, ...) to emit per‑master clusters, per‑revision nodes, and
+    per‑branch head refs.
+  - Switched graph mode to call this when cfg.Reposurgeon is set.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
