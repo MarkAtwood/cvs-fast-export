@@ -85,14 +85,14 @@ i_rebuild: neutralize.map
 	@-for file in $(INCREMENTAL); do \
 	    echo "Remaking $${file}.inc-chk"; \
 	    $(MAKE) --quiet $${file}.repo; \
-	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -T -A neutralize.map -i $(THRESHOLD) >$${file}.inc-chk 2>&1; \
+	    $(CVS_FAST_EXPORT) -T -A neutralize.map -i $(THRESHOLD) $${file}.repo/module >$${file}.inc-chk 2>&1; \
 	done;
 i_regress: neutralize.map
 	@echo "# Incremental-dump regressions"
 	@-for file in $(INCREMENTAL); do \
 	    legend=$$( ( grep -a '##' $${file}.tst  || echo ' ## (no description)') | sed 's/## //' ); \
 	    $(MAKE) --quiet $${file}.repo; \
-	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) -T -i $(THRESHOLD) -A neutralize.map 2>&1 | tapdiffer "$${file} $${legend}" $${file}.inc-chk; \
+	    $(CVS_FAST_EXPORT) -T -i $(THRESHOLD) -A neutralize.map $${file}.repo/module 2>&1 | tapdiffer "$${file} $${legend}" $${file}.inc-chk; \
 	done
 TEST_TARGETS += $(INCREMENTAL)
 
