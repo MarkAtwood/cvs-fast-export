@@ -731,15 +731,12 @@ func linkParents(heads []*Head, warn *warningCollector) {
 		p := findBranch(heads, n)
 		h.Parent = p
 		if p != nil && h.RefName == "" {
-			// Synthesize a readable name for unnamed branches.
-			branchName := ""
-			if h.Commit != nil && h.Commit.CommitID != "" {
-				branchName = fmt.Sprintf("%s-UNNAMED-BRANCH-%s", p.RefName, h.Commit.CommitID)
-			} else {
-				branchName = fmt.Sprintf("%s-UNNAMED-BRANCH", p.RefName)
-			}
-			if h.Commit != nil {
-				base := path.Base(h.Commit.Source)
+			// Synthesize a stable, unique name for unnamed branches based on file+branch id.
+			live := firstLiveCommit(h.Commit)
+			branchName := unnamedBranchName(live)
+			branchName = uniqueHeadName(heads, branchName, h)
+			if live != nil {
+				base := strings.TrimSuffix(path.Base(live.Source), ",v")
 				warn.Add(fmt.Sprintf("warning - putting %s rev %s on unnamed branch %s off %s",
 					base, String(h.Number), branchName, p.RefName))
 			}
@@ -752,7 +749,7 @@ func linkParents(heads []*Head, warn *warningCollector) {
 func pruneUnnamedBranches(heads []*Head) []*Head {
 	best := make(map[string]*Head)
 	for _, h := range heads {
-		if h.RefName == "" || !strings.Contains(h.RefName, "-UNNAMED-BRANCH") {
+		if h.RefName == "" || !isUnnamedRefName(h.RefName) {
 			continue
 		}
 		if h.Commit == nil {
@@ -764,7 +761,7 @@ func pruneUnnamedBranches(heads []*Head) []*Head {
 	}
 	out := heads[:0]
 	for _, h := range heads {
-		if h.RefName != "" && strings.Contains(h.RefName, "-UNNAMED-BRANCH") {
+		if h.RefName != "" && isUnnamedRefName(h.RefName) {
 			if best[h.RefName] != h {
 				continue
 			}
@@ -800,6 +797,62 @@ func findBranch(heads []*Head, number Number) *Head {
 		}
 	}
 	return nil
+}
+
+// isUnnamedRefName reports whether a ref name is a synthesized unnamed-branch label.
+func isUnnamedRefName(name string) bool {
+	return strings.Contains(name, "UNNAMED-")
+}
+
+// branchIDFromRevision returns the branch ID for a revision (1.4.1.1 -> 1.4.1).
+func branchIDFromRevision(n Number) Number {
+	if n.C >= 4 {
+		out := cloneNumber(n)
+		out.C = n.C - 1
+		out.N = out.N[:out.C]
+		return out
+	}
+	return n
+}
+
+// unnamedBranchName builds a stable, per-file unique name for an unnamed branch.
+func unnamedBranchName(c *Commit) string {
+	if c == nil {
+		return "UNNAMED-BRANCH"
+	}
+	source := strings.TrimSuffix(path.Clean(c.Source), ",v")
+	source = strings.ReplaceAll(source, "/", "_")
+	if source == "" || source == "." {
+		source = "unknown"
+	}
+	branchID := String(branchIDFromRevision(c.Number))
+	if branchID == "" {
+		return fmt.Sprintf("UNNAMED-%s", source)
+	}
+	return fmt.Sprintf("UNNAMED-%s-%s", source, branchID)
+}
+
+// uniqueHeadName de-conflicts synthesized names against existing heads.
+func uniqueHeadName(heads []*Head, name string, self *Head) string {
+	if name == "" {
+		return name
+	}
+	used := make(map[string]struct{}, len(heads))
+	for _, h := range heads {
+		if h == self || h.RefName == "" {
+			continue
+		}
+		used[h.RefName] = struct{}{}
+	}
+	if _, ok := used[name]; !ok {
+		return name
+	}
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s~%d", name, i)
+		if _, ok := used[candidate]; !ok {
+			return candidate
+		}
+	}
 }
 
 // firstLiveCommit returns the first non-dead commit in a chain.

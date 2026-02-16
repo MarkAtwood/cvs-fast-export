@@ -4936,6 +4936,230 @@ failure.
     errors).
 ----
 
+This is a bug report I received:
+
+....
+When using cvs-fast-export with RCS files, if the RCS file has
+revisions that have multiple branches, all but one of those branches
+gets dropped. I have attached two examples created by cvsstrip:
+bogus4,v is fairly minimal with only three branches, and bogus5,v is a
+full file with lots of branches. The problem seems to be because of
+how unnamed branches are given names.
+....
+
+Here is bogus4,v:
+
+----
+head	1.5;
+access;
+symbols
+	Patch3_1_03:1.4
+	;
+locks
+	geoff:1.5; strict;
+comment	@;;; @;
+
+
+1.5
+date	88.05.25.11.57.26;	author geoff;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	87.05.25.21.24.20;	author geoff;	state Exp;
+branches
+	1.4.1.1;
+next	1.3;
+
+1.3
+date	87.03.31.17.33.48;	author geoff;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	87.03.22.22.21.01;	author geoff;	state Exp;
+branches
+	1.2.1.1;
+next	1.1;
+
+1.1
+date	87.01.17.13.04.08;	author geoff;	state Exp;
+branches;
+next	;
+
+1.2.1.1
+date	87.05.25.19.42.43;	author geoff;	state Exp;
+branches;
+next	;
+
+1.4.1.1
+date	88.05.25.12.01.48;	author geoff;	state Exp;
+branches;
+next	;
+
+
+desc
+@GNU-EMACS mlisp functions to implement an interactive spelling check
+@
+
+
+1.5
+log
+@4fb8f593e40dbff7eb37daf2b30fe06c
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.5
+@
+
+
+1.4
+log
+@4880a8f336ab26f8073ca4070d755903
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.4
+@
+
+
+1.4.1.1
+log
+@eb90681b63fa42a545c8076b343423c4
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.4.1.1
+@
+
+
+1.3
+log
+@03a83a27e1b4b4391938884bddeef6b8
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.3
+@
+
+
+1.2
+log
+@06d868e14d7325887246522531bdec89
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.2
+@
+
+
+1.2.1.1
+log
+@f2daf1775fa9cb4f5f9dd7f7704e3067
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.2.1.1
+@
+
+
+1.1
+log
+@da28248b4ec75efbe0ba7461142ed60d
+@
+text
+@d1 1
+a1 1
+<stdin> content for 1.1
+@
+----
+
+Clearly this is happening because the RCS master has no branch tags,
+so everything gets slammed onto UNNAMED_BRANCH.
+
+Propose a plan for assigning unique names to each unnamed branch tip in
+a collection or RCS or CVS masters. In CVSm are branch parts of
+revision names stable enough that we can use those?
+
+----
+ere’s a concrete, low‑risk plan that keeps names stable and unique, while staying
+  faithful to CVS/RCS semantics.
+
+  Core idea
+  Use the numeric branch identifier (the “branch part” of the RCS revision) as the stable
+  key, and derive a readable name from it. In RCS/CVS, branch numbers are stable within a
+  file: e.g., for revision 1.4.1.1, the branch is 1.4.1 (the even-length prefix without the
+  final .1). That’s stable for the life of the file, and distinct for each branch off that
+  trunk point.
+
+  Proposed naming scheme (per file)
+  For any branch that lacks a tag:
+
+  UNNAMED-<file-stem>-<branch-id>
+
+  Examples for bogus4,v:
+
+  - 1.4.1.1 → branch id 1.4.1 → UNNAMED-bogus4-1.4.1
+  - 1.2.1.1 → branch id 1.2.1 → UNNAMED-bogus4-1.2.1
+
+  This ensures:
+
+  - unique per file
+  - stable across runs
+  - deterministic from RCS data alone
+
+  If you want cross-file branch grouping
+  If multiple files have branches with the same numeric branch-id and you want them to map
+  to the same Git branch, use the branch id alone (or a sanitized variant):
+
+  UNNAMED-1.4.1
+
+  This mimics how CVS labels branch lines: same numeric branch id usually means “same
+  branch” across files within the same module when created by cvs tag -b (but see caveat
+  below).
+
+  Collision handling
+  If a real tag already uses the derived name, append a short suffix:
+
+  UNNAMED-1.4.1~1, UNNAMED-1.4.1~2, ...
+
+  Stability / semantics
+
+  - Branch ids are stable within a file, so per-file naming is safe and deterministic.
+  - Cross-file stability is not guaranteed unless the branch was created via a consistent
+    branch tag; two unrelated branches can still share the same numeric branch id. So cross-
+    file grouping should be optional and conservative.
+
+  Recommendation
+  Default to per-file unique naming (safe and lossless). Add an option (or keep an internal
+  heuristic) to coalesce branches by numeric id only when there’s evidence of a common tag
+  or shared branch root context.
+
+  Answering your direct question: Yes, branch parts of revision names are stable enough
+  within a given RCS file, but not guaranteed to identify the same conceptual branch across
+  files unless created by a shared CVS tag.
+
+  If this plan sounds good, I’ll translate it into code next.  
+----
+
+Do it.
+
+----
+  Implemented stable, per-file unique unnamed-branch naming and collision handling.
+
+  What changed:
+
+  - Unnamed branch names now derive from file path + branch id (e.g. UNNAMED-foo_bar-1.4.1),
+    not commit IDs.
+  - Names are de-conflicted with ~N suffixes if they collide.
+  - Pruning logic recognizes new unnamed naming scheme.
+----
 
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end

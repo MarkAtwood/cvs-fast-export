@@ -1,4 +1,4 @@
-cvs-fast-export: warning - putting nullbranch,v rev 1.1.0.2 on unnamed branch master-UNNAMED-BRANCH off master
+cvs-fast-export: warning - putting nullbranch rev 1.1.0.2 on unnamed branch UNNAMED-nullbranch-1.1.2 off master
 cvs-fast-export: null branch name, probably from a damaged Attic file
 blob
 mark :1
@@ -6,7 +6,7 @@ data 64
 Type: application/x.executable.cxxtest
 Src: TestNullptr.cxxtest
 
-commit refs/heads/master-UNNAMED-BRANCH
+commit refs/heads/UNNAMED-nullbranch-1.1.2
 mark :2
 committer obuyansk <obuyansk> 1311880677 +0000
 data 52

@@ -1,6 +1,5 @@
-cvs-fast-export: warning - putting missingbranch,v rev 1.4.0.2 on unnamed branch master-UNNAMED-BRANCH off master
-cvs-fast-export: warning - putting missingbranch,v rev 1.2.0.2 on unnamed branch master-UNNAMED-BRANCH off master
-cvs-fast-export: missingbranch 1.2.2.1: CSRG-last points at commit with no gitspace link.
+cvs-fast-export: warning - putting missingbranch rev 1.4.0.2 on unnamed branch UNNAMED-missingbranch-1.4.2 off master
+cvs-fast-export: warning - putting missingbranch rev 1.2.0.2 on unnamed branch UNNAMED-missingbranch-1.2.2 off master
 blob
 mark :1
 data 37
@@ -78,32 +77,50 @@ M 100644 :5 missingbranch
 
 blob
 mark :7
+data 41
+content for 1.2.2.1
+a1 1
+content for 1.4
+
+commit refs/heads/UNNAMED-missingbranch-1.2.2
+mark :8
+committer cgd <cgd> 759399455 +0000
+data 33
+db82d0f8371146cbff468efa59091942
+from :4
+M 100644 :7 missingbranch
+
+reset refs/tags/CSRG-last
+from :8
+
+blob
+mark :9
 data 26
 d1 1
 a1 1
 content for 1.4
 
 commit refs/heads/master
-mark :8
+mark :10
 committer cgd <cgd> 759400619 +0000
 data 33
 d3f06456d1d40470f261651166f36347
 from :6
-M 100644 :7 missingbranch
+M 100644 :9 missingbranch
 
 blob
-mark :9
+mark :11
 data 41
 content for 1.4.2.1
 a1 1
 content for 1.4
 
-commit refs/heads/master-UNNAMED-BRANCH
-mark :10
+commit refs/heads/UNNAMED-missingbranch-1.4.2
+mark :12
 committer mycroft <mycroft> 776874476 +0000
 data 33
 eac3a5a5fe408f0129d454a84fc3fdb5
-from :8
-M 100644 :9 missingbranch
+from :10
+M 100644 :11 missingbranch
 
 done

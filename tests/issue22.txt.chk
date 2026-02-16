@@ -1,4 +1,4 @@
-cvs-fast-export: warning - putting issue22.txt,v rev 1.28.0.2 on unnamed branch master-UNNAMED-BRANCH off master
+cvs-fast-export: warning - putting issue22.txt rev 1.28.0.2 on unnamed branch UNNAMED-issue22.txt-1.28.2 off master
 blob
 mark :1
 data 46
@@ -420,7 +420,7 @@ mark :59
 data 51
 usbwin32-mirror/VERSION.txt,v content for 1.28.2.1
 
-commit refs/heads/master-UNNAMED-BRANCH
+commit refs/heads/UNNAMED-issue22.txt-1.28.2
 mark :60
 committer khu <khu> 990039746 +0000
 data 33
