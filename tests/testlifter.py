@@ -239,6 +239,9 @@ class CVSCheckout(object):
         self.repo = repo
         self.module = module or "module"
         self.checkout = checkout or module
+        # Ensure we don't update a stale working copy from a prior test run.
+        if os.path.exists(self.module):
+            shutil.rmtree(self.module)
         # Hack to get around repositories that don't have a CVSROOT & module
         self.proxy = None
         if not os.path.exists(self.repo.directory + os.sep + "CVSROOT"):

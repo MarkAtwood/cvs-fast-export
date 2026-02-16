@@ -54,14 +54,14 @@ s_rebuild: neutralize.map
 	@-for file in $(TESTLOADS); do \
 	    echo "Remaking $${file}.chk"; \
 	    $(MAKE) --quiet $${file}.repo; \
-	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) >$${file}.chk 2>&1; \
+	    $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.repo/module >$${file}.chk 2>&1; \
 	done;
 s_regress: neutralize.map
 	@echo "# Dump regressions"
 	@-for file in $(TESTLOADS); do \
 	    legend=$$( ( grep -a '##' $${file}.tst || echo ' ## (no description)' ) | sed 's/## //' ); \
 	    $(MAKE) --quiet $${file}.repo; \
-	    find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) 2>&1 | tapdiffer "$${file}: $${legend}" $${file}.chk; \
+	    $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.repo/module 2>&1 | tapdiffer "$${file}: $${legend}" $${file}.chk; \
 	done
 TEST_TARGETS = $(TESTLOADS)
 

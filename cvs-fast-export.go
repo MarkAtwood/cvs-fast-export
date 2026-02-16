@@ -3833,7 +3833,6 @@ func parseArgs(args []string) (config, error) {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
-				return nil
 			}
 			if d.IsDir() {
 				return nil

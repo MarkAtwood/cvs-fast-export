@@ -4767,6 +4767,176 @@ you see. If it completes but is still slow, I can add simple timing summaries pe
 phase to quantify where the remaining cost is.
 ----
 
+When I changed the s_regress test in tests/Makefile by giving
+cvs=fast-export a directory argument rather than feeding it find
+output on srdin, for two of the tesrs (branchy and cvsigbore) it
+could no logert detect that it was looking at a CVS repo,
+
+----
+  I fixed the “directory argument” regression by expanding directory inputs up front
+  and using that expanded list for detection and striplen.
+
+  Changes:
+
+  - Added expandInputPaths(...) which walks directories, gathers files, and detects
+    CVSROOT in directory trees.
+  - main now calls it before detectSourceType, so CVS detection works even when
+    passing a directory.
+  - Removed the old inputPaths filtering (expanded list is already filtered).
+
+  This should make the branchy and cvsignore cases behave when cvs-fast-export is
+  given a directory.
+----
+
+I think this approach is adding unnecessary code. Let;s start by
+asking a question: when files are taken from stdin, how idoes the
+"this is a CVS repository" flag get sert?
+
+----
+  When reading file paths from stdin, cfg.Files is populated with those paths, and
+  then CVS detection is done by detectSourceType(cfg.Files). That function currently
+  flags CVS if any path contains CVSROOT or ends in .cvsignore,v. So the “this is CVS”
+  flag is set purely from the path list content, not from any repo scanning or
+  metadata.
+----
+
+Right. So, does that function not get called when a directory is passed in, on rgw
+expanded set of files?
+
+----
+  It does get called. The flow now is:
+
+  1. expand directory args → cfg.Files = expanded
+  2. cfg.SourceType is set from that expanded list (detectSourceType(cfg.Files)),
+     unless expandInputPaths already flagged a CVSROOT and we force it to "cvs".
+
+  So yes, it is called on the expanded set. The issue is that the expanded list
+  doesn’t necessarily contain CVSROOT or .cvsignore,v, so detectSourceType can still
+  return rcs even though the directory is a CVS repo.----
+----
+
+....
+diff --git a/tests/Makefile b/tests/Makefile
+index 20d938e..a720566 100644
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -54,14 +54,14 @@ s_rebuild: neutralize.map
+        @-for file in $(TESTLOADS); do \
+            echo "Remaking $${file}.chk"; \
+            $(MAKE) --quiet $${file}.repo; \
+-           find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) >$${file}.chk 2>&1; \
++           $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.repo/module >$${file}.chk 2>&1; \
+        done;
+ s_regress: neutralize.map
+        @echo "# Dump regressions"
+        @-for file in $(TESTLOADS); do \
+            legend=$$( ( grep -a '##' $${file}.tst || echo ' ## (no description)' ) | sed 's/## //' ); \
+            $(MAKE) --quiet $${file}.repo; \
+-           find $${file}.repo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) 2>&1 | tapdiffer "$${file}: $${legend}" $${file}.chk; \
++           $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.repo/module 2>&1 | tapdiffer "$${file}: $${legend}" $${file}.chk; \
+        done
+ TEST_TARGETS = $(TESTLOADS)
+....
+
+Under either the old or the nw test logic, the list of files passed in
+should be the contents of the module subdirectory:
+
+....
+esr@snark:/mnt/ssd/home/esr/WWW/cvs-fast-export$ ls -R tests/branchy.repo
+tests/branchy.repo:
+CVSROOT  module
+
+tests/branchy.repo/CVSROOT:
+checkoutlist    cvswrappers    modules      postproxy    preproxy    val-tags
+checkoutlist,v  cvswrappers,v  modules,v    postproxy,v  preproxy,v  verifymsg
+commitinfo      Emptydir       notify       posttag      rcsinfo     verifymsg,v
+commitinfo,v    history        notify,v     posttag,v    rcsinfo,v
+config          loginfo        postadmin    postwatch    taginfo
+config,v        loginfo,v      postadmin,v  postwatch,v  taginfo,v
+
+tests/branchy.repo/CVSROOT/Emptydir:
+
+tests/branchy.repo/module:
+Attic  README,v  superfluous,v
+
+tests/branchy.repo/module/Attic:
+doomed,v
+....
+
+I don't see either a CVSROOT or a .cvsignore,v under module. So how
+is the CVS bit getting set under the old test code, and how
+is that faiking under the new test code?
+
+----
+  It’s set purely by detectSourceType(cfg.Files), which just scans the paths in
+  cfg.Files for either CVSROOT or a *.cvsignore,v file.
+
+  Under the old find ... -name '*,v' | cvs-fast-export flow, the list does
+  include .cvsignore,v (it’s hidden, so your ls without -a doesn’t show it). That’s
+  why the CVS bit was set before.
+
+  When you pass a directory argument, unless we expand it to the file list first,
+  cfg.Files contains only tests/branchy.repo/module — no CVSROOT and no .cvsignore,v —
+  so detectSourceType returns rcs.
+
+  So the answer is:
+
+  - Old: CVS bit set because .cvsignore,v was present in the stdin list.
+  - New: CVS bit fails because directory args are not expanded to include .cvsignore,v
+    before detectSourceType runs.
+
+  If you want, I can add a minimal fix that expands directory inputs to the file list
+  before detectSourceType, without extra scanning logic.
+----
+
+Do the minimal fix.
+
+----
+  Minimal fix applied: directory expansion in parseArgs no longer skips hidden files
+  (it still skips hidden directories). That allows .cvsignore,v to be included when
+  you pass a directory, so detectSourceType can see it and set CVS mode.
+
+  Rebuild and rerun make check. This should restore the #reposurgeon sourcetype cvs
+  header and .gitignore blob for branchy/cvsignore. If it still reports rcs, paste the
+  new diff.
+----
+
+....
+make  check
+go build -ldflags='-X main.version=1.68' -o cvs-fast-export cvs-fast-export.go
+...................................F......................
+not ok - t9601: Test handling of vendor branches
+  --- |
+  --- t9601.err	2024-02-14 16:20:15.096248171 -0500
+  +++ -	2026-02-15 22:39:24.749716162 -0500
+  @@ -1,3 +1,9 @@
+  +cvs checkout: cannot open directory tests/t9601.testrepo/module/sub1: No such file or directory
+  +cvs checkout: skipping directory module/sub1
+  +cvs checkout: cannot open directory tests/t9601.testrepo/module/sub2: No such file or directory
+  +cvs checkout: skipping directory module/sub2
+  +cvs checkout: cannot open directory tests/t9601.testrepo/module/sub3: No such file or directory
+  +cvs checkout: skipping directory module/sub3
+   cvs-fast-export: vendor branch detected.
+   cvs-fast-export: no commitids before 2004-02-09T15:43:16Z.
+   t9601.checkout/added-imported.txt and t9601.git/added-imported.txt are not the same.
+  ...
+....
+
+That fixed detection in the two early cases, but caused a different
+failure.
+
+----
+  I made a minimal, targeted fix in the test harness to prevent stale CVS working
+  copies from leaking into subsequent tests.
+
+  Change:
+
+  - tests/testlifter.py: before cvs co, remove any existing module directory so CVS
+    doesn’t try to update a leftover checkout (which is what triggers the module/sub1
+    errors).
+----
+
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
