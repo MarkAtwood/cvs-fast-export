@@ -16,11 +16,6 @@ BINDIR      ?= $(PREFIX)/bin
 DATADIR     ?= $(PREFIX)/share
 MANDIR      ?= $(DATADIR)/man
 
-INSTALL = install
-TAR ?= tar
-BISON ?= bison
-FLEX ?= flex
-
 VERSION=$(shell sed -n <NEWS.adoc '/::/s/^\([0-9][^:]*\).*/\1/p' | head -1)
 
 # Rules
