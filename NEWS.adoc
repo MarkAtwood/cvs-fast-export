@@ -7,6 +7,7 @@ Repository head::
    Improved fidelity in edge cases of assigning CVS tags to commits.
    Length of revision numbers and count of branches is no longer limited.
    The -s option is gone; the common prefix of all paths is always stripped.
+   Vendor branch heading has been rebuilt and improved.
 
 1.68: 2024-07-31::
    Fix minor error in handling of -d argument.

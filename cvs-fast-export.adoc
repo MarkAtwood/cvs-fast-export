@@ -443,6 +443,25 @@ tag <name> attached by fallback::
      These messages is a result of incomplete tagging - a tag that is not present
      in all masters. Tags attached this way should be conidered dubious.
 
+warning - invalid branch header "<text>"::
+     The RCS admin header contains a malformed "branch" value; it is ignored.
+
+warning - branch header <rev> is not a vendor branch::
+     The RCS admin header specifies a branch that is not a vendor branch
+     (not 1.1.x with odd x). Vendor-branch heuristics may be applied instead.
+
+warning - vendor branch <rev> not found; falling back to heuristic::
+warning - no usable vendor branch hint; falling back to heuristic::
+warning - multiple vendor branches with no branch header; falling back to heuristic::
+     CVS does not record enough information to identify which vendor branch
+     should be treated as HEAD in these cases. The converter chooses a
+     best-effort vendor branch and emits this warning.
+
+warning - non-standard vendor branch <rev> with trunk commits is ambiguous::
+     Vendor branches other than 1.1.1 combined with trunk commits are not
+     unambiguously interpretable from the RCS data. Conversion output may
+     diverge from historical CVS behavior.
+
 == REPORTING BUGS ==
 Report bugs to Eric S. Raymond <esr@thyrsus.com>. Please read
 "Reporting bugs in cvs-fast-export" before shipping a report. The

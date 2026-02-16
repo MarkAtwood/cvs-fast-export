@@ -582,21 +582,33 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit,
 
 // PatchVendorBranches detects vendor branches, synthesizes missing names,
 // and splices them into master when no 1.2 exists.
-func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbol bool) ([]*Head, bool) {
+func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbol bool, branchSpec Number, hasBranchSpec bool, warn *warningCollector) ([]*Head, bool) {
 	trunk := findHeadByName(heads, "master")
 	if trunk == nil {
 		return heads, false
 	}
 
 	var nvendor *Head
+	var preferredVendor *Head
 	foundVendor := false
+	vendorCount := 0
+	if hasBranchSpec && !isVendorBranchSymbol(branchSpec) && String(branchSpec) != "" {
+		warn.Add(fmt.Sprintf("warning - branch header %s is not a vendor branch", String(branchSpec)))
+	}
 	// Identify vendor branches by their numbering scheme and patch metadata.
 	for _, vendor := range heads {
 		if vendor.Commit == nil || !IsVendor(vendor.Commit.Number) {
 			continue
 		}
 		foundVendor = true
+		vendorCount++
 		nvendor = vendor
+		if hasBranchSpec && isVendorBranchSymbol(branchSpec) {
+			branchID := branchIDFromRevision(vendor.Commit.Number)
+			if Compare(branchID, branchSpec) == 0 {
+				preferredVendor = vendor
+			}
+		}
 
 		if vendor.RefName == "" {
 			// Synthesize a stable "import-<branch>" name from the branch root.
@@ -621,6 +633,15 @@ func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbo
 
 	// If trunk is missing 1.2, splice the newest vendor branch into master.
 	if nvendor != nil && trunk.Commit != nil && trunk.Commit.Parent == nil {
+		if preferredVendor != nil {
+			nvendor = preferredVendor
+		} else if hasBranchSpec && isVendorBranchSymbol(branchSpec) {
+			warn.Add(fmt.Sprintf("warning - vendor branch %s not found; falling back to heuristic", String(branchSpec)))
+		} else if foundVendor && hasBranchSpec {
+			warn.Add("warning - no usable vendor branch hint; falling back to heuristic")
+		} else if foundVendor && !hasBranchSpec && vendorCount > 1 {
+			warn.Add("warning - multiple vendor branches with no branch header; falling back to heuristic")
+		}
 		oldtip := trunk.Commit
 		trunk.Commit = nvendor.Commit
 		trunk.Degree = nvendor.Commit.Number.C
@@ -635,6 +656,12 @@ func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbo
 		// In RCS-only mode, drop vendor heads that now point at the trunk tip.
 		if !allowVendorBranches || !hasVendorSymbol {
 			heads = removeHeadsWithCommit(heads, trunk.Commit, trunk)
+		}
+	}
+	// Warn about non-standard vendor branches once trunk commits exist.
+	if trunk.Commit != nil && trunk.Commit.Parent != nil && hasBranchSpec && isVendorBranchSymbol(branchSpec) {
+		if String(branchSpec) != "1.1.1" {
+			warn.Add(fmt.Sprintf("warning - non-standard vendor branch %s with trunk commits is ambiguous", String(branchSpec)))
 		}
 	}
 
@@ -946,6 +973,16 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	if err != nil {
 		return nil, err
 	}
+	branchSpec := Zero
+	hasBranchSpec := false
+	if file.Branch != "" {
+		if n, perr := Parse(file.Branch); perr == nil {
+			branchSpec = n
+			hasBranchSpec = true
+		} else {
+			warn.Add(fmt.Sprintf("warning - invalid branch header %q", file.Branch))
+		}
+	}
 	// Derive executable bit from the master file mode.
 	fileMode := 0644
 	if info.Mode()&0100 != 0 {
@@ -1079,7 +1116,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 	// Rebuild heads after vendor-branch patching so trunk selection is correct.
 	var foundVendor bool
-	master.Heads, foundVendor = PatchVendorBranches(master.Heads, allowVendorBranches, hasVendorSymbol)
+	master.Heads, foundVendor = PatchVendorBranches(master.Heads, allowVendorBranches, hasVendorSymbol, branchSpec, hasBranchSpec, warn)
 	if foundVendor {
 		warn.Add("vendor branch detected.")
 	}

@@ -5161,6 +5161,159 @@ Do it.
   - Pruning logic recognizes new unnamed naming scheme.
 ----
 
+Can you read PDFs?
+
+----
+  Yes—if you upload or point me to the PDF, I can read and summarize it.
+----
+
+OK. I need to compile a definitive set of rules for how CVS vendor
+branches are expected to behave, so we can get the handling right
+in cvs-fast-export. Read hacking.adoc, read cvs-paper.pdf, search
+the Web for information on CVS branches.
+
+1. Check hacking.adoc for correctness with respect to other sources
+such as cvs-paper.pdf and the CVS documetation.
+
+2. Check our vendor-branch handling for correctness.
+
+Places to start:
+
+https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Tracking-sources.html#Tracking-sources
+
+https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Multiple-vendor-branches.html
+
+https://durak.org/sean/pubs/software/cvsbook/Tracking-Third_002dParty-Sources-_0028Vendor-Branches_0029.html
+
+----
+  Below is what I found after reading hacking.adoc, cvs-paper.pdf, and the CVS docs / CVS
+  Book pages you pointed to.
+
+  1) hacking.adoc correctness vs sources
+
+  Mostly consistent with the canonical docs and the paper, but it is missing (or could
+  better highlight) a few important behaviors that are explicitly stated in the CVS manual:
+
+  - CVS reserves vendor branch 1.1.1 by default, and import makes that vendor branch the
+    HEAD revision; once a local modification is committed, HEAD moves to trunk. (gnu.org
+    (https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Tracking-sources.html))
+  - Multiple vendor branches are supported via cvs import -b, and CVS does not detect
+    mismatches between the vendor tag and the -b branch number. This is a documented “sharp
+    edge.” (gnu.org (https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Multiple-
+    vendor-branches.html))
+  - Vendor branches are odd‑numbered. (durak.org (https://durak.org/sean/pubs/software/
+    cvsbook/import.html?utm_source=openai))
+
+  Those points are either missing or only implicit in hacking.adoc. The section is otherwise
+  aligned with the Berliner paper and the CVS manual’s narrative about import -> vendor
+  branch head -> local modifications move head to trunk. (gnu.org (https://www.gnu.org/
+  software/trans-coord/manual/cvs/html_node/Tracking-sources.html))
+
+  Suggested doc tweaks (small, high‑value):
+
+  - Add a short paragraph in hacking.adoc explicitly stating “import makes vendor branch
+    head; local commit makes trunk head” with the manual as the source. (gnu.org (https://
+    www.gnu.org/software/trans-coord/manual/cvs/html_node/Tracking-sources.html))
+  - Add a warning about -b + vendor tag mismatch not being detected. (gnu.org (https://
+    www.gnu.org/software/trans-coord/manual/cvs/html_node/Multiple-vendor-branches.html))
+  - Add a warning that non‑standard vendor branches (using -b != 1.1.1) become unrecoverably
+    ambiguous once there are trunk commits, because CVS itself no longer records which
+    non‑standard branch was used. (mcs.anl.gov (https://www.mcs.anl.gov/~jacob/cvs2svn/
+    faq.html?utm_source=openai))
+
+  That last point matters directly to conversion correctness.
+
+  ———
+
+  2) Check our vendor‑branch handling for correctness
+
+  Here’s how the Go version behaves today (from code inspection), and how it matches the
+  documented CVS behavior:
+
+  What matches the docs
+
+  - We detect vendor branches by the odd 1.1.x pattern, which matches CVS’s definition of
+    vendor branches (odd‑numbered off 1.1). (durak.org (https://durak.org/sean/pubs/
+    software/cvsbook/import.html?utm_source=openai))
+  - If trunk has no local commit (i.e., only 1.1 exists), we splice vendor history into
+    master, which matches “vendor branch is head when no local modifications.” (gnu.org
+    (https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Tracking-sources.html))
+
+  What’s questionable / likely wrong
+
+  - Multiple vendor branches: We currently pick the “highest‑numbered” vendor branch as the
+    one to splice into master when trunk has no local commits. That is not specified in CVS
+    docs. CVS says the vendor branch is whichever branch was imported to (default 1.1.1, or
+    specified with -b). (gnu.org (https://www.gnu.org/software/trans-coord/manual/cvs/
+    html_node/Tracking-sources.html))
+      - If multiple vendor branches exist, “highest number wins” is a heuristic, not a
+        documented rule. It will be wrong in cases where the last import used a lower odd
+        branch number.
+  - Non‑standard vendor branch numbers with trunk commits: CVS itself loses track of
+    non‑standard vendor branch numbers after trunk commits, leading to ambiguous history.
+    Our code does not detect or warn about this. (mcs.anl.gov (https://www.mcs.anl.gov/
+    ~jacob/cvs2svn/faq.html?utm_source=openai))
+
+  Practical implications
+
+  - If a repo used cvs import -b 1.1.3 and later made trunk commits, CVS’s own semantics
+    become ambiguous. We should warn loudly, because conversion correctness is not
+    well‑defined in that case. (mcs.anl.gov (https://www.mcs.anl.gov/~jacob/cvs2svn/
+    faq.html?utm_source=openai))
+  - If a repo has multiple vendor branches, we should choose the “head” vendor branch based
+    on the RCS branch field (if present) or the vendor tag used for import, not “highest
+    number.” CVS explicitly ties the vendor branch to the -b argument; it does not say
+    “highest odd wins.” (gnu.org (https://www.gnu.org/software/trans-coord/manual/cvs/
+    html_node/Multiple-vendor-branches.html))
+
+  ———
+
+  Concrete next steps I recommend
+
+  1. Use the RCS admin branch field (if present) to choose which vendor branch is the
+     default HEAD when trunk has no local commits.
+  2. If multiple vendor branches exist and no branch field indicates a default, fall back to
+     current heuristic but emit a warning.
+  3. Detect non‑standard vendor branches (-b != 1.1.1) when trunk commits exist, and emit a
+     strong warning that CVS history is ambiguous in this case. (mcs.anl.gov (https://
+     www.mcs.anl.gov/~jacob/cvs2svn/faq.html?utm_source=openai))
+  4. Update hacking.adoc with the missing “import makes vendor branch head; local commit
+     moves head to trunk; mismatch warning; non‑standard branch ambiguity” notes. (gnu.org
+     (https://www.gnu.org/software/trans-coord/manual/cvs/html_node/Tracking-sources.html))
+
+  If you want, I can implement (1)–(3) and update the docs next.
+----
+
+Do that.
+
+----
+  Implemented the vendor‑branch rules and warnings, and updated the docs.
+
+  Code changes (logic):
+
+  - Use the RCS admin branch header (if present) to select the vendor branch that should be
+    treated as HEAD before trunk commits exist.
+  - If the branch header is missing or doesn’t match a vendor branch, fall back to the
+    previous “highest odd vendor branch” heuristic and warn.
+  - Warn when a non‑standard vendor branch (not 1.1.1) is used and trunk commits exist,
+    since CVS history is ambiguous in that case.
+  - Warn on invalid or non‑vendor branch headers.
+
+  Docs:
+
+  - Updated hacking.adoc to explicitly state “import makes vendor branch HEAD; local commit
+    moves HEAD to trunk,” the -b mismatch caveat, and the new branch‑header preference/
+    fallback behavior.
+
+  Files touched:
+
+  - cvs-fast-export.go
+  - hacking.adoc
+----
+
+Rather to my surprise, those changes don't trigger failures on any of
+the regression tests.
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

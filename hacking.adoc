@@ -235,6 +235,14 @@ data-mine CVS repositories.  This section describes the assumptions
 because it is not unlikely they will be a continuing source of
 correctness issues.
 
+The CVS manual documents two key behaviors that matter for conversion:
+imports create a vendor branch (default 1.1.1), and *until a local
+trunk commit exists* the vendor branch is treated as HEAD. Once a local
+trunk commit is made, HEAD moves to trunk. The import command also
+allows overriding the vendor branch with `-b`, and CVS does *not* detect
+inconsistencies between the vendor tag and the branch number specified
+by `-b`. This can result in irreconcilable ambiguity in later history.
+
 Here's what the CVS documentation has to say under the documentation
 of the "import" command: "The [vendor] source is saved in a
 first-level RCS branch, by default 1.1.1. Updates are leaves of this
@@ -402,10 +410,22 @@ and 1.1.1.3, but this subgraph illustrates the problem.  Under the
 merge rule, the tip content will be that of 1.1.1.2 than 1.2.
 This does not match CVS's observed behavior.
 
-The behavior now implemented is to find the highest-numbered (thus,
-presumably, the most recent) vendor branch, point the "master" named
-reference at it, and then splice the existing master branch to the end
-of that vendor branch.
+The behavior now implemented is to prefer the branch header (when
+present) as the indicator of which vendor branch is HEAD before the
+first trunk commit. When no branch header is present or it does not
+identify an existing vendor branch, we fall back to the heuristic of
+choosing the highest-numbered vendor branch, point the "master" named
+reference at it, and splice the existing master branch to the end of
+that vendor branch.
+
+In addition, when a branch header is present in the RCS admin section,
+`cvs-fast-export` uses it as a hint for which vendor branch to treat as
+HEAD before the first trunk commit. If the header is missing or points
+to a vendor branch that does not exist, we fall back to the heuristic
+and emit a warning. If a non-standard vendor branch (anything other
+than 1.1.1) is used *and* trunk commits exist, CVS itself no longer
+records enough information to resolve history unambiguously; this is
+treated as a data-quality warning.
 
 == Operation ==
 
