@@ -141,7 +141,7 @@ TEST_TARGETS += $(PYTESTS)
 # Omitted:
 # branchy.repo - because of illegal tag
 # twotag.repo - because of inconsistent tagging
-# QED.testrepo - produces a branch cycle fatal error
+# QED.testrepo - produces a manifest mismatch
 # t9601.testrepo - content mismatch expected
 # t9602.testrepo - manifest mismatch expected
 CT = at.repo basic.repo daughterbranch.repo exec.repo \
