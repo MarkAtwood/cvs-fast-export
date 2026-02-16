@@ -5314,6 +5314,64 @@ Do that.
 Rather to my surprise, those changes don't trigger failures on any of
 the regression tests.
 
+----
+  Good sign.
+
+  Given that, next logical step is to validate the new behavior on a focused vendor‑branch
+  fixture (e.g., with a non‑standard branch header and multiple vendor branches) to make
+  sure the warnings and selection are doing what we intend.
+
+  If you want me to build that minimal test (one or two .v files + a tiny harness), say the
+  word and I’ll add it.
+----
+
+First, add the new warnings to the list of documented errors in
+cvs-fast-export.adoc, attaching a bief explanation to each.
+
+----
+  Added the new vendor‑branch warnings to the documented messages with brief explanations in
+  cvs-fast-export.adoc.
+
+  If you want, I can run a quick doc sanity pass or proceed to the
+  next task.
+----
+
+The documentation sanity pass sounds like a good idea.
+
+----
+  Did a quick sanity pass and fixed clear typos plus one description that was now out of
+  date.
+
+  Edits in cvs-fast-export.adoc:
+
+  - Fixed grammar/typos: “there is”, “on checkout”, “mergepoint”, “are”, “considered”.
+  - Updated unnamed-branch warning to match current naming scheme.
+
+  If you want a deeper semantic pass (checking for any remaining statements that diverge
+  from current Go behavior), say the word and I’ll do a more exhaustive review.
+----
+
+Do the semantic pass.
+
+----
+  I completed a semantic pass and updated the manual to match current Go behavior.
+
+  Key fixes in cvs-fast-export.adoc:
+
+  - Removed stale -s behavior and --embed-id option.
+  - Corrected commit ordering description to match the current topology‑safe, time‑biased
+    ordering.
+  - Documented -N and -S, and added -r alias for --reposurgeon.
+  - Updated the tag‑pathology section to reflect current behavior (attach to latest;
+    synthetic commit only in extreme cases).
+  - Fixed -p description (no RSS tracking).
+  - Minor wording fixes to reflect actual unnamed‑branch naming.
+
+  If you want, I can add the missing long-option docs (--graph, --progress, --incremental)
+  for completeness, but this pass keeps the doc aligned to what the
+  code actually does.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

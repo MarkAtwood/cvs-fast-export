@@ -6,8 +6,8 @@ cvs-fast-export - fast-export history from a CVS repository or RCS collection.
 
 == SYNOPSIS ==
 *cvs-fast-export*
-    [-h] [-a] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P]
-    [-i 'date'] [-A 'authormap'] [-R 'revmap'] [--reposurgeon] [-e  'remote']
+    [-h] [-a] [-c] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P] [-N] [-S]
+    [-i 'date'] [-A 'authormap'] [-R 'revmap'] [-r|--reposurgeon] [-e 'remote']
     [file-or-dir...]
 
 == DESCRIPTION ==
@@ -39,8 +39,7 @@ using those.
 In the default mode, which generates a git-style fast-export stream to
 standard output:
 
-* The prefix given using the -s option or, if the option is omitted, the
-  longest common prefix of the paths is discarded from each path.
+* The longest common prefix of the input paths is discarded from each path.
 
 * Files in CVS Attic and RCS directories are treated as though the "Attic/"
   or "RCS/" portion of the path were absent.  This usually restores the
@@ -58,12 +57,9 @@ standard output:
   the window defined by the time-fuzz parameter.  Unlike some other
   exporters, no attempt is made to derive changesets from shared tags.
 
-* Commits are issued in time order unless the cvs-fast-export detects
-  that some parent is younger than its child (this is unlikely but
-  possible in cases of severe clock skew). In that case you will see a
-  warning on standard error and the emission order is guaranteed
-  topologically correct, but otherwise not specified (and is subject to
-  change in future versions of this program).
+* Commits are emitted in a topologically correct order that is biased
+  toward increasing commit time, but strict time order is not guaranteed.
+  Severe clock skew can force the ordering to deviate from time order.
 
 * CVS tags become git lightweight tags when they can be unambiguously
   associated with a changeset.  If the same tag is attached to file
@@ -175,27 +171,22 @@ that filename-revision pair was assigned.  Doesn't work with -g.
 Show verbose progress messages mainly of interest to developers.
 
 -q::
-Run quietly, suppressing warning messages about absence of commitids
-and other minor problems for which the program can usually compensate but
-which may indicate conversion problems. Meant to be used with
-cvsconvert(1), which does its own correctness checking.
+Run quietly, suppressing warning messages (including those about
+absence of commitids). Meant to be used with cvsconvert(1), which does
+its own correctness checking.
 
 -T::
 Force deterministic dates for regression testing. Each patchset will
 have a monotonic-increasing attributed date computed from its mark in
 the output stream - the mark value times the commit time window times two.
 
---reposurgeon::
+-r, --reposurgeon::
 Ship a header comment for reposurgeon to use, declaring "cvs" if a
 .cvsignore master or CVSROOT file has been seen and "rcs" otherwise.
 Emit for each commit a list of the CVS file:revision pairs composing
 it as a bzr-style commit property named "cvs-revisions".  From version
 2.12 onward, reposurgeon(1) can interpret these and use them as hints
 for reference-lifting.
-
---embed-id::
-Append to each commit comment identification of the CVS commits that
-contributed to it.
 
 -V::
 Emit the program version and exit.
@@ -206,8 +197,7 @@ refs/heads, making the import appear to come from the named remote.
 
 -p::
 Enable progress reporting. This also dumps statistics (elapsed time
-and size of maximum resident set) for several points in the conversion
-run.
+for several points in the conversion run.
 
 -P::
 Normally cvs-fast-export will skip any filename presented as an argument
@@ -216,6 +206,12 @@ will also ignore a pathname containing the string CVSROOT (this
 avoids annoyances when running from or above a top-level CVS directory).
 A strict reading of RCS allows masters without the ,v extension.  This
 option sets promiscuous mode, disabling both checks.
+
+-N::
+Suppress default CVS ignore rules when lifting .cvsignore to .gitignore.
+
+-S::
+Print approximate Go type sizes for debugging and exit.
 
 // spellcheck: add yy-mm-ddThh
 -i 'date'::
@@ -316,21 +312,15 @@ correctly resolved; instead, an entirely disjoint history will be
 created containing the branch revisions and all parents back to the
 root.
 
-The program does try to do something useful cases in which a tag
-occurs in a set of revisions that does not correspond to any gitspace
-commit.  In this case a tagged branch containing only one commit is
-created, guaranteeing that you can check out a set of files containing
-the CVS content for the tag. The commit comment is "Synthetic commit
-for incomplete tag XXX", where XXX is the relevant tag.  The root of
-the branchlet is the gitspace commit where the latest CVS revision in
-in the tagged set first occurs; this is the commit the tag would point
-at if its incompleteness were ignored. The change in the branchlet
-commit *is* also applied forward in the nearby mainline.
+If a tag is attached to revisions that resolve to multiple changesets,
+cvs-fast-export will attach the tag to the latest matching changeset.
+In extreme pathological cases it may emit a synthetic commit (with a
+warning) to materialize the tagged checkout state.
 
-Unless there an explicit expand directive in the CVS master, this
+Unless there is an explicit expand directive in the CVS master, this
 program does the equivalent of cvs -kb when checking out masters, not
 performing any $-keyword expansion at all.  This differs from CVS's
-default behavior om checkoutbut has the advantage that binary files
+default behavior on checkout but has the advantage that binary files
 will never be clobbered.  It has the disadvantage that the data in
 $-headers is not reliable; at best you'll get the unexpanded version
 of the $-cookie, at worst you might get the committer/timestamp
@@ -356,7 +346,7 @@ should be assigned to two different gitspace commits with the same
 timestamp, which tag it actually lands on will be random.
 
 CVSNT is supported, but CVSNT extension fields including "permissions"
-"hardlinks", "mregepoint" and "username" are ignored.
+"hardlinks", "mergepoint" and "username" are ignored.
 
 Non-ASCII characters in user IDs are not supported.
 
@@ -412,8 +402,7 @@ discarding dead untagged branch::
 
 warning - putting xxx rev yyy on unnamed branch zzz off www::
      A CVS branch with a live revision lacks a head label. A label with
-     "-UNNAMED-BRANCH" suffixed to the name of the parent branch will be
-     generated for the exported branch.
+     "UNNAMED-<file>-<branch>" will be generated for the exported branch.
 
 ignoring empty branch::
      An explicitly named CVS branch has no live revisions; it is dropped
@@ -440,8 +429,8 @@ warning - tag <name> requires synthetic commit (partial match)::
 
 tag <name> attached by partial match::
 tag <name> attached by fallback::
-     These messages is a result of incomplete tagging - a tag that is not present
-     in all masters. Tags attached this way should be conidered dubious.
+     These messages are a result of incomplete tagging - a tag that is not present
+     in all masters. Tags attached this way should be considered dubious.
 
 warning - invalid branch header "<text>"::
      The RCS admin header contains a malformed "branch" value; it is ignored.
