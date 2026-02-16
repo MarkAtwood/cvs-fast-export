@@ -35,11 +35,6 @@ Loz says: Subset tag will probably paper over the
 problem. Imagine the repo didn't have the +"lost-repo-state"
 tag. There wouldn't be a commit for this state in the git repo."
 
-* Issue a warning when the same tag is attached to multiple commits.
-  At the moment it's just silently reported attached to the last.
-
 Smaller items:
-
-FIXME: test hang-1 and the Mozilla repo at untried
 
 FIXME: clear the buglist on Gitlab
