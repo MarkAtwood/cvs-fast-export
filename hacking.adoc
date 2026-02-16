@@ -15,31 +15,18 @@ directly to create translated repositories.
 
 The code was briefly maintained by Bart Massey before passing to Eric
 S. Raymond in late 2012. ESR wrote the fast-export output stage and
-renamed the program to reflect its new function.
+renamed the program to reflect its new function. Later, he made the
+parser re-entrant and parallelized the ingestion of masters. He
+collected a rogue's caller of test histories to verify correct operation
 
-Most of ESR's original contributions are in `export.c`, which is why
-that code is in a somewhat different style than the rest of the
-codebase. ESR also split the original commit structure into
-`cvs_commit` and `git_commit` as a space optimization, rescued
-the rather decrepit code for generating `graphviz` visualizations,
-and hacked the parser code to be fully re-entrant.
+Until the code was ported from C to Golang with AI assistance in 2026,
+significant portions of this code were a trackless jungle of complex
+algorithms with poorly documented assumptions. Particularly weird CVS
+histories triggered buffer overruns and heap-corruption errors. The
+decade of maintenance in C was tedious and difficult.
 
-A few other people have contributed significant improvements since,
-mainly performance tweaks.  Most notably: Jens Bethkowsky
-<jens.bethkowsky@rwth-aachen.de> added a red-black-tree implementation
-to speed up symbol search; Aidan Hobson Sayers <aidanhs@cantab.net>
-replaced an O(n**3) sort with an O(n log n) sort; David Leonard
-<david.leonard@opengear.com> sped up `compute_parent_links()` and wrote
-several other significant optimizations.  Laurence Hygate
-<loz@flower.powernet.co.uk> wrote many sort and hash
-optimizations. Alan Barrett wrote the improved progress meter.  Tom
-Enterline sped up snapshot generation.
-
-Significant portions of this code remain a trackless jungle of complex
-algorithms with poorly documented assumptions.  Only Keith ever
-completely understood it, and he does no longer.  Others have been
-able to modify it mainly by isolating pieces that they could
-comprehend without having to grok the whole.
+The Go port, and AI assistance in analyzing CVS edge cases, resolved
+the code's chronic issues.
 
 == Description ==
 
@@ -86,10 +73,6 @@ incomplete tagging can cause interpretation problems as well.
 
 Now you should read "RCS/CVS LIMITATIONS" in the `cvs-fast-export(1)`
 manual page.
-
-For a focused description of branch/tag collation behavior and edge
-cases (used as compatibility spec for the Go port), see
-link:cvs-collation-spec.adoc[CVS Collation and Symbol Resolution Spec].
 
 == Conformable branch structure ==
 
@@ -205,11 +188,15 @@ per-changeset tags, only per-file ones.  When CVS fakes tagging a
 changeset, what it actually does is add the same tag symbol to
 every file master in the changeset.
 
-(Various kinds of operator error and/or CVS bug can cause the creation
+Various kinds of operator error and/or CVS bug can cause the creation
 of incomplete tagged sets, which *don't* annotate every master in
 existence at tag creation time.  These are a headache for any
-conversion tool.  `cvs-fast-export` deals with them by creating tagged
-branchlets containing exactly one commit.)
+conversion tool.  The old C version of `cvs-fast-export` dealt with
+them by creating tagged branchlets containing exactly one commit; the
+new one accepts incomplete tag sets but scans for them backward from
+the end of the history. So if copies of a tag were attached CVS
+revisions that ended up in more than one commit, it gets attached
+to the latest one.
 
 Named CVS branches are represented by adding a "sticky tag" to every
 file in the branch. In the above examples, the branch beginning with
@@ -437,306 +424,39 @@ graph) of changesets.  The third stage (export) emits a report on the
 DAG structure, either a fast-export stream expressing it or DOT code
 for a visualization that can be rendered by graphviz.
 
-The main sequence of the code is, unsurprisingly, in the `main()` portion
-of the file `main.c`.
-
 === Analysis stage ===
 
-The main function of this stage is `cvs_master_digest()`.
+The main function of this stage is `pathToMaster()`. It uses the golang-rcs
+library by Arran Ubels; this replaced a lot of gnarly code (which was
+sadly prone to heap corruption in odd cases) in the C version.
 
-It may be sequenced in one of two ways depending on whether you run
-with the `-t` option at a value 2 or greater.  Without this, masters are
-processed sequentially as they are encountered.  With it, they are
-dispatched to worker subthreads.  The point of this is to avoid
+Parsing of masters is done concurrently. The point of this is to avoid
 allowing I/O waits for one master read or snapshot export to stall
 compute-intensive processing of other masters (that is, mainly, delta
 assembly).
 
-CVS master files consist of a header section describing symbols and
-attributes, followed by a set of deltas (add-delete/change
-sequences) one per revision number.
-
-The analysis stage uses a yacc/lex grammar to parse headers in CVS
-files, and custom code to integrate their delta sequences into
-sequences of whole-file snapshots corresponding to each delta. These
-snapshots are stashed in a temporary directory, later to become blobs
-in the fast-export stream.
-
-A consequence is that the code is tied to Bison and Flex.  In order
-for the parallelization to work, the CVS-master parser has to be fully
-re-entrant.  Heirloom Yacc and Lex can't do that.
-
-After some study of the structures in `cvs.h`, most of the analysis code
-will be fairly straightforward to understand.
-
-If you have to modify the analysis code, it will most likely involve some
-small addition to the parse grammar to handle an attribute particular
-to somebody's variation on CVS.
-
 === Resolution stage ===
 
-The main function of this stage is `collate_to_changesets()`.  All the
-really black magic happens inside it.  Nobody understands all of this
-code; a few people have managed to comprehend individual pieces of it.
+The main function of this stage is `Build()`.  All the really black
+magic happens inside it.  Nobody understands all of this code; it is
+recommended that you not attempt to modify it without AI assistance
+
+For a focused description of branch/tag collation behavior and edge
+cases (used as compatibility spec for the Go port), see
+link:cvs-collation-spec.adoc[CVS Collation and Symbol Resolution Spec].
 
 === Export stage ===
 
 Most of the export third stage is relatively easy to understand.
-It takes the annotated DAG produced by the second stage and emits either a
+t takes the annotated DAG produced by the second stage and emits either a
 fast-import stream or a DOT representation of the DAG.
-
-The exception is the actual delta resolution done by the call to
-`generate()`, which is seriously hairy. Fortunately, that part of the
-CVS master format has (unlike the header and attribute information)
-been extremely stable, and thus the delta-integration code is unlikely
-to require modification.
-
-You will probably find that only part of the export code proper that
-is really difficult to understand is the use of iterators in
-`compute_parent_links()`.  This hair is justified by the fact that it
-optimizes what used to be an O(n**3) operation (and the worst hotspot
-in the code at the time) into about O(n).
-
-The main challenge of this code is comprehending the data
-structures it consumes.  That's our next topic.
-
-== Data structures ==
-
-This program is rife with tricky data structures. If you want to
-modify it, the first thing you should do is read the definitions
-in `cvs.h`.
-
-The trickiest part is that the `rev_list` structure is used
-polymorphically in such a way that it's not easy to tell what the
-semantics of a `rev_list *` are.  Early in processing it tends to point
-at the branch-head head list for a single CVS master.  Later it can
-link to the digested form of an entire CVS repo (e.g. a linked list
-of `rev_list` objects each encapsulating a CVS master's content).  Still
-later it can link to a tree of gitspace commit objects.
-
-In an attempt to make the code more readable, `cvs.h` defines three
-typedefs, one for each of these uses. The rest of this section
-uses those.
-
-The first stage turns each CVS file into a `cvs_repo *` - a linked list of
-`rev_ref` objects, each of which represents a named CVS branch head. The
-`rev_ref` objects in turn point at chains of `cvs_commit` objects, each
-representing a CVS delta.
-
-During the resolution phase, the branch structures associated with
-individual files are transformed into a single `git_repo *` representing
-a repository-state DAG. At this point, the commit pointers change
-semantics to refer to `git_commit` objects; a certain amount of type
-punning is involved.
-
-The export code walks the resulting single `git_repo` linked list
-generating a report from it.
-
-A notable feature of the `git_commit` structures is that the code goes
-to great lengths to space-optimize (pack) the representation of file
-paths in the commit at the point when it is synthesized (this is
-required in order to hold down the program's working-set size on large
-repositories).  After packing, paths are represented by structure
-trees that coalesce common path prefixes.
-
-The `refcount` field in the commit structure counts the number of branch
-heads from which the commit can be reached by an ancestry chain.
-
-== Source files ==
-
-=== atom.c  ===
-
-The main entry point, `atom()`, interns a string, avoiding having
-separate storage for duplicate copies. No ties to other structures.
-The only complexity here is a straightforward hash implementation to
-speed up collision searches.
-
-=== authormap.c ===
-
-Manages a map from short CVS-style names to DVCS-style name/email
-pairs. Added by ESR, it has few ties to the core code.
-
-=== cvsnumber.c ===
-
-Various small functions (mostly predicates) on the `cvs_number` objects
-that represent CVS revision numbers (1.1, 1.2, 2.1.3.1 and the like).
-No coupling to other structures.
-
-=== cvsutil.c  ===
-
-Code for managing and freeing objects in a CVS file structure.
-No coupling to revlist handling.
-
-=== dump.c ===
-
-Dump functions for graphing and debug instrumentation.
-Much of the code in here is obsolete and unused.
-
-=== export.c ===
-
-Code to dump a resolved DAG as a git-fast-export stream.  Replaces
-much more obscure code in Keith's original that built git repos
-directly by calling the git CLI. The only coupling to the core
-data structures is that it traverses the DAG created by the resolution
-stage.
-
-=== generate.c  ===
-
-Convert the sequence of deltas in a CVS master to a corresponding
-sequence of file snapshots. This is the part of the export stage
-most likely to make your brain hurt.
-
-=== gram.y  ===
-
-A fairly straightforward yacc grammar for CVS masters.  Fills a
-`cvs_file` structure passed into it as a `yyparse()` argument.
-
-=== graph.c  ===
-
-Like `export.c`, but emits DOT rather than a fast-export stream.  Takes
-the DAG generated by the analysis stage and turns it into a
-description of the graph in the DOT markup language used by the
-`graphviz` tools.
-
-=== import.c ===
-
-Import/analysis of a collection of CVS master files.  Calls the parser
-and builds the first-stage revlist. The complicated part is in the
-`rev_list_cvs()` call, which calls out to `revcvs.c`.
-
-In the first-stage revlist, each element corresponds to a CVS master
-and points at a list of named CVS branch heads (`rev_refs`) in the
-master, each one of which points at a list of CVS commit structures
-(`cvs_commit`).
-
-=== lex.l  ===
-
-The lexical analyzer for the grammar in `gram.y`.  Pretty straightforward.
-
-=== main.c  ===
-
-The main sequence of the code.  Not much else there other than some
-fairly simple time and date handling.
-
-=== collate.c  ===
-
-Here there be dragons.  Core code used in analysis and resolution.
-Nobody completely understands this.
-
-The main function is `collate_to_changesets()`, which is conceptually
-simple - it finds cliques of CVS deltas that match by commitid or
-other metadata, and creates a git changeset for each clique of
-matching CVS deltas.  First it finds all the unique branch heads in
-the CVS masters, creates corresponding git branch heads, and sorts the
-git branch heads in tree order, trunk first.  Then for each git branch
-head, it finds all the CVS masters that have deltas for that git
-branch, and calls `collate_branches` to create the git changesets. Finally
-tags are assigned to the changesets.
-
-The job of `collate_branches` seems simple - find cliques of matching CVS
-deltas for one branch, and create corresponding git changesets.
-
-The technique used by `collate_branches` is to put the masters (revisions)
-in order by change date, and step along that list to find the clique,
-i.e. find deltas that are "close enough" (within the `cvs-fast-export`
-window).
-
-Reasons the code is hard to understand:
-
-1. The criteria for matching, as mentioned above, are complex. In the
-simplest case, deltas made under recent CVS versions can be matched
-by unique commit-ID cookies generated by CVS. When commit IDS are
-absent, clique matches must be recognized by a match of all other
-metadata (committer ID and change comment content) except for
-approximate match of time.
-
-2. The revisions array does not contain a static list of revisions,
-each revisions array element points to a master's latest (newest) delta.
-As the CVS deltas are used to create git commits, the revisions array
-is updated to point to an earlier (older) delta of the same master.
-
-Another way of understanding the process is as a set of "flows".
-Each revision array element is a window into the set of updates (flow)
-for the corresponding CVS master. Or using more traditional CS
-terminology, each revision array element is a pointer to an element
-of the CVS revisions linked list.
-
-=== nodehash.c  ===
-
-Manage the node hash, an obscure bit of internals used to walk
-through all deltas of a CVS master at the point in the export stage
-where snapshot blobs corresponding to the deltas are generated.
-
-=== rbtree.c  ===
-
-This is an optimization hack to speed up CVS symbol lookup, added
-well after the main body of the code was written and decoupled
-from the core data structures.
-
-=== revcvs.c  ===
-
-Build the in-core revision list corresponding to a single CVS master.
-Just one entry point, `cvs_master_digest()`, which takes the structure built
-by the grammar parse of the master as its single argument.
-
-A potential trouble spot is `revcvs.c:cvs_master_patch_vendor_branch()`.
-It's not clear the algorithm is correct in all cases - it's not even
-completely clear what "correct" would look like.
-
-=== revdir.c  ===
-
-The least incomprehensible part of the core code.  These functions are
-used to pack file paths in `rev_file` objects into a more
-space-efficient representation.
-
-This code may use one of two packing implementations.  The older one is in
-`dirpack.c`; it's the scheme Keith Packard originally wrote.  The newer
-one, which is more complex but drastically reduces working set size,
-is in `treepack.c`; it is due to Laurence Hygate.
-
-=== revlist.c  ===
-
-Utility functions used by both the CVS analysis code in `revcvs.c`
-and the black magic in `collate.c`.
-
-=== tags.c  ===
-
-Manage objects representing CVS tags (and later, git lightweight
-tags). These data structures reference and are referenced by the
-core structures, but the coupling is relatively loose and
-well-defined; you can figure out what is going on by reading
-the function names.
-
-=== utils.c  ===
-
-The progress meter, various private memory allocators, and
-error-reporting.  No coupling to the core data structures.
-
-== Known problems in the code ==
-
-There's a comment in `collate_to_changesets()` that says "Yes, this is
-currently very inefficient".  That is a probable hotspot.
-
-The fact that nobody really understands the resolution algorithm is
-worrying.  It means nobody has much hope of fixing it where it breaks.
-
-There is a rare but fatal problem which manifests as a crash with the
-message "branch cycle error".  It reflects an undiagnosed problem
-in the aforementioned resolution error.
-
-Vendor-branch handling - `revcvs.c:cvs_master_patch_vendor_branch()` -
-is subject to problems in various ill-defined edge cases.
-
-Various mysterious error messages need to be documented.  Basically,
-if it's not in the list on `cvs-fast-export.adoc`, it needs to be.
 
 == Good practice ==
 
 When modifying this code, run the regression tests (`make check`)
 early and often.  It is very easy to break even with apparently
-innocuous changes.  You will want to have `cppcheck`, `pylint`, and
-`shellcheck` installed for full code validation, and `clang-format` to
-reflow the code.
+innocuous changes.  You will want to have `pylint`, and `shellcheck`
+installed for full code validation.
 
 If you find a bug and fix it, please try to create a toy repo exhibiting
 the problem - or, better yet, a minimal set of operations to reproduce
@@ -744,14 +464,30 @@ it. Then add that to the regression tests.
 
 Likewise, when adding a feature, add a test for it as well.
 
-This code is entirely enough of a comprehension problem without the extra drag
-created by style variations in whitespace. The "make reflow" production
-uses clang-format to enforce a modern 1TBS style. Please always use
-braces even on single-statement blocks. Before shipping a patch,
-please run "make reflow" and test the code again.
+This code is entirely enough of a comprehension problem without the
+extra drag created by style variations in whitespace. The "make
+reflow" production uses go fmt to enforce canonical Go style. Please
+always use braces even on single-statement blocks. Before shipping a
+patch, please run "make reflow" and test the code again.
 
 If you figure out something about the code that isn't documented here
 - or, especially, if it's documented wrongly - please include an
 explanation with your patch.
+
+== Historical credits
+
+A lot of the original C codebase evaporated when this program was
+ported to Go, obsolesced by the fact that Go gas first-class
+dictionaries and also by the existence of the golang-rcs library. But
+thanks is still owed to people who worked on the C code.
+
+Most notably: Jens Bethkowsky <jens.bethkowsky@rwth-aachen.de> added a
+red-black-tree implementation to speed up symbol search; Aidan Hobson
+Sayers <aidanhs@cantab.net> replaced an O(n**3) sort with an O(n log
+n) sort; David Leonard <david.leonard@opengear.com> sped up
+`compute_parent_links()` and wrote several other significant
+optimizations.  Laurence Hygate <loz@flower.powernet.co.uk> wrote many
+sort and hash optimizations. Alan Barrett wrote the improved progress
+meter.  Tom Enterline sped up snapshot generation.
 
 // end

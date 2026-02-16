@@ -43,7 +43,7 @@ and documentation as well.)
 
 File a bug at https://gitlab.com/esr/cvs-fast-export/-/issues
 
-Attach a reproduder.  That is, a tar archive of a reduced version
+Attach a reproducer.  That is, a tar archive of a reduced version
 of your CVS repository.
 
 === Reduction ===

@@ -1,6 +1,6 @@
 = CVS Collation and Symbol Resolution Spec (as implemented)
 
-(Base version of this document witten by ChatGPT-5.2
+(Base version of this document written by ChatGPT-5.2
 based on code analysis.)
 
 This document describes the current behavior of cvs-fast-export's CVS
@@ -247,3 +247,5 @@ implementation.
 * Dead-only, untagged branches are discarded.
 * Tags resolve to an existing gitspace commit when possible; otherwise
   a synthetic tag commit is created with the tagged revisions.
+
+// end

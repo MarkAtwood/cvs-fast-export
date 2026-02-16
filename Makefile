@@ -85,8 +85,19 @@ fixme:
 		find . -type f -exec grep -n FIX''ME {} /dev/null \; | grep -v "[.]git"; \
 	fi
 
+# This is eveything except the promt journal
+CHECKABLE = \
+	cvs-collation-spec.adoc \
+	cvsconvert.adoc \
+	cvs-fast-export.adoc \
+	cvssync.adoc \
+	hacking.adoc \
+	NEWS.adoc \
+	README.adoc \
+	reporting-bugs.adoc \
+	TODO.adoc
 spellcheck:
-	@spellcheck local.dic *.adoc
+	@spellcheck local.dic $(CHECKABLE)
 
 # Install/uninstall
 
