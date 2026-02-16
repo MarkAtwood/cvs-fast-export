@@ -100,13 +100,13 @@ REDUCED=oldhead issue-57
 r_rebuild: neutralize.map
 	@-for file in $(REDUCED); do \
 	    echo "Remaking $${file}.chk"; \
-	    find $${file}.testrepo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) >$${file}.chk 2>&1; \
+	    $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.testrepo/module >$${file}.chk 2>&1; \
 	done;
 r_regress: neutralize.map
 	@echo "# Repo regressions"
 	@-for repo in $(REDUCED); do \
 	    legend=$$( ( grep -a '##' $${repo}.testrepo/README  || echo ' ## (no description)') | sed 's/## //' ); \
-	    find $${repo}.testrepo/module -name '*,v' | $(CVS_FAST_EXPORT) $(TESTOPTS) 2>&1 | tapdiffer "$${repo}: $${legend}" $${repo}.chk; \
+	    $(CVS_FAST_EXPORT) $(TESTOPTS) $${repo}.testrepo/module 2>&1 | tapdiffer "$${repo}: $${legend}" $${repo}.chk; \
 	done
 TEST_TARGETS += $(REDUCED)
 
