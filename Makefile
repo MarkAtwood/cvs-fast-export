@@ -120,7 +120,7 @@ version:
 distclean: clean
 	cd tests; $(MAKE) --quiet clean
 
-SOURCES = Makefile *.[ch] *.[yl] cvssync cvsconvert cvsstrip buildprep
+SOURCES = Makefile *.go cvssync cvsconvert cvsstrip buildprep
 DOCS = control *.adoc local.dic cfe-logo.png
 ALL =  $(SOURCES) $(DOCS) tests
 
