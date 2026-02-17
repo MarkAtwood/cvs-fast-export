@@ -340,6 +340,9 @@ timestamp, which tag it actually lands on will be random.
 
 CVSNT is supported, but CVSNT extension fields including "permissions"
 "hardlinks", "mergepoint" and "username" are ignored.
+The CVSNT "mergepoint" field records merge tracking metadata (the last
+merge base) and does not correspond to an actual merge commit, so it
+is not translated into Git history.
 
 Non-ASCII characters in user IDs are not supported.
 

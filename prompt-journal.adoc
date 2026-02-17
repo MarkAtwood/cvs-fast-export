@@ -5463,6 +5463,111 @@ Does GNU CVS also have this behavior?
 
 Do that.
 
+....
+* The CVS-NT extension keywords "owner", "group", "deltatype", "kopt",
+  "permissions", "mergepoint", "filename", "hardlinks", and "username"
+  are all ignored. So is the "access" keyword.
+....
+
+Find out and report on what these do.
+
+----
+  Here’s what I could confirm from authoritative sources, and where the public docs are
+  vague. I’ve separated confirmed vs inferred/likely and cited the best sources I could
+  find.
+
+  Confirmed from docs
+
+  - access
+    RCS access list (usernames allowed to modify the RCS file). RCS keeps both an access
+    list and a lock list; the access list controls who can modify the file via RCS
+    commands. (gnu.org (https://www.gnu.org/software/rcs/manual/rcs.html))
+  - owner, group, permissions, hardlinks
+    These map to the “PreservePermissions” feature (CVS/CVSNT) that stores file ownership,
+    permissions, and hard link structure in the repository. (thathost.com (https://
+    www.thathost.com/wincvs-howto/cvsdoc/cvs_15.html))
+  - kopt
+    Keyword‑expansion options (e.g., -kb, -ko, etc.). CVS uses “Kopt” to indicate per‑file
+    keyword expansion settings. (hepd.pnpi.spb.ru (https://hepd.pnpi.spb.ru/docs_html/CVS/
+    cvsclient_5.html?utm_source=openai))
+  - mergepoint
+    CVSNT explicitly adds mergepoint support to the repository format; it’s an extension
+    used for merge tracking. (cvsnt.org (https://cvsnt.org/manual2/html/Repository-
+    storage.html))
+  - deltatype, permissions, kopt (as a group)
+    These are non‑RCS metadata that CVS/CVSNT can write into ,v files; RCS itself warns
+    that such fields make rlog unsafe and that cvs log must be used. This confirms these
+    are CVS/CVSNT‑specific extensions, though it doesn’t define each field’s semantics.
+    (gnu.org (https://www.gnu.org/software/rcs/manual/rcs.html?utm_source=openai))
+
+  Likely semantics (docs are thin; these are best‑effort interpretations)
+
+  - deltatype
+    Likely indicates delta encoding type (text vs binary) used by CVSNT’s “binary diffs”
+    extension. Repository storage docs state CVSNT adds binary diffs; deltatype appears to
+    be the per‑revision marker for that behavior. (cvsnt.org (https://cvsnt.org/manual2/
+    html/Repository-storage.html))
+  - username
+    Likely the original owning username recorded under PreservePermissions (separate from
+    “author”, which is the committer). This aligns with PreservePermissions storing
+    ownership. (thathost.com (https://www.thathost.com/wincvs-howto/cvsdoc/cvs_15.html))
+  - filename
+    Likely an auxiliary field for storing original filename (for renames or
+    case‑preserving behavior) under CVSNT. I couldn’t find a definitive public
+    description; this is an informed guess based on CVSNT’s extended repository metadata.
+
+  If you want a definitive mapping for filename, deltatype, and username, the CVSNT source
+  distribution’s doc/rcsfile is the likely authoritative reference; it is explicitly
+  mentioned as the place to look for repository format details. (cvsnt.org (https://
+  cvsnt.org/manual2/html/Repository-storage.html))
+
+  If you want me to go further, I can track down that doc/rcsfile from the CVSNT source
+  (or if you have a local copy, I’ll read it and produce a precise
+  mapping).
+----
+
+That's enough to tell me we don't need to think about implementing
+these. Except possibly for mergepoint, which sounds like it could map
+to a Git merge commit.  Dig for more about mergeoint.
+
+----
+ What mergepoint is (CVSNT-specific):
+
+  - CVSNT records a mergepoint when you merge from one branch to another and then commit.
+    It’s used to find the common ancestor for subsequent merges, so you don’t need to tag/
+    retag; CVSNT can compute “what changed since last merge” automatically. (march-
+    hare.com (https://march-hare.com/pdf/install-rhel9-cvs.pdf?utm_source=openai))
+  - The mergepoint is saved per revision in the ,v file and is visible in cvs log output
+    as a field in the revision header. (abcdocz.com (https://abcdocz.com/doc/646351/last-
+    updated-12-27pm-november-18th?utm_source=openai))
+  - It requires CVSNT on both client and server; it is not part of GNU CVS. (march-
+    hare.com (https://march-hare.com/pdf/install-rhel9-cvs.pdf?utm_source=openai))
+
+  What it’s not:
+
+  - It is not a merge commit. It’s metadata about merge ancestry (last merge point), not
+    the merge itself. (march-hare.com (https://march-hare.com/pdf/install-rhel9-cvs.pdf?
+    utm_source=openai))
+
+  Implication for git import:
+
+  - This doesn’t translate naturally into a Git merge commit by itself; it’s closer to
+    merge tracking metadata (like svn mergeinfo) rather than a commit DAG edge. If we ever
+    wanted to preserve it, the best fit would be a note or commit property, not a merge
+    commit.
+
+  If you want, I can add a short note to the docs explaining why mergepoint is ignored and
+  that it represents merge tracking metadata (not merges).
+----
+
+Do that.
+
+----
+Added a note in cvs-fast-export.adoc explaining that CVSNT mergepoint
+is merge-tracking metadata (last merge base), not a merge commit, so
+it’s intentionally ignored.
+----
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
