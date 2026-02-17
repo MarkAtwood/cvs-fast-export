@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Repository head::
+2.0: 2026-02-17::
    Code ported to Golang; there will be no more heap corruption.
    No more branch cycle errors or stack-smashing.
    Improved fidelity in edge cases of assigning CVS tags to commits.

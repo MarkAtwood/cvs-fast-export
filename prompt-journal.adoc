@@ -5616,6 +5616,7 @@ supported." What will happen if a user id contains an 8-bit character?
   cause fast‑import to fail.”
 ----
 
+(The 2.9 release shipped at this point.)
 
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
