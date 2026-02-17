@@ -1011,22 +1011,27 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 	// Build Commit records from revision heads.
 	for _, rh := range file.RevisionHeads {
-		num, err := Parse(rh.Revision)
+		num, err := Parse(rh.Revision.String())
 		if err != nil {
 			return nil, err
 		}
 		var log string
 		var text string
-		if rc, ok := contents[rh.Revision]; ok {
+		revKey := rh.Revision.String()
+		if rc, ok := contents[revKey]; ok {
 			log = normalizeLog(rc.Log, file.Description)
-			text = fulltext[rh.Revision]
+			text = fulltext[revKey]
 		}
-		commits[rh.Revision] = &Commit{
+		commitTime, err := rh.Date.DateTime()
+		if err != nil {
+			commitTime = time.Time{}
+		}
+		commits[revKey] = &Commit{
 			Number:   num,
-			Dead:     rh.State == "dead",
-			CommitID: rh.CommitID,
-			Date:     rh.Date,
-			Author:   rh.Author,
+			Dead:     rh.State == rcs.ID("dead"),
+			CommitID: string(rh.CommitID),
+			Date:     commitTime,
+			Author:   string(rh.Author),
 			Log:      log,
 			Text:     text,
 			FileName: fileName,
@@ -1039,13 +1044,13 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	// Convert revision heads into version nodes with branch pointers.
 	var versions []Version
 	for _, rh := range file.RevisionHeads {
-		num, err := Parse(rh.Revision)
+		num, err := Parse(rh.Revision.String())
 		if err != nil {
 			return nil, err
 		}
 		ver := Version{Number: num}
 		for _, br := range rh.Branches {
-			bn, err := Parse(br)
+			bn, err := Parse(br.String())
 			if err != nil {
 				return nil, err
 			}
@@ -1059,12 +1064,13 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 
 	// Normalize symbol ordering to preserve original CVS ordering where possible.
 	var sym []Symbol
-	seen := make(map[string]struct{}, len(file.SymbolMap))
+	symMap := file.SymbolMap()
+	seen := make(map[string]struct{}, len(symMap))
 	hasVendorSymbol := false
 	if len(symbolOrder) > 0 {
 		for i := len(symbolOrder) - 1; i >= 0; i-- {
 			name := symbolOrder[i]
-			rev, ok := file.SymbolMap[name]
+			rev, ok := symMap[name]
 			if !ok {
 				continue
 			}
@@ -1086,7 +1092,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 			sym = append(sym, Symbol{Name: name, Number: n})
 		}
 	}
-	for name, rev := range file.SymbolMap {
+	for name, rev := range symMap {
 		if _, ok := seen[name]; ok {
 			continue
 		}
@@ -1126,16 +1132,17 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 // normalizeAuthor replaces whitespace with underscores for author tokens.
 // Yes. RCS masters have been seen in the wild with spaces embedded in
 // committer IDs.
-func normalizeAuthor(s string) string {
+func normalizeAuthor(s rcs.ID) rcs.ID {
 	if s == "" {
 		return s
 	}
-	return strings.Map(func(r rune) rune {
+	mapped := strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
 			return '_'
 		}
 		return r
-	}, s)
+	}, string(s))
+	return rcs.ID(mapped)
 }
 
 // hasEmptyBranchHeader reports whether the RCS header contains "branch;" with no value.
@@ -1368,9 +1375,11 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 	newerOf := make(map[string]string)
 	heads := make(map[string]*rcs.RevisionHead)
 	for _, rh := range file.RevisionHeads {
-		heads[rh.Revision] = rh
-		if rh.NextRevision != "" {
-			newerOf[rh.NextRevision] = rh.Revision
+		revKey := rh.Revision.String()
+		heads[revKey] = rh
+		nextKey := rh.NextRevision.String()
+		if nextKey != "" {
+			newerOf[nextKey] = revKey
 		}
 	}
 
@@ -1425,8 +1434,8 @@ func reconstructTexts(file *rcs.File, contents map[string]*rcs.RevisionContent) 
 // nextRevisionOf returns the NextRevision value for a revision head.
 func nextRevisionOf(file *rcs.File, rev string) string {
 	for _, rh := range file.RevisionHeads {
-		if rh.Revision == rev {
-			return rh.NextRevision
+		if rh.Revision.String() == rev {
+			return rh.NextRevision.String()
 		}
 	}
 	return ""

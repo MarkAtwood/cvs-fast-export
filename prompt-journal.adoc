@@ -5393,6 +5393,49 @@ that?
   - Switched graph mode to call this when cfg.Reposurgeon is set.
 ----
 
+....
+make
+go build -ldflags='-X main.version=1.68' -o cvs-fast-export cvs-fast-export.go
+# command-line-arguments
+./cvs-fast-export.go:1014:21: cannot use rh.Revision (variable of type rcs.Num) as string value in argument to Parse
+./cvs-fast-export.go:1020:25: cannot use rh.Revision (variable of type rcs.Num) as string value in map index
+./cvs-fast-export.go:1022:20: cannot use rh.Revision (variable of type rcs.Num) as string value in map index
+./cvs-fast-export.go:1024:11: cannot use rh.Revision (variable of type rcs.Num) as string value in map index
+./cvs-fast-export.go:1027:14: cannot use rh.CommitID (variable of type rcs.Sym) as string value in struct literal
+./cvs-fast-export.go:1028:14: cannot use rh.Date (variable of type rcs.DateTime) as time.Time value in struct literal
+./cvs-fast-export.go:1029:14: cannot use rh.Author (variable of type rcs.ID) as string value in struct literal
+./cvs-fast-export.go:1042:21: cannot use rh.Revision (variable of type rcs.Num) as string value in argument to Parse
+./cvs-fast-export.go:1048:21: cannot use br (variable of type rcs.Num) as string value in argument to Parse
+./cvs-fast-export.go:1062:40: invalid argument: file.SymbolMap (value of type func() map[string]string) for len
+./cvs-fast-export.go:1062:40: too many errors
+make: *** [Makefile:43: cvs-fast-export] Error 1
+....
+
+The golang-rcs maintauner changes some types in his interace; for
+example, rcs.ID is an akias for string.  The new kibrary code is
+at ~/go/pkg/mod/github.com/arran4/golang-rcs\@v0.0.16
+
+Examine the library code and Convert cvs-fast-export
+to use the new types.
+
+-----
+  Updated cvs-fast-export to use the new golang‑rcs types from v0.0.16.
+
+  What changed:
+
+  - Converted RevisionHead fields to the new typed API (Num, ID, Sym, DateTime).
+  - Parsed Num with .String(), converted DateTime to time.Time, and handled ID/Sym via
+    string conversion.
+  - Switched file.SymbolMap usage to the SymbolMap() method.
+
+  Build status:
+
+  - go build cvs-fast-export.go succeeds.
+  - go build ./... still fails because parser-local is not a full
+  - module (unchanged).
+----
+
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 

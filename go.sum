@@ -4,3 +4,5 @@ github.com/arran4/golang-rcs v0.0.13 h1:0TirUF2H+INNRoceZE5y3uudO0Ijq7I0xDl8Yq4U
 github.com/arran4/golang-rcs v0.0.13/go.mod h1:7e/9TVf9yBtPeclc4oV6pO/mZ+lmqFhAAOerXWJ1uB8=
 github.com/arran4/golang-rcs v0.0.15 h1:2/RBgEiwyTXamVXFvMK5d8q2vCECYkVchwfRiwMs6WI=
 github.com/arran4/golang-rcs v0.0.15/go.mod h1:7e/9TVf9yBtPeclc4oV6pO/mZ+lmqFhAAOerXWJ1uB8=
+github.com/arran4/golang-rcs v0.0.16 h1:NIiAQ3RWhv4827q+xGQ7QaVjaJljktlDoeDxkLdjUi4=
+github.com/arran4/golang-rcs v0.0.16/go.mod h1:HwmEkjSukYOaBkYLZvLhARli+jDpLdcZx9a4ZRBNYjI=

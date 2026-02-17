@@ -1,5 +1,0 @@
-This directory will go away when golang-rcs
-fully integrates my fixes.
-
-When that happens, the replace directive in
-the main go.mod needs to be removed.

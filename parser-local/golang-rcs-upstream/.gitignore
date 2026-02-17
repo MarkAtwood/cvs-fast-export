@@ -1,6 +1,0 @@
-/.idea
-*.iml
-/normalize-revisions.exe
-/normalize-revisions
-/testdata/local/*,v
-/testdata/local/**/*,v
