@@ -67,6 +67,7 @@ pylint:
 # check by Looking for "MirDebian" in the output of cvs --version.
 check: cvs-fast-export
 	@-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
+	@go vet cvs-fast-export.go
 	@cd tests >/dev/null; $(MAKE) --quiet
 
 # Like check, but forces rebuild of the generated test repositories first
