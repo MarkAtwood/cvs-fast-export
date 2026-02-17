@@ -124,7 +124,7 @@ SOURCES = Makefile *.[ch] *.[yl] cvssync cvsconvert cvsstrip buildprep
 DOCS = control *.adoc local.dic cfe-logo.png
 ALL =  $(SOURCES) $(DOCS) tests
 
-cvs-fast-export-$(VERSION).tar.gz: $(SOURCES)
+cvs-fast-export-$(VERSION).tar.gz: $(SOURCES) distclean
 	mkdir cvs-fast-export-$(VERSION)
 	cp -r $(ALL) cvs-fast-export-$(VERSION)
 	tar -czf cvs-fast-export-$(VERSION).tar.gz cvs-fast-export-$(VERSION)
