@@ -5435,6 +5435,33 @@ to use the new types.
   - module (unchanged).
 ----
 
+....
+* Permissions on all fileops related to a particular file will be
+    controlled by the permissions on the corresponding master.  If the
+    executable bit on the master is on, all its fileops will have 100755
+    permissions; otherwise 100644. This tracks what GNU RCS does; the
+    "permissions" field in CVS-NT masters is not interpreted.
+....
+
+Does GNU CVS also have this behavior?
+
+----
+  Short answer: GNU CVS preserves the executable bit from the repository, but it does not
+  force full 100755/100644 modes. The working file’s other permission bits come from the
+  usual filesystem defaults/umask; CVS only guarantees exec‑bit consistency based on the
+  repository RCS file. (durak.org (https://durak.org/sean/pubs/software/cvsbook/CVS-keeps-
+  changing-file-permissions_003b-why-does-it-do-that_003f.html?utm_source=openai))
+
+  So the current doc line is accurate about using the master’s exec bit as the decisive
+  signal, but the “always 100755/100644” detail is stronger than GNU CVS’s behavior—CVS
+  preserves exec vs non‑exec, not full mode. (durak.org (https://durak.org/sean/pubs/
+  software/cvsbook/CVS-keeps-changing-file-permissions_003b-why-does-it-do-that_003f.html?
+  utm_source=openai))
+
+  If you want, I can adjust the wording to reflect that nuance.
+----
+
+Do that.
 
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end

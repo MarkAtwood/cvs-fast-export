@@ -45,6 +45,7 @@ Enterline
 ferd
 fileops
 fileset
+filesystem
 fixups
 fmt
 FreeBSD
@@ -131,6 +132,7 @@ tsan
 TZ
 ubsan
 Ubels
+umask
 usr
 UTF
 vendored
