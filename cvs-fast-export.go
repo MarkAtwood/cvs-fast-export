@@ -4026,16 +4026,12 @@ func parseArgs(args []string) (config, error) {
 			cfg.ExecMode = execAuthors
 		case arg == "-P" || arg == "--promiscuous":
 			cfg.Promiscuous = true
-		case arg == "-N" || arg == "--noignores":
+		case arg == "-N" || arg == "--noignores": // Undocumented
 			cfg.NoIgnores = true
-		case arg == "-S" || arg == "--sizes":
+		case arg == "-S" || arg == "--sizes": // Undocumented
 			cfg.ExecMode = execSizes
-		case arg == "-p", arg == "-E":
-			if arg == "-p" {
-				cfg.Progress = true
-			} else {
-				// ignored for now
-			}
+		case arg == "-p":
+			cfg.Progress = true
 		case arg == "-v":
 			cfg.Verbose = true
 		case arg == "-q":
@@ -5001,7 +4997,7 @@ func main() {
 		os.Exit(0)
 	}
 	if cfg.ExecMode == execGraph {
-		if cfg.Reposurgeon {
+		if cfg.NoIgnores {
 			dumpCVSForest(masters, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
 		} else {
 			dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
