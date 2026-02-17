@@ -6,7 +6,7 @@ cvs-fast-export - fast-export history from a CVS repository or RCS collection.
 
 == SYNOPSIS ==
 *cvs-fast-export*
-    [-h] [-a] [-c] [-w 'fuzz'] [-g] [-l] [-v] [-q] [-V] [-T] [-p] [-P] [-N] [-S]
+    [-h] [-a] [-c] [-w 'fuzz'] [-g] [-N] [-l] [-v] [-q] [-V] [-T] [-p] [-P]
     [-i 'date'] [-A 'authormap'] [-R 'revmap'] [-r|--reposurgeon] [-e 'remote']
     [file-or-dir...]
 
@@ -63,10 +63,12 @@ standard output:
   toward increasing commit time, but strict time order is not guaranteed.
   Severe clock skew can force the ordering to deviate from time order.
 
-* CVS tags become git lightweight tags when they can be unambiguously
-  associated with a changeset.  If the same tag is attached to file
-  deltas that resolve to multiple changesets, it is reported as if 
-  attached to the last of them.
+* CVS tags turn into git lightweight tags. Resolution is done in two
+  passes. In the first pass any that can unambiguously associated with
+  as single changeset (that is, all files modified in the same
+  changeset ) are quetly attached to it. In a second pass, partial
+  matches are accepted with a warning, with later attachment points
+  favored over earlier ones.
 
 * The HEAD branch is renamed to 'master'.
 
@@ -85,7 +87,10 @@ standard output:
 
 * The CVS-NT extension keywords "owner", "group", "deltatype", "kopt",
   "permissions", "mergepoint", "filename", "hardlinks", and "username"
-  are all ignored. So is the "access" keyword.
+  are all ignored. So is the "access" keyword. (The CVSNT "mergepoint"
+  field records merge tracking metadata (the last merge base) and does
+  not correspond to an actual merge commit, so it is not translated
+  into Git history.)
 
 See the later section on RCS/CVS LIMITATIONS for more information on
 edge cases and conversion problems.
@@ -93,20 +98,20 @@ edge cases and conversion problems.
 This program does not depend on any of the CVS metadata held outside
 the individual content files (e.g. under CVSROOT).
 
-The variable TMPDIR is honored and used when generating a temporary
-directory in which to store file content during processing.
+// FIXME: Needs to change when golang-rcs supports jouraling to SSD
+//The variable TMPDIR is honored and used when generating a temporary
+//directory in which to store file content during processing.
 
-This program treats the file contents of the source CVS or RCS
-repository, and their filenames. as uninterpreted byte sequences to be
-passed through to the git conversion without re-encoding.  In
-particular, it makes no attempt to fix up line endings (Unix \n vs,
-Windows \r\n vs. Macintosh \r), nor does it know about what repository
-filenames might collide with special filenames on any given platform.
+This program treats all RCS/CVS metadata and file contents of the source
+CVS or RCS repository, and their filenames, as uninterpreted byte
+sequences to be passed through to the git conversion without
+re-encoding.  In particular, it makes no attempt to fix up line
+endings (Unix \n vs, Windows \r\n vs. Macintosh \r), nor does it know
+about what repository filenames might collide with special filenames
+on any given platform.
 
-By default, CVS $-keywords in the masters are not interpreted or
-expanded; this prevents corruption of binary content. However, this
-will be overridden if a master has an explicit "expand" metadata field
-specifying a CVS expansion type ("kv", "kvl", "k", "v", "o" or "b").
+CVS $-keywords in the masters are not interpreted or expanded; this
+prevents corruption of binary content.
 
 This program treats change comments as uninterpreted byte sequences to
 be passed through to the git conversion without change or
@@ -217,9 +222,10 @@ The date is expected to be RFC3339 conformant
 (e.g. yy-mm-ddThh:mm:ssZ) or else an integer Unix time in seconds.
 
 == EXAMPLE ==
-A very typical invocation would look like this:
+Typical invocations look like this:
 
 ----------------------------------------------
+cvs-fast-export . >stream.fi
 find . | cvs-fast-export >stream.fi
 ----------------------------------------------
 
@@ -257,12 +263,12 @@ will warn you ("commits before this date lack commitids") when it sees
 such a section in your history. When it does, these caveats apply:
 
 * If timestamps of commits in the CVS repository were not stable
-enough to be used for ordering commits, changes may be reported in the
-wrong order.
+enough to be used for ordering commits, the emitted history may be
+ordered incorrectly despite being topologically consistent.
 
 * If the timestamp order of different files crosses the revision order
-within the commit-matching time window, the order of commits reported 
-may be wrong.
+within the commit-matching time window, the collation and ordering of
+commits may be wrong.
 
 One more property affected by commitids is the stability of old
 changesets under incremental dumping. Under a CVS implementation
@@ -283,18 +289,14 @@ These problems cannot be fixed in cvs-fast-export; they are inherent
 to CVS.
 
 == REQUIREMENTS AND PERFORMANCE ==
+// FIXME: Needs to change when golang-rcs supports jouraling to SSD
 The program's transient RAM requirement is proportional to the total
-volume of all attributions and comments in the repository (excluding
-the file content). While it was originally written near the end of the
-32-bit era, running it on a 32-bit machine against today's
-repositories would be asking for trouble; you might well overflow
-counters or bust the 4GB addressing limit.  On the other hand, any
-64-bit machine with 64GB or above of RAM should have ample headroom.
+volume of all attributions, comments, and blobs in the repository.
 
-The program requires temporary disk space equivalent to the sum of the
-sizes of all revisions in all files.  Time performance is primarily
-I/O bound and can be improved by running on an SSD rather than
-spinning rust.
+//The program requires temporary disk space equivalent to the sum of the
+//sizes of all revisions in all files.  Time performance is primarily
+//I/O bound and can be improved by running on an SSD rather than
+//spinning rust.
 
 On stock PC hardware in 2020, cvs-fast-export achieves processing
 speeds upwards of 64K CVS commits per minute on real repositories.
@@ -305,21 +307,16 @@ correctly resolved; instead, an entirely disjoint history will be
 created containing the branch revisions and all parents back to the
 root.
 
-If a tag is attached to revisions that resolve to multiple changesets,
-cvs-fast-export will attach the tag to the latest matching changeset.
-In extreme pathological cases it may emit a synthetic commit (with a
-warning) to materialize the tagged checkout state.
-
-Unless there is an explicit expand directive in the CVS master, this
-program does the equivalent of cvs -kb when checking out masters, not
-performing any $-keyword expansion at all.  This differs from CVS's
-default behavior on checkout but has the advantage that binary files
-will never be clobbered.  It has the disadvantage that the data in
-$-headers is not reliable; at best you'll get the unexpanded version
-of the $-cookie, at worst you might get the committer/timestamp
-information for when the master was originally checked in, rather than
-when it was last checked out.  It's good practice to remove all dollar
-cookies as part of post-conversion cleanup.
+This program does the equivalent of cvs -kb when checking out masters,
+not performing any $-keyword expansion at all.  This differs from
+CVS's default behavior on checkout but has the advantage that binary
+files will never be clobbered.  It has the disadvantage that the data
+in $-headers is not reliable; at best you'll get the unexpanded
+version of the $-cookie, at worst you might get the
+committer/timestamp information for when the master was originally
+checked in, rather than when it was last checked out.  It's good
+practice to remove all dollar cookies as part of post-conversion
+cleanup.
 
 CVS vendor branches are a source of trouble, and this program will
 ship a warning when it sees them. Sufficiently strange combinations of
@@ -333,18 +330,7 @@ shared tags even when comment metadata doesn't match perfectly. This
 one does not; the designers judge that to trip over too many
 pathological CVS tagging cases.
 
-When running multithreaded, there is an edge case in which the
-program's behavior is nondeterministic.  If the same tag looks like it
-should be assigned to two different gitspace commits with the same
-timestamp, which tag it actually lands on will be random.
-
-CVSNT is supported, but CVSNT extension fields including "permissions"
-"hardlinks", "mergepoint" and "username" are ignored.
-The CVSNT "mergepoint" field records merge tracking metadata (the last
-merge base) and does not correspond to an actual merge commit, so it
-is not translated into Git history.
-
-Non-ASCII characters in user IDs are not supported.
+CVSNT is supported, but CVSNT extension fields are ignored.
 
 == SANITY CHECKING ==
 After conversion, it is good practice to do the following verification

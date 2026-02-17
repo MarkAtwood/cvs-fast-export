@@ -5568,6 +5568,55 @@ is merge-tracking metadata (last merge base), not a merge commit, so
 it’s intentionally ignored.
 ----
 
+....
+* If timestamps of commits in the CVS repository were not stable
+enough to be used for ordering commits, changes may be reported in the
+wrong order.
+
+* If the timestamp order of different files crosses the revision order
+within the commit-matching time window, the order of commits reported 
+may be wrong.
+....
+
+Are these statements in the documentation still true under the new
+implementation?
+
+----
+  Yes—both statements are still true in the Go implementation.
+
+  - We still use commit timestamps (with fuzz) as a primary signal when commitids are
+    absent. Severe skew can reorder commits relative to actual history, and the topo‑safe
+    reordering can still produce “wrong order” compared to real intent.
+  - If timestamps across files cross within the fuzz window, the collation can still group
+    or order changesets incorrectly; the new ordering pass doesn’t change that.
+
+  If you want, I can tweak the wording to reflect the current “topology‑safe, time‑biased”
+  ordering rather than “time order.”
+----
+
+Do that.
+
+----
+Updated those two bullets to reflect the current “topology‑safe but time‑biased”
+ordering language in cvs-fast-export.adoc.
+----
+
+The documentation says "Non-ASCII characters in user IDs are not
+supported." What will happen if a user id contains an 8-bit character?
+
+----
+  Right now it just passes through.
+
+  The only normalization we do is replacing whitespace with _ in normalizeAuthor; we don’t
+  validate or re‑encode. So an 8‑bit character will be emitted as‑is in the fast‑import
+  stream. If it isn’t valid UTF‑8, git fast-import can reject the stream (or interpret it
+  inconsistently depending on locale). That’s why the doc says “not supported.”
+
+  If you want, I can update the doc to say “passed through unchanged; invalid UTF‑8 may
+  cause fast‑import to fail.”
+----
+
+
 // codex resume 019c4854-608c-75d3-b929-33a2ccad1485
 // end
 
