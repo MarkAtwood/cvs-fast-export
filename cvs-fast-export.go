@@ -1612,14 +1612,29 @@ func normalizeBranch(n Number) Number {
 
 // LoadFile parses an RCS file, returning the parsed model and symbol order.
 func LoadFile(path string) (*rcs.File, []string, error) {
-	// Read and normalize line endings for the RCS parser.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
-	data = bytes.ReplaceAll(data, []byte("\r"), []byte("\n"))
-	// Parse once, then retry with a compatibility shim if needed.
+	// Parse the raw archive first. RCS text strings may contain binary data;
+	// normalizing the whole file would corrupt those payloads.
+	rcsFile, parsedData, err := parseRCSData(data)
+	if err != nil {
+		// Last-resort compatibility for masters with unusual line endings.
+		normalized := bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+		normalized = bytes.ReplaceAll(normalized, []byte("\r"), []byte("\n"))
+		if !bytes.Equal(normalized, data) {
+			rcsFile, parsedData, err = parseRCSData(normalized)
+		}
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	// Record symbol ordering from the raw header text.
+	return rcsFile, parseSymbolOrder(string(parsedData)), nil
+}
+
+func parseRCSData(data []byte) (*rcs.File, []byte, error) {
 	rcsFile, err := rcs.ParseFile(bytes.NewReader(data))
 	if err != nil {
 		// Some RCS files omit the extra blank line after desc. Insert one if needed and retry.
@@ -1631,11 +1646,7 @@ func LoadFile(path string) (*rcs.File, []string, error) {
 			}
 		}
 	}
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse %s: %w", path, err)
-	}
-	// Record symbol ordering from the raw header text.
-	return rcsFile, parseSymbolOrder(string(data)), nil
+	return rcsFile, data, err
 }
 
 // parseSymbolOrder extracts symbol order from the raw header text.
