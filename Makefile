@@ -66,6 +66,7 @@ pylint:
 # MirOS patches.  These are carried by Debian Linux and derivatives; you can
 # check by Looking for "MirDebian" in the output of cvs --version.
 check: cvs-fast-export
+	@go test
 	@-shellcheck -f gcc buildprep tests/visualize tests/incremental.sh
 	@go vet cvs-fast-export.go
 	@cd tests >/dev/null; $(MAKE) --quiet
