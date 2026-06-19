@@ -39,7 +39,7 @@ fullcheck:
 
 test: s_regress m_regress r_regress g_regress i_regress t_regress c_regress sporadic #  z_regress
 
-rebuild: s_rebuild m_rebuild r_rebuild g_rebuild i_rebuild t_rebuild # z_rebuild
+update: s_update m_update r_update g_update i_update t_update # z_update
 
 testlist:
 	@grep '^##' *.tst *.py *.sh
@@ -50,7 +50,7 @@ neutralize.map:
 
 TESTLOADS := $(shell ls -1 *.tst | sed '/.tst/s///')
 TESTOPTS = -T -A neutralize.map --reposurgeon
-s_rebuild: neutralize.map
+s_update: neutralize.map
 	@-for file in $(TESTLOADS); do \
 	    echo "Remaking $${file}.chk"; \
 	    $(MAKE) --quiet $${file}.repo; \
@@ -66,7 +66,7 @@ s_regress: neutralize.map
 TEST_TARGETS = $(TESTLOADS)
 
 MASTERS := $(shell ls -1 *,v | sed '/,v/s///')
-m_rebuild:
+m_update:
 	@-for file in $(MASTERS); do \
 	    echo "Remaking $${file}.chk"; \
 	    $(CVS_FAST_EXPORT) $${file},v >$${file}.chk 2>&1; \
@@ -81,7 +81,7 @@ TEST_TARGETS += $(MASTERS)
 
 INCREMENTAL=twobranch
 THRESHOLD=104000
-i_rebuild: neutralize.map
+i_update: neutralize.map
 	@-for file in $(INCREMENTAL); do \
 	    echo "Remaking $${file}.inc-chk"; \
 	    $(MAKE) --quiet $${file}.repo; \
@@ -97,7 +97,7 @@ i_regress: neutralize.map
 TEST_TARGETS += $(INCREMENTAL)
 
 REDUCED=oldhead issue-57
-r_rebuild: neutralize.map
+r_update: neutralize.map
 	@-for file in $(REDUCED); do \
 	    echo "Remaking $${file}.chk"; \
 	    $(CVS_FAST_EXPORT) $(TESTOPTS) $${file}.testrepo/module >$${file}.chk 2>&1; \
@@ -111,7 +111,7 @@ r_regress: neutralize.map
 TEST_TARGETS += $(REDUCED)
 
 GRAPHTESTS=basic branchy
-g_rebuild: neutralize.map
+g_update: neutralize.map
 	@-for file in $(GRAPHTESTS); do \
 	    echo "Remaking $${file}.dot"; \
 	    $(CVS_FAST_EXPORT) -g $(TESTOPTS) $${file}.repo/module >$${file}.dot 2>&1; \
@@ -131,7 +131,7 @@ t_regress:
 		legend=$$( ( grep -a '##' $${pytest}.py  || echo ' ## (no description)') | sed 's/## //' ); \
 		$(PYTHON) $${pytest}.py 2>&1 | $(PATHSTRIP) | tapdiffer "$${pytest}: $${legend}" $${pytest}.err; \
 	done
-t_rebuild:
+t_update:
 	@for pytest in $(PYTESTS); do \
 		echo "Remaking $${pytest}.err "; \
 		$(PYTHON) $${pytest}.py 2>&1 | $(PATHSTRIP) >$${pytest}.err; \
@@ -171,7 +171,7 @@ z_regress:
 		base=`basename $${rtest}`; \
 		../cvsstrip <$${rtest} | tapdiffer "cvsstrip test of $${rtest}" reductions/$${base}.reduced -; \
 	done
-z_rebuild:
+z_update:
 	@for rtest in $(UNSTRIPPED); do \
 		base=`basename $${rtest}`; \
 		echo "Remaking $${base}.reduced "; \
