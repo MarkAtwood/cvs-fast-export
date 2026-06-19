@@ -1,0 +1,123 @@
+#reposurgeon sourcetype rcs
+blob
+mark :1
+data 11
+a: initial
+
+commit refs/heads/master
+mark :2
+committer foo <foo> 101200 +0000
+data 26
+*** empty log message ***
+M 100644 :1 a.c
+M 100644 inline .gitignore
+data 199
+# CVS default ignores begin
+tags
+TAGS
+.make.state
+.nse_depinfo
+*~
+\#*
+.#*
+,*
+_$*
+*$
+*.old
+*.bak
+*.BAK
+*.orig
+*.rej
+.del-*
+*.a
+*.olb
+*.o
+*.obj
+*.so
+*.exe
+*.Z
+*.elc
+*.ln
+core
+# CVS default ignores end
+
+property cvs-revisions 8 a.c 1.1
+
+blob
+mark :3
+data 12
+a: trunk_v2
+
+commit refs/heads/master
+mark :4
+committer foo <foo> 102400 +0000
+data 15
+T2: update a.c
+from :2
+M 100644 :3 a.c
+property cvs-revisions 8 a.c 1.2
+
+blob
+mark :5
+data 13
+a: branch_v1
+
+commit refs/heads/MYBRANCH
+mark :6
+committer foo <foo> 103600 +0000
+data 15
+B1: early work
+from :4
+M 100644 :5 a.c
+property cvs-revisions 12 a.c 1.2.2.1
+
+blob
+mark :7
+data 13
+a: branch_v2
+
+commit refs/heads/MYBRANCH
+mark :8
+committer foo <foo> 104800 +0000
+data 20
+B2: more early work
+from :6
+M 100644 :7 a.c
+property cvs-revisions 12 a.c 1.2.2.2
+
+blob
+mark :9
+data 13
+a: branch_v3
+
+blob
+mark :10
+data 12
+newfile: v1
+
+commit refs/heads/MYBRANCH
+mark :11
+committer foo <foo> 106600 +0000
+data 18
+B3: add newfile.c
+from :8
+M 100644 :9 a.c
+M 100644 :10 newfile.c
+property cvs-revisions 30 a.c 1.2.2.3
+newfile.c 1.1.2.1
+
+blob
+mark :12
+data 12
+newfile: v2
+
+commit refs/heads/MYBRANCH
+mark :13
+committer foo <foo> 107800 +0000
+data 21
+B4: update newfile.c
+from :11
+M 100644 :12 newfile.c
+property cvs-revisions 18 newfile.c 1.1.2.2
+
+done
