@@ -1,5 +1,8 @@
 = cvs-fast-export project news =
 
+Repoaitory head::
+   Fix a bug that could drop intermediate commits on branches.
+
 2.1: 2026-06-10::
    Repair "invalid delta" error whem prcessing binary blobs.
 
