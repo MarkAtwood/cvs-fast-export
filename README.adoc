@@ -25,7 +25,7 @@ you have CVS installed.
 
 Also included is a tool called `cvsstrip` that strips content out of
 trees of RCS/CVS masters, leaving only metadata structure in place. If
-ddddddddddddddyou encounter a bug in this program, sending the maintainer a reduced
+you encounter a bug in this program, sending the maintainer a reduced
 version of your CVS tree greatly decreases the expected time to fix.
 
 A more detailed guide to effective bug reporting is at `reporting-bugs.adoc`.

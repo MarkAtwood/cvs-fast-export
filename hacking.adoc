@@ -316,7 +316,7 @@ ____
 -------------------------------------------------------------------------
 
 Berliner continues:
-_____
+____
 When a new version of the vendor's source
 distribution arrives, the checkin program adds the new and changed
 vendor's files to the already existing source repository. For files
