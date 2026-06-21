@@ -1,10 +1,10 @@
 = cvs-fast-export project news =
 
-Repoaitory head::
+2.2: 2026-06-21::
    Fix a bug that could drop intermediate commits on branches.
 
 2.1: 2026-06-10::
-   Repair "invalid delta" error whem prcessing binary blobs.
+   Repair "invalid delta" error when processing binary blobs.
 
 2.0: 2026-02-17::
    Code ported to Golang; there will be no more heap corruption.
