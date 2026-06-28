@@ -2178,6 +2178,9 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 			for _, c := range noID {
 				if prev != nil && commitsMatch(prev, c, opts) {
 					prev.Files = append(prev.Files, c)
+					if c.Date.After(prev.Date) {
+						prev.Date = c.Date
+					}
 					index.set(c, prev)
 					continue
 				}
@@ -2227,6 +2230,9 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 	for _, c := range commits {
 		if prev != nil && commitsMatch(prev, c, opts) {
 			prev.Files = append(prev.Files, c)
+			if c.Date.After(prev.Date) {
+				prev.Date = c.Date
+			}
 			index.set(c, prev)
 			continue
 		}
