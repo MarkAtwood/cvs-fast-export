@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Repository head::
+2.3: 2026-07-06::
    Force correct dates on commits after a coalesce command.
    Spelling fixes.
 
