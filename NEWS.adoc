@@ -2,6 +2,7 @@
 
 Repository head::
    Force correct dates on commits after a coalesce command.
+   Spelling fixes.
 
 2.2: 2026-06-21::
    Fix a bug that could drop intermediate commits on branches.

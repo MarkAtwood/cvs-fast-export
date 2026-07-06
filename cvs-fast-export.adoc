@@ -307,6 +307,7 @@ correctly resolved; instead, an entirely disjoint history will be
 created containing the branch revisions and all parents back to the
 root.
 
+// spellcheck: add kb
 This program does the equivalent of cvs -kb when checking out masters,
 not performing any $-keyword expansion at all.  This differs from
 CVS's default behavior on checkout but has the advantage that binary
@@ -317,6 +318,7 @@ committer/timestamp information for when the master was originally
 checked in, rather than when it was last checked out.  It's good
 practice to remove all dollar cookies as part of post-conversion
 cleanup.
+// spellcheck: remove
 
 CVS vendor branches are a source of trouble, and this program will
 ship a warning when it sees them. Sufficiently strange combinations of

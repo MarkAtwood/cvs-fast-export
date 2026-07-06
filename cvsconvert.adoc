@@ -50,11 +50,13 @@ There are two kinds of non-serious conversion glitches: file content
 mismatches due to keyword fields in masters, and files deleted
 in CVS that occur only in the gitspace manifests associated with tags.
 
+// spellcheck: add kb
 You can spot content mismatches due to keyword expansion easily.  They
 will produce single-line diffs of lines containing dollar signs
 surrounding keyword text.  Because binary files can be corrupted by
 keyword expansion, cvs-fast-export behaves like cvs -kb mode and does
 no keyword expansion of its own.
+// spellcheck: remove
 
 Manifest mismatches on tags are most likely to occur on
 files which were deleted in CVS but persist under later tags in the
