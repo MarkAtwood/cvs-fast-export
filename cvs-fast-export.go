@@ -4,10 +4,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -2833,6 +2831,21 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		tagNames = append(tagNames, extra...)
 	}
 	realized := make(map[string]bool)
+	emitTagsForCommit := func(c *GitCommit, mark int) {
+		if c == nil || mark <= 0 {
+			return
+		}
+		for _, name := range tagNames {
+			if _, ok := emittedTags[name]; ok {
+				continue
+			}
+			if tagAttach[name] == c {
+				fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
+				fmt.Fprintf(e.w, "from :%d\n\n", mark)
+				emittedTags[name] = struct{}{}
+			}
+		}
+	}
 	if e.progress != nil {
 		e.progress.Begin("Exporting commits...", len(commits))
 	}
@@ -2892,8 +2905,16 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			liveSeen[c.RefName] = true
 		}
 		if len(ops) == 0 && branchSeen {
-			// Skip no-op commits once the branch has any live content.
+			// Skip no-op commits once the branch has live content, but retain an
+			// alias to the emitted parent. Revision-aware tag matching may select
+			// this CVS revision even though it needs no distinct Git commit.
 			stateByCommit[c] = next
+			if c.Parent != nil {
+				markMap[c] = markMap[c.Parent]
+			}
+			if !e.incremental || e.fromTime == 0 || e.displayDate(c, markMap[c]) > e.fromTime {
+				emitTagsForCommit(c, markMap[c])
+			}
 			continue
 		}
 		blobMarks := 0
@@ -2924,16 +2945,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 				masterMarks = append(masterMarks, masterMark{date: c.Date, mark: commitMark, commit: c})
 			}
 			if e.incremental && e.fromTime > 0 && e.displayDate(c, commitMark) > e.fromTime {
-				for _, name := range tagNames {
-					if _, ok := emittedTags[name]; ok {
-						continue
-					}
-					if tagAttach[name] == c {
-						fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
-						fmt.Fprintf(e.w, "from :%d\n\n", commitMark)
-						emittedTags[name] = struct{}{}
-					}
-				}
+				emitTagsForCommit(c, commitMark)
 			}
 			continue
 		}
@@ -2949,16 +2961,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		}
 		if !e.incremental || e.fromTime == 0 || e.displayDate(c, mark) > e.fromTime {
 			// Emit tags when their chosen commit has been marked.
-			for _, name := range tagNames {
-				if _, ok := emittedTags[name]; ok {
-					continue
-				}
-				if tagAttach[name] == c {
-					fmt.Fprintf(e.w, "reset refs/tags/%s\n", name)
-					fmt.Fprintf(e.w, "from :%d\n\n", mark)
-					emittedTags[name] = struct{}{}
-				}
-			}
+			emitTagsForCommit(c, mark)
 		}
 		if e.progress != nil {
 			e.progress.Jump(i + 1)
@@ -3170,10 +3173,14 @@ type fileOp struct {
 	commit *Commit
 }
 
-// fileState tracks materialized file content and mode between commits.
+// fileState tracks materialized file content, mode, and CVS revision between
+// commits. Revision identity is intentionally not part of file-operation
+// comparisons: a CVS no-op revision should update tag state without forcing an
+// identical blob into the fast-import stream.
 type fileState struct {
-	text string
-	mode int
+	text     string
+	mode     int
+	revision *Commit
 }
 
 // buildOps computes file operations needed to transform prev into files.
@@ -3207,7 +3214,7 @@ func buildOps(prev map[string]fileState, files []*Commit, prune map[string]struc
 		if mode == 0 {
 			mode = 0644
 		}
-		next[path] = fileState{text: text, mode: mode}
+		next[path] = fileState{text: text, mode: mode, revision: f}
 	}
 
 	// Build a stable path order across deletions and modifications.
@@ -3268,75 +3275,9 @@ func collectVendorBranchFiles(commits []*GitCommit) map[string]map[string]struct
 	return out
 }
 
-// tagMatchesState reports whether a tag target set matches the current state.
-// It requires an exact tree match (no extra files).
-func tagMatchesState(targets []*Commit, state map[string]fileState) bool {
-	if len(targets) == 0 {
-		return false
-	}
-	targetPaths := make(map[string]struct{}, len(targets))
-	for _, t := range targets {
-		if t == nil {
-			continue
-		}
-		path := t.FileName
-		if path == "" {
-			path = "UNKNOWN"
-		}
-		targetPaths[path] = struct{}{}
-	}
-	// Tags must correspond to the full tree state; extra files prevent a match.
-	for path := range state {
-		if _, ok := targetPaths[path]; !ok {
-			return false
-		}
-	}
-	return tagMatchesPartial(targets, state)
-}
-
-// tagMatchesPartial reports whether all tagged files match current state.
-// Extra files in the current state are allowed.
-func tagMatchesPartial(targets []*Commit, state map[string]fileState) bool {
-	if len(targets) == 0 {
-		return false
-	}
-	// Ensure each target file matches current text and mode.
-	for _, t := range targets {
-		path := t.FileName
-		if path == "" {
-			path = "UNKNOWN"
-		}
-		want := t.Text
-		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
-			want = normalizeGitignore(want)
-		}
-		got, ok := state[path]
-		if !ok {
-			return false
-		}
-		mode := t.Mode
-		if mode == 0 {
-			mode = 0644
-		}
-		if got.text != want || got.mode != mode {
-			return false
-		}
-	}
-	return true
-}
-
 type tagMeta struct {
-	count     int
-	sigByPath map[string]uint64
-}
-
-func fileSig(text string, mode int) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(text))
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(mode))
-	_, _ = h.Write(buf[:])
-	return h.Sum64()
+	count          int
+	revisionByPath map[string]*Commit
 }
 
 func buildTagMeta(targets []*Commit) *tagMeta {
@@ -3344,7 +3285,7 @@ func buildTagMeta(targets []*Commit) *tagMeta {
 		return nil
 	}
 	meta := &tagMeta{
-		sigByPath: make(map[string]uint64, len(targets)),
+		revisionByPath: make(map[string]*Commit, len(targets)),
 	}
 	for _, t := range targets {
 		if t == nil {
@@ -3354,15 +3295,7 @@ func buildTagMeta(targets []*Commit) *tagMeta {
 		if path == "" {
 			path = "UNKNOWN"
 		}
-		want := t.Text
-		if path == ".gitignore" && !strings.HasPrefix(want, cvsIgnores) {
-			want = normalizeGitignore(want)
-		}
-		mode := t.Mode
-		if mode == 0 {
-			mode = 0644
-		}
-		meta.sigByPath[path] = fileSig(want, mode)
+		meta.revisionByPath[path] = t
 		meta.count++
 	}
 	return meta
@@ -3375,12 +3308,12 @@ func tagMatchesMeta(meta *tagMeta, state map[string]fileState, requireFull bool)
 	if requireFull && len(state) != meta.count {
 		return false
 	}
-	for path, sig := range meta.sigByPath {
+	for path, revision := range meta.revisionByPath {
 		got, ok := state[path]
 		if !ok {
 			return false
 		}
-		if fileSig(got.text, got.mode) != sig {
+		if got.revision != revision {
 			return false
 		}
 	}
