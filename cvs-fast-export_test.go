@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -201,5 +202,141 @@ func TestEmitRepoPreservesTagOnNoOpRevision(t *testing.T) {
 	}
 	if !strings.Contains(stream, "reset refs/tags/late\nfrom :2\n") {
 		t.Fatalf("late tag was not aliased to the emitted parent commit\n%s", stream)
+	}
+}
+
+func TestEmitRepoIncrementalStreamImportsIntoExistingRepo(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	number := func(s string) Number {
+		t.Helper()
+		n, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	oldRevision := &Commit{
+		Number:   number("1.1"),
+		Date:     time.Unix(100, 0),
+		Author:   "author",
+		Log:      "old\n",
+		Text:     "old contents\n",
+		FileName: "file",
+		Mode:     0644,
+	}
+	newRevision := &Commit{
+		Number:   number("1.2"),
+		Date:     time.Unix(200, 0),
+		Author:   "author",
+		Log:      "new\n",
+		Text:     "new contents\n",
+		FileName: "file",
+		Mode:     0644,
+	}
+	oldCommit := &GitCommit{
+		Date:    oldRevision.Date,
+		Author:  oldRevision.Author,
+		Log:     oldRevision.Log,
+		Files:   []*Commit{oldRevision},
+		RefName: "master",
+		Tail:    true,
+	}
+	newCommit := &GitCommit{
+		Parent:  oldCommit,
+		Date:    newRevision.Date,
+		Author:  newRevision.Author,
+		Log:     newRevision.Log,
+		Files:   []*Commit{newRevision},
+		RefName: "master",
+	}
+
+	emit := func(repo *Repo, opts ExportOptions) string {
+		t.Helper()
+		var output bytes.Buffer
+		emitter := NewEmitter(&output).WithOptions(opts)
+		if err := emitter.EmitRepo(repo); err != nil {
+			t.Fatal(err)
+		}
+		if err := emitter.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		return output.String()
+	}
+
+	initial := emit(&Repo{
+		Branches: []*GitBranch{{Name: "master", Head: oldCommit}},
+		CommitOf: map[*Commit]*GitCommit{oldRevision: oldCommit},
+	}, ExportOptions{NoIgnores: true})
+	incremental := emit(&Repo{
+		Branches: []*GitBranch{{Name: "master", Head: newCommit}},
+		CommitOf: map[*Commit]*GitCommit{oldRevision: oldCommit, newRevision: newCommit},
+	}, ExportOptions{Incremental: true, NoIgnores: true, FromTime: 150})
+
+	commitAt := strings.Index(incremental, "commit refs/heads/master\n")
+	parentAt := strings.Index(incremental, "from refs/heads/master^0\n")
+	if commitAt < 0 || parentAt < commitAt {
+		t.Fatalf("external parent is not inside the first emitted commit:\n%s", incremental)
+	}
+	if strings.Contains(incremental, "from :2\n") {
+		t.Fatalf("incremental stream references an omitted commit mark:\n%s", incremental)
+	}
+
+	repoDir := t.TempDir()
+	runGit := func(input string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(git, args...)
+		if input != "" {
+			cmd.Stdin = strings.NewReader(input)
+		}
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
+		}
+		return string(output)
+	}
+	runGit("", "init", "--quiet", repoDir)
+	runGit(initial, "-C", repoDir, "fast-import", "--quiet")
+	runGit(incremental, "-C", repoDir, "fast-import", "--quiet")
+	if got := strings.TrimSpace(runGit("", "-C", repoDir, "rev-list", "--count", "master")); got != "2" {
+		t.Fatalf("incremental import produced %s commits, want 2", got)
+	}
+	if got := runGit("", "-C", repoDir, "show", "master:file"); got != newRevision.Text {
+		t.Fatalf("imported file = %q, want %q", got, newRevision.Text)
+	}
+}
+
+func TestConvertDateAcceptsRFC3339AndRejectsInvalidInput(t *testing.T) {
+	want := time.Date(2026, time.August, 10, 12, 34, 56, 0, time.UTC).Unix()
+	for _, arg := range []string{
+		"2026-08-10T12:34:56Z",
+		"2026-08-10T08:34:56-04:00",
+		"2026-08-10T12:34:56+0000",
+		"1786365296",
+	} {
+		got, err := convertDate(arg)
+		if err != nil {
+			t.Errorf("convertDate(%q): %v", arg, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("convertDate(%q) = %d, want %d", arg, got, want)
+		}
+	}
+	if _, err := convertDate("definitely-not-a-date"); err == nil {
+		t.Fatal("convertDate accepted an invalid date")
+	}
+	if _, err := parseArgs([]string{"-i", "definitely-not-a-date"}); err == nil {
+		t.Fatal("parseArgs silently accepted an invalid incremental date")
+	}
+	cfg, err := parseArgs([]string{"--incremental=2026-08-10T12:34:56Z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Incremental || cfg.FromTime != want {
+		t.Fatalf("incremental config = %+v, want FromTime %d", cfg, want)
 	}
 }

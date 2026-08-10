@@ -2779,7 +2779,12 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		e.progress.Note(fmt.Sprintf("EmitRepo: collected %d commits", len(commits)))
 	}
 	vendorFiles := collectVendorBranchFiles(commits)
-	markMap := make(map[*GitCommit]int)
+	// displayMarkMap includes marks reserved for commits filtered out of an
+	// incremental stream.  They keep forced dates stable across full and
+	// incremental exports.  emittedMarkMap, by contrast, contains only marks
+	// that fast-import can actually resolve in this stream.
+	displayMarkMap := make(map[*GitCommit]int)
+	emittedMarkMap := make(map[*GitCommit]int)
 	stateByCommit := make(map[*GitCommit]map[string]fileState)
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
@@ -2857,9 +2862,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		parentMark := 0
 		var fallbackParent *GitCommit
 		if c.Parent != nil {
-			parentMark = markMap[c.Parent]
+			parentMark = emittedMarkMap[c.Parent]
 		}
-		if parentMark == 0 &&
+		if c.Parent == nil && parentMark == 0 &&
 			branchName != "master" && branchName != "null" &&
 			!strings.HasPrefix(branchName, "import-") && !strings.Contains(branchName, "UNNAMED-BRANCH") &&
 			len(masterMarks) > 0 && repo.PathologyFixes {
@@ -2900,9 +2905,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			}
 		}
 		ops, next := buildOps(prevState, c.Files, prune)
-		branchSeen := liveSeen[c.RefName]
+		branchSeen := liveSeen[branchName]
 		if len(next) > 0 {
-			liveSeen[c.RefName] = true
+			liveSeen[branchName] = true
 		}
 		if len(ops) == 0 && branchSeen {
 			// Skip no-op commits once the branch has live content, but retain an
@@ -2910,10 +2915,11 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			// this CVS revision even though it needs no distinct Git commit.
 			stateByCommit[c] = next
 			if c.Parent != nil {
-				markMap[c] = markMap[c.Parent]
+				displayMarkMap[c] = displayMarkMap[c.Parent]
+				emittedMarkMap[c] = emittedMarkMap[c.Parent]
 			}
-			if !e.incremental || e.fromTime == 0 || e.displayDate(c, markMap[c]) > e.fromTime {
-				emitTagsForCommit(c, markMap[c])
+			if !e.incremental || e.fromTime == 0 || e.displayDate(c, displayMarkMap[c]) > e.fromTime {
+				emitTagsForCommit(c, emittedMarkMap[c])
 			}
 			continue
 		}
@@ -2928,34 +2934,37 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		if e.incremental && e.fromTime > 0 {
 			report = e.fromTime < e.displayDate(c, commitMark)
 		}
-		if e.incremental && report && !realized[c.RefName] {
-			if c.Parent != nil && e.fromTime > 0 {
-				parentMark := markMap[c.Parent]
-				if parentMark > 0 && e.displayDate(c.Parent, parentMark) < e.fromTime {
-					fmt.Fprintf(e.w, "from %s%s^0\n\n", e.branchPrefix, c.RefName)
-				}
-			}
-			realized[c.RefName] = true
-		}
+		displayMarkMap[c] = commitMark
 		if !report {
 			e.mark = commitMark + 1
 			stateByCommit[c] = next
-			markMap[c] = commitMark
 			if branchName == "master" {
-				masterMarks = append(masterMarks, masterMark{date: c.Date, mark: commitMark, commit: c})
-			}
-			if e.incremental && e.fromTime > 0 && e.displayDate(c, commitMark) > e.fromTime {
-				emitTagsForCommit(c, commitMark)
+				// Keep the state available to pathology repair, but never
+				// advertise a mark that was not emitted.
+				masterMarks = append(masterMarks, masterMark{date: c.Date, commit: c})
 			}
 			continue
 		}
-		mark, err := e.emitCommit(c.RefName, c, parentMark, first, ops)
+		parentRef := ""
+		logicalParent := c.Parent
+		if fallbackParent != nil {
+			logicalParent = fallbackParent
+		}
+		if e.incremental && e.fromTime > 0 && !realized[branchName] &&
+			logicalParent != nil && parentMark == 0 {
+			// The parent is present in the repository being updated, not in
+			// this stream.  A from command is valid only inside a commit.
+			parentRef = e.branchPrefix + branchName + "^0"
+		}
+		mark, err := e.emitCommit(c.RefName, c, parentMark, parentRef, first, ops)
 		if err != nil {
 			return err
 		}
+		realized[branchName] = true
 		emittedBranches[branchName] = struct{}{}
 		stateByCommit[c] = next
-		markMap[c] = mark
+		displayMarkMap[c] = mark
+		emittedMarkMap[c] = mark
 		if branchName == "master" {
 			masterMarks = append(masterMarks, masterMark{date: c.Date, mark: mark, commit: c})
 		}
@@ -2982,7 +2991,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			if _, ok := emittedBranches[name]; ok {
 				continue
 			}
-			mark := markMap[b.Head]
+			mark := emittedMarkMap[b.Head]
 			if mark == 0 {
 				continue
 			}
@@ -3033,7 +3042,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			RefName: ref,
 		}
 		ops, _ := buildOps(map[string]fileState{}, synth.Files, nil)
-		mark, err := e.emitCommit(ref, synth, 0, false, ops)
+		mark, err := e.emitCommit(ref, synth, 0, "", false, ops)
 		if err != nil {
 			return err
 		}
@@ -3054,7 +3063,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 }
 
 // emitCommit writes a single fast-import commit and its file operations.
-func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first bool, ops []*fileOp) (int, error) {
+func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parentRef string, first bool, ops []*fileOp) (int, error) {
 	ref := branch
 	if ref == "" {
 		ref = "master"
@@ -3096,6 +3105,8 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, first 
 	fmt.Fprintf(e.w, "data %d\n%s", len(c.Log), c.Log)
 	if parentMark > 0 {
 		fmt.Fprintf(e.w, "from :%d\n", parentMark)
+	} else if parentRef != "" {
+		fmt.Fprintf(e.w, "from %s\n", parentRef)
 	}
 	// Emit file modifications and deletions.
 	for _, op := range ops {
@@ -3970,14 +3981,27 @@ func parseArgs(args []string) (config, error) {
 			}
 			i++
 			cfg.Remote = args[i]
-		case arg == "-i":
+		case arg == "-i" || arg == "--incremental":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
+			fromTime, err := convertDate(args[i])
+			if err != nil {
+				return cfg, fmt.Errorf("invalid %s value: %w", arg, err)
+			}
 			cfg.Incremental = true
 			cfg.NoIgnores = true
-			cfg.FromTime = convertDate(args[i])
+			cfg.FromTime = fromTime
+		case strings.HasPrefix(arg, "--incremental="):
+			value := strings.SplitN(arg, "=", 2)[1]
+			fromTime, err := convertDate(value)
+			if err != nil {
+				return cfg, fmt.Errorf("invalid --incremental value: %w", err)
+			}
+			cfg.Incremental = true
+			cfg.NoIgnores = true
+			cfg.FromTime = fromTime
 		case arg == "-a" || arg == "--authorlist":
 			cfg.ExecMode = execAuthors
 		case arg == "-P" || arg == "--promiscuous":
@@ -4013,7 +4037,7 @@ func parseArgs(args []string) (config, error) {
 			if i+1 < len(args) {
 				switch arg {
 				case "--commit-time-window", "--log", "--revision-map",
-					"--remote", "--incremental",
+					"--remote",
 					"--threads", "--debug", "--authormap":
 					if arg == "--authormap" {
 						// Allow long-form authormap without '='.
@@ -4035,10 +4059,6 @@ func parseArgs(args []string) (config, error) {
 						cfg.LogPath = args[i+1]
 					} else if arg == "--revision-map" {
 						cfg.RevisionMapPath = args[i+1]
-					} else if arg == "--incremental" {
-						cfg.Incremental = true
-						cfg.NoIgnores = true
-						cfg.FromTime = convertDate(args[i+1])
 					}
 					i++
 				default:
@@ -4071,9 +4091,10 @@ func parseInt(s string) (int64, error) {
 }
 
 // convertDate accepts RFC3339-like timestamps or plain epoch seconds.
-func convertDate(s string) int64 {
+func convertDate(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	layouts := []string{
+		time.RFC3339,
 		"2006-01-02T15:04:05-0700",
 		"2006-01-02 15:04:05-0700",
 		"2006-01-02T15:04:05",
@@ -4083,13 +4104,13 @@ func convertDate(s string) int64 {
 	}
 	for _, layout := range layouts {
 		if t, err := time.Parse(layout, s); err == nil {
-			return t.Unix()
+			return t.Unix(), nil
 		}
 	}
 	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return v
+		return v, nil
 	}
-	return 0
+	return 0, fmt.Errorf("%q is not an RFC3339 timestamp or Unix time", s)
 }
 
 // detectSourceType guesses CVS vs RCS based on input paths.
