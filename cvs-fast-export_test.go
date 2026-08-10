@@ -407,3 +407,67 @@ func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
 		t.Fatalf("imported .gitignore = %q, want %q", got, wantBlob)
 	}
 }
+
+func TestEmptyFileRemainsZeroByteBlob(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	number, err := Parse("1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := &Commit{
+		Number:   number,
+		Date:     time.Unix(100, 0),
+		Author:   "author",
+		Log:      "add empty file\n",
+		Text:     "",
+		FileName: "empty",
+		Mode:     0644,
+	}
+	commit := &GitCommit{
+		Date:    revision.Date,
+		Author:  revision.Author,
+		Log:     revision.Log,
+		Files:   []*Commit{revision},
+		RefName: "master",
+		Tail:    true,
+	}
+	repo := &Repo{
+		Branches: []*GitBranch{{Name: "master", Head: commit}},
+		CommitOf: map[*Commit]*GitCommit{revision: commit},
+	}
+
+	var output bytes.Buffer
+	emitter := NewEmitter(&output).WithOptions(ExportOptions{NoIgnores: true})
+	if err := emitter.EmitRepo(repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := emitter.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	stream := output.String()
+	if !strings.Contains(stream, "blob\nmark :1\ndata 0\n\ncommit refs/heads/master\n") {
+		t.Fatalf("zero-byte file was not emitted as a data 0 blob:\n%s", stream)
+	}
+
+	repoDir := t.TempDir()
+	initCmd := exec.Command(git, "init", "--quiet", repoDir)
+	if initialized, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, initialized)
+	}
+	importCmd := exec.Command(git, "-C", repoDir, "fast-import", "--quiet")
+	importCmd.Stdin = strings.NewReader(stream)
+	if imported, err := importCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git fast-import rejected zero-byte stream: %v\n%s\n%s", err, imported, stream)
+	}
+	sizeCmd := exec.Command(git, "-C", repoDir, "cat-file", "-s", "master:empty")
+	size, err := sizeCmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(size)); got != "0" {
+		t.Fatalf("imported empty file has size %s, want 0", got)
+	}
+}

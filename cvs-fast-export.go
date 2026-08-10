@@ -3157,9 +3157,6 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 func (e *Emitter) emitBlob(path, text string) int {
 	mark := e.mark
 	e.mark++
-	if text == "" {
-		text = "\n"
-	}
 	// Normalize .cvsignore content into .gitignore form.
 	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
 		text = normalizeGitignore(text)
