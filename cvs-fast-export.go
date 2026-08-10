@@ -1709,6 +1709,7 @@ type GitCommit struct {
 	Files   []*Commit
 	RefName string
 	Tail    bool
+	minDate time.Time
 }
 
 // GitBranch is a linearized commit chain for a named ref.
@@ -2150,11 +2151,15 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 					Log:     c.Log,
 					Files:   []*Commit{c},
 					RefName: branch,
+					minDate: c.Date,
 				}
 				group[c.CommitID] = g
 				order = append(order, g)
 			} else {
 				g.Files = append(g.Files, c)
+				if c.Date.Before(g.minDate) {
+					g.minDate = c.Date
+				}
 				if c.Date.After(g.Date) {
 					g.Date = c.Date
 				}
@@ -2176,6 +2181,9 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 			for _, c := range noID {
 				if prev != nil && commitsMatch(prev, c, opts) {
 					prev.Files = append(prev.Files, c)
+					if c.Date.Before(prev.minDate) {
+						prev.minDate = c.Date
+					}
 					if c.Date.After(prev.Date) {
 						prev.Date = c.Date
 					}
@@ -2188,6 +2196,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 					Log:     c.Log,
 					Files:   []*Commit{c},
 					RefName: branch,
+					minDate: c.Date,
 				}
 				prev = g
 				order = append(order, g)
@@ -2228,6 +2237,9 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 	for _, c := range commits {
 		if prev != nil && commitsMatch(prev, c, opts) {
 			prev.Files = append(prev.Files, c)
+			if c.Date.Before(prev.minDate) {
+				prev.minDate = c.Date
+			}
 			if c.Date.After(prev.Date) {
 				prev.Date = c.Date
 			}
@@ -2240,6 +2252,7 @@ func collateBranch(branch string, heads []*Head, opts CollateOptions, index *col
 			Log:     c.Log,
 			Files:   []*Commit{c},
 			RefName: branch,
+			minDate: c.Date,
 		}
 		g.Parent = prev
 		if first == nil {
@@ -2639,12 +2652,43 @@ func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
 	if g.Log != c.Log {
 		return false
 	}
-	// Fall back to time-window matching.
-	delta := g.Date.Sub(c.Date)
-	if delta < 0 {
-		delta = -delta
+	// Fall back to time-window matching. GitCommit.Date is the newest
+	// timestamp in a collated group; minDate prevents a sequence of nearby
+	// revisions from extending the group beyond the window as a whole.
+	minDate := g.minDate
+	maxDate := g.Date
+	if minDate.IsZero() {
+		// GitCommits constructed outside collation do not initialize minDate.
+		// Derive the complete range so commitsMatch remains safe for them.
+		haveFileDate := false
+		for _, f := range g.Files {
+			if f == nil {
+				continue
+			}
+			if !haveFileDate {
+				minDate = f.Date
+				maxDate = f.Date
+				haveFileDate = true
+				continue
+			}
+			if f.Date.Before(minDate) {
+				minDate = f.Date
+			}
+			if f.Date.After(maxDate) {
+				maxDate = f.Date
+			}
+		}
+		if !haveFileDate {
+			minDate = maxDate
+		}
 	}
-	return delta < opts.CommitTimeWindow
+	if c.Date.Before(minDate) {
+		minDate = c.Date
+	}
+	if c.Date.After(maxDate) {
+		maxDate = c.Date
+	}
+	return maxDate.Sub(minDate) < opts.CommitTimeWindow
 }
 
 // Emitter streams git fast-import output with CVS-specific conventions.

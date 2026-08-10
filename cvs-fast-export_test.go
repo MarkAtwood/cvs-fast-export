@@ -471,3 +471,58 @@ func TestEmptyFileRemainsZeroByteBlob(t *testing.T) {
 		t.Fatalf("imported empty file has size %s, want 0", got)
 	}
 }
+
+func TestCollateBranchEnforcesWindowAcrossWholeChangeset(t *testing.T) {
+	for _, trustCommitIDs := range []bool{true, false} {
+		name := "content-only"
+		if trustCommitIDs {
+			name = "trust-commitids"
+		}
+		t.Run(name, func(t *testing.T) {
+			number, err := Parse("1.1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			base := time.Unix(1_000_000, 0)
+			offsets := []time.Duration{0, 299 * time.Second, 598 * time.Second}
+			revisions := make([]*Commit, 0, len(offsets))
+			heads := make([]*Head, 0, len(offsets))
+			for i, offset := range offsets {
+				revision := &Commit{
+					Number:   number,
+					Date:     base.Add(offset),
+					Author:   "author",
+					Log:      "one changeset\n",
+					Text:     fmt.Sprintf("file %d\n", i),
+					FileName: fmt.Sprintf("file-%d", i),
+					Mode:     0644,
+				}
+				revisions = append(revisions, revision)
+				heads = append(heads, &Head{RefName: "master", Commit: revision})
+			}
+			index := &collateIndex{
+				commitOf: make(map[*Commit]*GitCommit),
+				byNumber: make(map[string]*GitCommit),
+			}
+			head := collateBranch("master", heads, CollateOptions{
+				CommitTimeWindow: 300 * time.Second,
+				TrustCommitIDs:   trustCommitIDs,
+			}, index)
+			if head == nil || head.Parent == nil || head.Parent.Parent != nil {
+				t.Fatalf("collation did not produce exactly two changesets: %#v", head)
+			}
+			if got := len(head.Parent.Files); got != 2 {
+				t.Fatalf("first changeset contains %d revisions, want 2", got)
+			}
+			if got := len(head.Files); got != 1 {
+				t.Fatalf("second changeset contains %d revisions, want 1", got)
+			}
+			if index.commitOf[revisions[0]] != index.commitOf[revisions[1]] {
+				t.Fatal("revisions 299 seconds apart were not coalesced")
+			}
+			if index.commitOf[revisions[1]] == index.commitOf[revisions[2]] {
+				t.Fatal("598-second revision span was coalesced through a rolling window")
+			}
+		})
+	}
+}
