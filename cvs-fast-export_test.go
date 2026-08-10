@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -338,5 +339,71 @@ func TestConvertDateAcceptsRFC3339AndRejectsInvalidInput(t *testing.T) {
 	}
 	if !cfg.Incremental || cfg.FromTime != want {
 		t.Fatalf("incremental config = %+v, want FromTime %d", cfg, want)
+	}
+}
+
+func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	number, err := Parse("1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := &Commit{
+		Number:   number,
+		Date:     time.Unix(100, 0),
+		Author:   "author",
+		Log:      "add ignores\n",
+		Text:     "wibble wobble #ping",
+		FileName: ".gitignore",
+		Mode:     0644,
+	}
+	commit := &GitCommit{
+		Date:    revision.Date,
+		Author:  revision.Author,
+		Log:     revision.Log,
+		Files:   []*Commit{revision},
+		RefName: "master",
+		Tail:    true,
+	}
+	repo := &Repo{
+		Branches: []*GitBranch{{Name: "master", Head: commit}},
+		CommitOf: map[*Commit]*GitCommit{revision: commit},
+	}
+
+	var output bytes.Buffer
+	emitter := NewEmitter(&output).WithOptions(ExportOptions{NoIgnores: true})
+	if err := emitter.EmitRepo(repo); err != nil {
+		t.Fatal(err)
+	}
+	if err := emitter.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	stream := output.String()
+	wantBlob := normalizeGitignore(revision.Text)
+	wantFrame := fmt.Sprintf("data %d\n%s\n", len(wantBlob), wantBlob)
+	if !strings.Contains(stream, wantFrame) {
+		t.Fatalf("gitignore blob does not declare its exact byte length:\n%s", stream)
+	}
+
+	repoDir := t.TempDir()
+	initCmd := exec.Command(git, "init", "--quiet", repoDir)
+	if imported, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, imported)
+	}
+	importCmd := exec.Command(git, "-C", repoDir, "fast-import", "--quiet")
+	importCmd.Stdin = strings.NewReader(stream)
+	if imported, err := importCmd.CombinedOutput(); err != nil {
+		t.Fatalf("git fast-import rejected stream: %v\n%s\n%s", err, imported, stream)
+	}
+	showCmd := exec.Command(git, "-C", repoDir, "show", "master:.gitignore")
+	gotBlob, err := showCmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(gotBlob); got != wantBlob {
+		t.Fatalf("imported .gitignore = %q, want %q", got, wantBlob)
 	}
 }

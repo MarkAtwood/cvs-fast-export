@@ -3165,12 +3165,7 @@ func (e *Emitter) emitBlob(path, text string) int {
 		text = normalizeGitignore(text)
 	}
 	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
-	dataLen := len(text)
-	if path == ".gitignore" {
-		// Adjust for escaped leading '#' characters.
-		dataLen = gitignoreDataLen(text)
-	}
-	fmt.Fprintf(e.w, "data %d\n%s\n", dataLen, text)
+	fmt.Fprintf(e.w, "data %d\n%s\n", len(text), text)
 	return mark
 }
 
@@ -3807,25 +3802,6 @@ func normalizeGitignore(text string) string {
 		b.WriteByte(buf[i])
 	}
 	return b.String()
-}
-
-// gitignoreDataLen computes the data length excluding escaped CVS comments.
-func gitignoreDataLen(text string) int {
-	if text == "" {
-		return 0
-	}
-	// Exclude backslashes inserted before leading '#' in user content.
-	escapes := 0
-	start := 0
-	if strings.HasPrefix(text, cvsIgnores) {
-		start = len(cvsIgnores)
-	}
-	for i := start; i < len(text)-1; i++ {
-		if text[i] == '\\' && text[i+1] == '#' && (i == start || text[i-1] == '\n') {
-			escapes++
-		}
-	}
-	return len(text) - escapes
 }
 
 // Set with an -X option
