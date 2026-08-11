@@ -2928,10 +2928,70 @@ func (e *Emitter) displayDate(c *GitCommit, mark int) int64 {
 	return c.Date.Unix()
 }
 
+// validateRefNames checks every branch and tag ref before stream emission.
+func (e *Emitter) validateRefNames(repo *Repo, commits []*GitCommit) error {
+	branches := make(map[string]struct{})
+	checkBranch := func(name string) error {
+		if name == "" {
+			name = "master"
+		}
+		if _, ok := branches[name]; ok {
+			return nil
+		}
+		branches[name] = struct{}{}
+		ref := e.branchPrefix + name
+		if !validGitRefName(ref) {
+			return fmt.Errorf("invalid branch ref %q", ref)
+		}
+		return nil
+	}
+	for _, branch := range repo.Branches {
+		if branch != nil {
+			if err := checkBranch(branch.Name); err != nil {
+				return err
+			}
+		}
+	}
+	for _, commit := range commits {
+		if commit != nil {
+			if err := checkBranch(commit.RefName); err != nil {
+				return err
+			}
+		}
+	}
+
+	tags := make(map[string]struct{})
+	for name := range repo.TagTargets {
+		tags[name] = struct{}{}
+	}
+	for _, name := range repo.TagOrder {
+		tags[name] = struct{}{}
+	}
+	for name := range e.tagTargets {
+		tags[name] = struct{}{}
+	}
+	tagNames := make([]string, 0, len(tags))
+	for name := range tags {
+		tagNames = append(tagNames, name)
+	}
+	sort.Strings(tagNames)
+	for _, name := range tagNames {
+		ref := "refs/tags/" + name
+		if !validGitRefName(ref) {
+			return fmt.Errorf("invalid tag ref %q", ref)
+		}
+	}
+	return nil
+}
+
 // EmitRepo emits a fast-import stream for all branches, ordered by commit date.
 func (e *Emitter) EmitRepo(repo *Repo) error {
 	if repo == nil {
 		return e.writeErr
+	}
+	commits := collectCommits(repo)
+	if err := e.validateRefNames(repo, commits); err != nil {
+		return err
 	}
 	if e.progress != nil {
 		e.progress.Note("EmitRepo: start")
@@ -2948,7 +3008,6 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if e.progress != nil {
 		e.progress.Note("EmitRepo: collecting commits")
 	}
-	commits := collectCommits(repo)
 	if e.progress != nil {
 		e.progress.Note(fmt.Sprintf("EmitRepo: collected %d commits", len(commits)))
 	}

@@ -424,6 +424,81 @@ func TestParseArgsRejectsInvalidRemoteNames(t *testing.T) {
 	}
 }
 
+func TestEmitterRejectsInvalidRefsBeforeEmission(t *testing.T) {
+	makeRepo := func(branchName, commitName string, tags map[string][]*Commit) *Repo {
+		revision := &Commit{
+			Number:   Number{C: 2, N: []int{1, 1}},
+			Date:     time.Unix(1, 0),
+			Author:   "author",
+			Log:      "import\n",
+			Text:     "content\n",
+			FileName: "file",
+			Mode:     0644,
+		}
+		commit := &GitCommit{
+			Date:    revision.Date,
+			Author:  revision.Author,
+			Log:     revision.Log,
+			Files:   []*Commit{revision},
+			RefName: commitName,
+			Tail:    true,
+		}
+		return &Repo{
+			Branches:   []*GitBranch{{Name: branchName, Head: commit}},
+			CommitOf:   map[*Commit]*GitCommit{revision: commit},
+			TagTargets: tags,
+		}
+	}
+	tests := []struct {
+		name       string
+		branchName string
+		commitName string
+		tags       map[string][]*Commit
+		prefix     string
+		want       string
+	}{
+		{
+			name: "branch tip", branchName: "bad:name", commitName: "bad:name",
+			want: `invalid branch ref "refs/heads/bad:name"`,
+		},
+		{
+			name: "commit branch", branchName: "master", commitName: "bad:name",
+			want: `invalid branch ref "refs/heads/bad:name"`,
+		},
+		{
+			name: "tag", branchName: "master", commitName: "master",
+			tags: map[string][]*Commit{"bad:name": nil},
+			want: `invalid tag ref "refs/tags/bad:name"`,
+		},
+		{
+			name: "branch prefix", branchName: "master", commitName: "master",
+			prefix: "refs/remotes/bad:name/",
+			want:   `invalid branch ref "refs/remotes/bad:name/master"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := makeRepo(test.branchName, test.commitName, test.tags)
+			var output bytes.Buffer
+			emitter := NewEmitter(&output).
+				WithTagTargets(repo.TagTargets).
+				WithOptions(ExportOptions{
+					NoIgnores: true, Reposurgeon: true, BranchPrefix: test.prefix,
+				})
+			err := emitter.EmitRepo(repo)
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("EmitRepo error = %v, want %q", err, test.want)
+			}
+			if err := emitter.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("EmitRepo wrote output before ref validation: %q", output.String())
+			}
+		})
+	}
+}
+
 func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {
