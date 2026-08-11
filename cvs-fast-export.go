@@ -219,14 +219,17 @@ func PathDeepCompare(a, b string) int {
 	if bslash == -1 {
 		return -1
 	}
+	// Siblings in the same directory, and unrelated paths whose final
+	// slashes happen to align, are already ordered correctly by lexical
+	// comparison. Without this case, each sibling compares less than the
+	// other and violates sort.Interface's ordering contract.
+	if aslash == bslash {
+		return compar
+	}
 
 	// If one is a prefix of the other, keep the deeper path first.
 	alen := len(a)
 	blen := len(b)
-
-	if aslash == -1 || bslash == -1 {
-		return compar
-	}
 
 	if aslash < bslash {
 		aidx := aslash

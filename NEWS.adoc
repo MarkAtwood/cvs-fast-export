@@ -5,6 +5,7 @@ Repository-head::
    Attach cobverted tags by CVS revion ID, not content hash.
    Repair emission of incemental dumps.
    Repair emission of zero-length files.
+   Do branch-parent lookup on the basuc of filename as well as revision.
 
 2.3: 2026-07-06::
    Force correct dates on commits after a coalesce command.

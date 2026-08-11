@@ -574,3 +574,77 @@ func TestLinkBranchParentsUsesPathAndRevisionIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestPathDeepCompareIsStrictWeakOrdering(t *testing.T) {
+	tests := []struct {
+		a    string
+		b    string
+		want int
+	}{
+		{a: "d/a", b: "d/b", want: -1},
+		{a: "d/b", b: "d/a", want: 1},
+		{a: "a/x", b: "b/y", want: -1},
+		{a: "b/y", b: "a", want: -1},
+		{a: "p/p/b/x/x", b: "p/p/a", want: -1},
+		{a: "same/path", b: "same/path", want: 0},
+	}
+	sign := func(n int) int {
+		switch {
+		case n < 0:
+			return -1
+		case n > 0:
+			return 1
+		default:
+			return 0
+		}
+	}
+	for _, tc := range tests {
+		if got := sign(PathDeepCompare(tc.a, tc.b)); got != tc.want {
+			t.Errorf("PathDeepCompare(%q, %q) = %d, want sign %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+
+	var paths []string
+	segments := []string{"a", "b", "c"}
+	var generate func(string, int)
+	generate = func(prefix string, depth int) {
+		if depth == 0 {
+			return
+		}
+		for _, segment := range segments {
+			path := segment
+			if prefix != "" {
+				path = prefix + "/" + segment
+			}
+			paths = append(paths, path)
+			generate(path, depth-1)
+		}
+	}
+	generate("", 3)
+	paths = append(paths, "p/p/a", "p/p/b/x/x", "x/y/z/w")
+
+	for _, a := range paths {
+		for _, b := range paths {
+			ab := sign(PathDeepCompare(a, b))
+			ba := sign(PathDeepCompare(b, a))
+			if ab != -ba {
+				t.Fatalf("comparator is not antisymmetric for %q and %q: %d, %d", a, b, ab, ba)
+			}
+			if (ab == 0) != (a == b) {
+				t.Fatalf("comparator equality mismatch for %q and %q: %d", a, b, ab)
+			}
+		}
+	}
+	for _, a := range paths {
+		for _, b := range paths {
+			if PathDeepCompare(a, b) >= 0 {
+				continue
+			}
+			for _, c := range paths {
+				if PathDeepCompare(b, c) < 0 && PathDeepCompare(a, c) >= 0 {
+					t.Fatalf("comparator is not transitive: %q < %q < %q", a, b, c)
+				}
+			}
+		}
+	}
+}
