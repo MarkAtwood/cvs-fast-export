@@ -155,10 +155,15 @@ c_regress:
 	@for cd in $(CD); do cvsconvert -q -n -t $$cd; done
 TEST_TARGETS += $(CD) $(CT)
 
-SPORADIC = incremental.sh
+SPORADIC = incremental.sh companion.py
 sporadic:
 	@echo "# Sporadic tests"
-	@for x in $(SPORADIC); do sh $${x}; done
+	@for x in $(SPORADIC); do \
+		case "$${x}" in \
+		*.py) $(PYTHON) "$${x}" ;; \
+		*) sh "$${x}" ;; \
+		esac; \
+	done
 TEST_TARGETS += $(SPORADIC)
 
 # These tests can't be part of normal regressions because we don't seem

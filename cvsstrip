@@ -165,7 +165,7 @@ def skeletonize(inputf, outputf):
         if not line:
             break
         if verbose > 1:
-            sys.stderr.write(b"%s: %s\n" % (state, line.strip()))
+            sys.stderr.write("%s: %s\n" % (state, line.strip()))
         if state == "ini":
             if line.startswith("symbols"):
                 state = "sym"
@@ -524,7 +524,10 @@ if __name__ == "__main__":
             winnow = True
 
     if not arguments:
-        skeletonize(sys.stdin, sys.stdout)
+        skeletonize(
+            getattr(sys.stdin, "buffer", sys.stdin),
+            getattr(sys.stdout, "buffer", sys.stdout),
+        )
         sys.exit(0)
     elif not os.path.isdir(arguments[0]):
         sys.stderr.write("cvsstrip: argument must be a directory.\n")

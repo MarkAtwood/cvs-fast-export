@@ -17,7 +17,7 @@ actual path to the repository from the host, path and module arguments.
 # This is the only way to prevent spurious pylint failures on earlier versions.
 # pylint: disable=bad-option-value
 
-# pylint: disable=invalid-name.no-else-return,consider-using-f-string
+# pylint: disable=invalid-name.no-else-return,consider-using-f-string,deprecated-module
 
 # Hosting-site rules live inside the following function.
 
@@ -58,17 +58,28 @@ def computesource(sourcehost, sourcepath, sourcemodule):
 # pylint: disable=multiple-imports,wrong-import-position
 import os, sys, getopt, subprocess
 
+try:
+    from shlex import quote
+except ImportError:
+    from pipes import quote  # Deprecated, to be removed in 3.13.
+
 verbose = False
 execute = True
 
 
-def do_or_die(dcmd):
+def command_text(argv):
+    "Format an argument vector for diagnostics only."
+    return " ".join(quote(arg) for arg in argv)
+
+
+def do_or_die(argv):
     "Either execute a command or raise a fatal exception."
+    dcmd = command_text(argv)
     if verbose:
         sys.stdout.write("cvssync: executing '%s'\n" % (dcmd,))
     if execute:
         try:
-            retcode = subprocess.call(dcmd, shell=True)
+            retcode = subprocess.call(argv)
             if retcode < 0:
                 sys.stderr.write(
                     "cvssync: child was terminated by signal %d.\n" % -retcode
@@ -99,11 +110,13 @@ if __name__ == "__main__":
 
     if len(arguments) == 1 and arguments[0].startswith("cvs://"):
         try:
-            (host, module) = arguments[0][6:].split("#")
+            (host, module) = arguments[0][6:].split("#", 1)
             i = host.find("/")
+            if i < 0:
+                raise ValueError
             (host, path) = (host[:i], host[i:])
             if "@" in host:
-                host = host.split("@")[1]
+                host = host.split("@", 1)[1]
         except ValueError:
             sys.stderr.write("cvssync: ill-formed CVS URL\n")
             sys.exit(1)
@@ -111,11 +124,11 @@ if __name__ == "__main__":
         host = arguments[0]
         module = arguments[1]
         if "@" in host:
-            host = host.split("@")[1]
+            host = host.split("@", 1)[1]
         if ":" not in host:
             sys.stderr.write("cvssync: repository path is missing.\n")
             sys.exit(1)
-        (host, path) = host.split(":")
+        (host, path) = host.split(":", 1)
     else:
         sys.stderr.write("cvssync: requires a host/path and module argument\n")
         sys.exit(1)
@@ -136,6 +149,6 @@ if __name__ == "__main__":
             os.mkdir(dummyroot)
         directory = os.path.join(directory, module)
 
-    do_or_die("rsync -sa%sz '%s' '%s'" % (vopt, source, directory))
+    do_or_die(["rsync", "-sa%sz" % vopt, "--", source, directory])
 
 # end

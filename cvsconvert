@@ -22,7 +22,7 @@ Will produce spurious errors if any CVS branch name had to be sanitized.
 # pylint: disable=line-too-long,invalid-name,missing-class-docstring,useless-object-inheritance,missing-function-docstring,redefined-outer-name,consider-using-f-string,too-many-statements,arguments-renamed,deprecated-module,used-before-assignment
 
 # pylint: disable=multiple-imports
-import sys, os, shutil, subprocess, time, filecmp
+import sys, os, shutil, subprocess, time, filecmp, shlex
 
 try:
     from shlex import quote
@@ -43,18 +43,38 @@ binary_encoding = "Latin-1"  # Preserves high bits in data
 engine = os.getenv("CVS_FAST_EXPORT", "cvs-fast-export")
 
 
-def noisy_run(dcmd, legend=""):
+try:
+    string_types = (basestring,)
+except NameError:
+    string_types = (str,)
+
+
+def command_text(argv):
+    "Format an argument vector for diagnostics only."
+    return " ".join(quote(arg) for arg in argv)
+
+
+def command_args(command):
+    "Accept legacy option strings without passing them to a shell."
+    if isinstance(command, string_types):
+        return shlex.split(command)
+    return list(command)
+
+
+def noisy_run(argv, legend="", **kwargs):
     "Either execute a command or raise a fatal exception."
+    argv = command_args(argv)
+    dcmd = command_text(argv)
     if legend:
         legend = " " + legend
     caller = os.path.basename(sys.argv[0])
     if verbose >= DEBUG_COMMANDS:
         sys.stdout.write("%s: executing '%s'%s\n" % (caller, dcmd, legend))
     try:
-        retcode = subprocess.call(dcmd, shell=True)
+        retcode = subprocess.call(argv, **kwargs)
         if retcode < 0:
             sys.stderr.write(
-                "%s: %s was terminated by signal %d.\n" % (-caller, dcmd, retcode)
+                "%s: %s was terminated by signal %d.\n" % (caller, dcmd, -retcode)
             )
             sys.exit(1)
         elif retcode != 0:
@@ -68,27 +88,37 @@ def noisy_run(dcmd, legend=""):
     return True
 
 
-def capture_or_die(dcmd, legend=""):
+def capture_or_die(argv, legend="", success_codes=(0,), **kwargs):
     "Either execute a command and capture its output or die."
+    # Popen did not support the context-manager protocol under Python 2.
+    # pylint: disable=consider-using-with
+    argv = command_args(argv)
+    dcmd = command_text(argv)
     if legend:
         legend = " " + legend
     caller = os.path.basename(sys.argv[0])
     if verbose >= DEBUG_COMMANDS:
         sys.stdout.write("%s: executing '%s'%s\n" % (caller, dcmd, legend))
     try:
-        return (
-            subprocess.Popen(dcmd, shell=True, stdout=subprocess.PIPE)
-            .communicate()[0]
-            .decode(binary_encoding)
-        )
-    except subprocess.CalledProcessError as e:
-        if e.returncode < 0:
+        process = subprocess.Popen(argv, stdout=subprocess.PIPE, **kwargs)
+        output = process.communicate()[0].decode(binary_encoding)
+        if process.returncode in success_codes:
+            return output
+        if process.returncode < 0:
             sys.stderr.write(
-                "%s: child was terminated by signal %d." % (caller, -e.returncode)
+                "%s: child was terminated by signal %d.\n"
+                % (caller, -process.returncode)
             )
-        elif e.returncode != 0:
-            sys.stderr.write("%s: child returned %d." % (caller, e.returncode))
+        else:
+            sys.stderr.write(
+                "%s: %s returned %d.\n" % (caller, dcmd, process.returncode)
+            )
+    except (OSError, IOError) as e:
+        sys.stderr.write(
+            "%s: execution of %s%s failed: %s\n" % (caller, dcmd, legend, e)
+        )
         sys.exit(1)
+    sys.exit(1)
 
 
 class directory_context(object):
@@ -116,30 +146,27 @@ class RCSRepository(object):
         self.directory = os.path.join(os.getcwd(), self.name)
         self.conversions = []
 
-    def run_with_cleanup(self, cmd):
-        if not noisy_run(cmd):
+    def run_with_cleanup(self, cmd, **kwargs):
+        if not noisy_run(cmd, **kwargs):
             if not self.retain:
                 self.cleanup()
             sys.exit(1)
 
     def do(self, cmd, *args):
         "Execute a RCS command in context of this repo."
+        dcmd = [cmd]
         if verbose < DEBUG_VCS:
-            mute = "-q"
-        else:
-            mute = ""
-        if (
-            not noisy_run(
-                "cd %s && %s %s %s" % (self.directory, cmd, mute, " ".join(args))
-            )
-            and not self.retain
-        ):
+            dcmd.append("-q")
+        dcmd.extend(args)
+        if not noisy_run(dcmd, cwd=self.directory) and not self.retain:
             self.cleanup()
             sys.exit(1)
 
     def init(self):
         "Initialize the repository."
-        self.run_with_cleanup("rm -fr {0} && mkdir -p {0}".format(self.directory))
+        if os.path.exists(self.directory):
+            shutil.rmtree(self.directory)
+        os.makedirs(self.directory)
 
     def write(self, fn, content):
         "Create file content in the repository."
@@ -163,62 +190,98 @@ class RCSRepository(object):
 
     def checkin(self, filename, message):
         "Check in changes to the specified file."
-        self.do("ci", "-m'%s' %s" % (message, filename))
+        self.do("ci", "-m" + message, filename)
 
-    def stream(self, smodule, _gitdir, outfile, more_opts=""):
+    def stream(self, smodule, _gitdir, outfile, more_opts=()):
+        # Popen did not support the context-manager protocol under Python 2.
+        # pylint: disable=consider-using-with
         directory = os.path.join(self.directory, smodule)
-        vopt = "-v " * (verbose - DEBUG_LIFTER + 1)
+        vopts = ["-v"] * max(0, verbose - DEBUG_LIFTER + 1)
+        find_command = ["find", "-L", directory, "-name", "*,v"]
+        export_command = command_args(engine) + vopts + command_args(more_opts)
         # The -L is necessary to handle proxied directories.
-        self.run_with_cleanup(
-            'find -L {0} -name "*,v" | {1} {2} {3} >{4}'.format(
-                directory, engine, vopt, more_opts, outfile
+        if verbose >= DEBUG_COMMANDS:
+            sys.stdout.write(
+                "%s: executing '%s | %s > %s'\n"
+                % (
+                    os.path.basename(sys.argv[0]),
+                    command_text(find_command),
+                    command_text(export_command),
+                    quote(outfile),
+                )
             )
-        )
+        try:
+            with open(outfile, "wb") as streamfp:
+                finder = subprocess.Popen(find_command, stdout=subprocess.PIPE)
+                exporter = subprocess.Popen(
+                    export_command, stdin=finder.stdout, stdout=streamfp
+                )
+                finder.stdout.close()
+                export_status = exporter.wait()
+                find_status = finder.wait()
+        except (OSError, IOError) as e:
+            sys.stderr.write("cvsconvert: conversion pipeline failed: %s\n" % e)
+            if not self.retain:
+                self.cleanup()
+            sys.exit(1)
+        if find_status or export_status:
+            sys.stderr.write(
+                "cvsconvert: conversion pipeline returned %d and %d.\n"
+                % (find_status, export_status)
+            )
+            if not self.retain:
+                self.cleanup()
+            sys.exit(1)
 
-    def convert(self, smodule, gitdir, more_opts=""):
+    def convert(self, smodule, gitdir, more_opts=()):
         "Convert the repo."
-        streamfile = "%s-%s.git.fi" % (self.name, module)
+        streamfile = "%s-%s.git.fi" % (
+            os.path.basename(os.path.normpath(self.name)),
+            smodule,
+        )
         self.stream(smodule, gitdir, streamfile, more_opts)
-        self.run_with_cleanup(
-            "rm -fr {0} && mkdir {0} && git init --quiet {0}".format(gitdir)
-        )
-        self.run_with_cleanup(
-            "cat {1} | (cd {0} >/dev/null; git fast-import --quiet --done && git checkout)".format(
-                gitdir, streamfile
-            )
-        )
+        if os.path.exists(gitdir):
+            shutil.rmtree(gitdir)
+        os.mkdir(gitdir)
         self.conversions.append(gitdir)
+        self.run_with_cleanup(["git", "init", "--quiet"], cwd=gitdir)
+        with open(streamfile, "rb") as streamfp:
+            self.run_with_cleanup(
+                ["git", "fast-import", "--quiet", "--done"],
+                cwd=gitdir,
+                stdin=streamfp,
+            )
+        self.run_with_cleanup(["git", "checkout"], cwd=gitdir)
         if not self.retain:
             os.remove(streamfile)
 
     def cleanup(self):
         "Clean up the repository conversions."
         if not self.retain:
-            if self.conversions:
-                os.system("rm -fr %s" % " ".join(self.conversions))
+            for conversion in self.conversions:
+                if os.path.exists(conversion):
+                    shutil.rmtree(conversion)
 
 
 class CVSRepository(RCSRepository):
     def __init__(self, name, readonly=False):
         RCSRepository.__init__(self, name)
         self.readonly = readonly
-        self.directory = os.path.join(os.getcwd(), self.name)
+        self.directory = os.path.abspath(name)
         self.checkouts = []
         self.conversions = []
 
     def do(self, *cmd):
         "Execute a CVS command in context of this repo."
+        dcmd = ["cvs"]
         if verbose < DEBUG_VCS:
-            mute = "-Q"
-        else:
-            mute = ""
+            dcmd.append("-Q")
+        dcmd.append("-d:local:%s" % self.directory)
+        dcmd.extend(cmd)
+        child_env = os.environ.copy()
         if self.readonly:
-            prefix = "CVSREADONLYFS=yes "
-        else:
-            prefix = ""
-        self.run_with_cleanup(
-            "%scvs %s -d:local:%s %s" % (prefix, mute, self.directory, " ".join(cmd))
-        )
+            child_env["CVSREADONLYFS"] = "yes"
+        self.run_with_cleanup(dcmd, env=child_env)
 
     def init(self):
         RCSRepository.init(self)
@@ -232,9 +295,9 @@ class CVSRepository(RCSRepository):
         os.mkdir(module)
 
     # pylint: disable=arguments-differ
-    def checkout(self, module, checkout=None):
+    def checkout(self, module, checkout=None, force_proxy=False):
         "Create a checkout of this repo."
-        self.checkouts.append(CVSCheckout(self, module, checkout))
+        self.checkouts.append(CVSCheckout(self, module, checkout, force_proxy))
         return self.checkouts[-1]
 
     def cleanup(self):
@@ -249,23 +312,37 @@ class CVSCheckout(object):
     PROXYSUFFIX = "-proxy"
     SUFFIX = ".checkout"
 
-    def __init__(self, repo, module, checkout=None):
+    def __init__(self, repo, module, checkout=None, force_proxy=False):
         self.repo = repo
         self.module = module or "module"
-        self.name = checkout or "%s-%s%s" % (repo.name, module, CVSCheckout.SUFFIX)
+        repo_basename = os.path.basename(os.path.normpath(repo.name))
+        self.name = checkout or "%s-%s%s" % (
+            repo_basename,
+            module,
+            CVSCheckout.SUFFIX,
+        )
         # Hack to get around repositories that don't have a CVSROOT & module
         self.proxy = None
-        if not os.path.exists(self.repo.directory + os.sep + "CVSROOT"):
-            self.proxy = self.repo.name + CVSCheckout.PROXYSUFFIX
-            try:
+        self.original_directory = self.repo.directory
+        has_cvsroot = os.path.isdir(os.path.join(self.repo.directory, "CVSROOT"))
+        if force_proxy or not has_cvsroot:
+            self.proxy = os.path.abspath(repo_basename + CVSCheckout.PROXYSUFFIX)
+            if os.path.exists(self.proxy):
                 shutil.rmtree(self.proxy)
-            except OSError:
-                pass
             os.mkdir(self.proxy)
-            os.symlink(self.repo.directory, self.proxy + os.sep + self.module)
-            os.mkdir(self.proxy + os.sep + "CVSROOT")
-            self.repo.name += CVSCheckout.PROXYSUFFIX
-            self.repo.directory += CVSCheckout.PROXYSUFFIX
+            proxy_module = os.path.join(self.proxy, self.module)
+            if force_proxy and has_cvsroot:
+                os.mkdir(proxy_module)
+                for entry in os.listdir(self.original_directory):
+                    if entry != "CVSROOT":
+                        os.symlink(
+                            os.path.join(self.original_directory, entry),
+                            os.path.join(proxy_module, entry),
+                        )
+            else:
+                os.symlink(self.original_directory, proxy_module)
+            os.mkdir(os.path.join(self.proxy, "CVSROOT"))
+            self.repo.directory = self.proxy
         if os.path.exists(self.name):
             shutil.rmtree(self.name)
         self.repo.do("co", self.module)
@@ -300,7 +377,7 @@ class CVSCheckout(object):
         "Switch to an existing branch."
         self.do("up", "-A")
         if branch != "HEAD":
-            self.do("up", "-r", "'" + branch + "'")
+            self.do("up", "-r", branch)
 
     def tag(self, name):
         "Create a tag."
@@ -319,7 +396,7 @@ class CVSCheckout(object):
         # succession by scripts; they have race conditions.  This
         # presents misbehavior.
         time.sleep(2)
-        self.do(*["commit", "-m '%s'" % message])
+        self.do("commit", "-m", message)
 
     def write(self, fn, content):
         "Create file content in the repository."
@@ -341,12 +418,13 @@ class CVSCheckout(object):
         "Update the content to the specified revision or tag."
         if rev == "master":
             rev = "HEAD"
-        self.do("up", "-kb", "-A", "-r", "'" + rev + "'")
+        self.do("up", "-kb", "-A", "-r", rev)
 
     def cleanup(self):
         "Clean up the checkout directory."
         if self.proxy and os.path.exists(self.proxy):
             shutil.rmtree(self.proxy)
+            self.repo.directory = self.original_directory
         if os.path.exists(self.directory):
             shutil.rmtree(self.directory)
 
@@ -385,20 +463,26 @@ class ConvertComparison(object):
     # Needs to stay synchronized with reposurgeon's generic conversion makefile
     SUFFIX = "-git"
 
-    # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(
         self,
         srepo=None,
         smodule=None,
         checkout=None,
-        options="",
+        options=(),
         showdiffs=False,
         tapify=False,
+        whole_repo=False,
     ):
         self.repo = CVSRepository(srepo, readonly=True)
-        self.checkout = self.repo.checkout(smodule, checkout)
+        self.checkout = self.repo.checkout(
+            smodule, checkout, force_proxy=whole_repo
+        )
+        repo_basename = os.path.basename(os.path.normpath(self.repo.name))
+        if self.checkout.proxy:
+            repo_basename += CVSCheckout.PROXYSUFFIX
         self.gitRepoName = "%s-%s%s" % (
-            self.repo.name,
+            repo_basename,
             self.checkout.module,
             ConvertComparison.SUFFIX,
         )
@@ -409,10 +493,10 @@ class ConvertComparison(object):
         with directory_context(self.gitRepoName):
             self.branches = [
                 name
-                for name in capture_or_die("git branch -l").split()
+                for name in capture_or_die(["git", "branch", "-l"]).split()
                 if name != "*" and not junkbranch(name)
             ]
-            self.tags = capture_or_die("git tag -l").split()
+            self.tags = capture_or_die(["git", "tag", "-l"]).split()
         self.branches.sort()
         if "master" in self.branches:
             self.branches.remove("master")
@@ -441,8 +525,12 @@ class ConvertComparison(object):
                         yield path
 
         self.checkout.update(ref)
+        if ref in self.branches:
+            git_ref = "refs/heads/" + ref
+        else:
+            git_ref = "refs/tags/" + ref
         with directory_context(self.gitRepoName):
-            if not noisy_run("git checkout --quiet %s" % quote(ref)):
+            if not noisy_run(["git", "checkout", "--quiet", git_ref]):
                 self.repo.cleanup()
                 sys.exit(1)
         # with directory_context(self.gitRepoName):
@@ -488,7 +576,9 @@ class ConvertComparison(object):
                 if success_expected:
                     sys.stderr.write(preamble + "%s and %s are different.\n" % (a, b))
                     if self.showdiffs:
-                        diff = capture_or_die("diff -u %s %s" % (a, b))
+                        diff = capture_or_die(
+                            ["diff", "-u", "--", a, b], success_codes=(0, 1)
+                        )
                         if self.tapify:
                             diff = "--- |\n" + diff + "...\n"
                             diff = "".join(["    " + ln for ln in diff.splitlines()])
@@ -513,16 +603,16 @@ class ConvertComparison(object):
                         "%s: skipping %s\n" % (os.path.basename(sys.argv[0]), branch)
                     )
             else:
-                immediate = cc.compare_tree("branch", branch)
+                immediate = self.compare_tree("branch", branch)
                 if success and not immediate:
                     success = False
-        for tag in cc.tags:
-            immediate = cc.compare_tree("tag", tag)
+        for tag in self.tags:
+            immediate = self.compare_tree("tag", tag)
             if success and not immediate:
                 success = False
         # Messages for the failure case were shipped earlier
         if success:
-            sys.stdout.write("ok - %s conversion compares clean.\n" % repo)
+            sys.stdout.write("ok - %s conversion compares clean.\n" % self.repo.name)
         return success
 
     # pylint: disable=no-self-use
@@ -530,80 +620,85 @@ class ConvertComparison(object):
         seen = capture_or_die(cmd)
         succeeded = seen.strip() == expected.strip()
         if not succeeded:
-            sys.stderr.write(cmd + " return was not as expected\n")
+            sys.stderr.write(
+                command_text(command_args(cmd)) + " return was not as expected\n"
+            )
 
     def cleanup(self):
         self.checkout.cleanup()
-        shutil.rmtree(self.gitRepoName)
+        if os.path.exists(self.gitRepoName):
+            shutil.rmtree(self.gitRepoName)
 
 
 # End.
 
 # Copy of testlifter.py ends here
 
+
+def resolve_repository_argument(directory, whole_repo=False):
+    "Resolve a repository argument into its CVS root and optional module."
+    directory = os.path.normpath(directory)
+    if whole_repo or not os.path.exists(directory):
+        return (directory, None)
+
+    if os.path.isdir(os.path.join(directory, "CVSROOT")):
+        candidates = sorted(
+            sub
+            for sub in os.listdir(directory)
+            if sub != "CVSROOT" and os.path.isdir(os.path.join(directory, sub))
+        )
+        if not candidates:
+            raise ValueError("cvsconvert: no modules under %s." % directory)
+        if len(candidates) > 1:
+            raise ValueError("cvsconvert: choose one of %s" % candidates)
+        return (directory, candidates[0])
+
+    parent = os.path.dirname(directory) or os.curdir
+    if os.path.isdir(os.path.join(parent, "CVSROOT")):
+        return (parent, os.path.basename(directory))
+    return (directory, None)
+
+
 if __name__ == "__main__":
     import getopt
 
     (opts, arguments) = getopt.getopt(sys.argv[1:], "npqtvwA:")
     retain = True
-    engine_opts = ""
+    engine_opts = []
     quiet = False
     tap_output = False
     err_leader = ""
-    whole_repo = True
+    whole_repo = False
     for opt, arg in opts:
         if opt == "-v":
             verbose += 1
         elif opt == "-n":
             retain = False
         elif opt == "-p":
-            engine_opts += " -p"
+            engine_opts.append("-p")
         elif opt == "-q":
-            engine_opts += " -q"
+            engine_opts.append("-q")
         elif opt == "-t":
             tap_output = True
             err_leader = "not ok - "
         elif opt == "-w":
             whole_repo = True
         elif opt == "-A":
-            engine_opts += " -A " + arg
+            engine_opts.extend(["-A", arg])
 
     if not arguments:
-        sys.stderr.write("cvsconvert: requires one or nore repo/module arguments.\n")
+        sys.stderr.write("cvsconvert: requires one or more repo/module arguments.\n")
         sys.exit(1)
     for directory in arguments:
-        if "/" in directory:
-            (repo, module) = directory.split("/", 1)
-        elif whole_repo or (not os.path.isdir(directory + os.sep + "CVSROOT")):
-            (repo, module) = (directory, None)
-        else:
-            candidates = [
-                sub
-                for sub in os.listdir(directory)
-                if sub != "CVSROOT" and os.path.isdir(os.path.join(directory, sub))
-            ]
-            if not candidates:
-                sys.stderr.write(
-                    err_leader + "cvsconvert: no modules under %s.\n" % directory
-                )
-                sys.exit(1)
-            elif len(candidates) > 1:
-                sys.stderr.write(
-                    err_leader + "cvsconvert: choose one of %s\n" % candidates
-                )
-                sys.exit(1)
-            else:
-                (repo, module) = (directory, candidates[0])
-                if "-q" not in engine_opts:
-                    sys.stderr.write(
-                        err_leader + "cvsconvert: processing %s/%s\n" % (repo, module)
-                    )
-        if repo == module:
-            sys.stderr.write(
-                err_leader
-                + "cvsconvert: repo directory and module name cannot be the same.\n"
-            )
+        try:
+            (repo, module) = resolve_repository_argument(directory, whole_repo)
+        except ValueError as e:
+            sys.stderr.write(err_leader + str(e) + "\n")
             sys.exit(1)
+        if module is not None and "-q" not in engine_opts:
+            sys.stderr.write(
+                err_leader + "cvsconvert: processing %s/%s\n" % (repo, module)
+            )
         if not os.path.exists(repo):
             sys.stderr.write(
                 err_leader + "cvsconvert: repo %s does not exist.\n" % repo
@@ -624,6 +719,7 @@ if __name__ == "__main__":
             options=engine_opts,
             showdiffs=True,
             tapify=tap_output,
+            whole_repo=whole_repo,
         )
         if verbose == 0 and "-p" in engine_opts:
             verbose = DEBUG_STEPS
