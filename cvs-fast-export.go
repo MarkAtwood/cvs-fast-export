@@ -1342,6 +1342,33 @@ func fileopName(rectified string) string {
 	return rectified
 }
 
+// validGitRefName reports whether ref satisfies git-check-ref-format rules.
+func validGitRefName(ref string) bool {
+	if ref == "@" || !strings.Contains(ref, "/") ||
+		strings.HasPrefix(ref, "/") || strings.HasSuffix(ref, "/") ||
+		strings.Contains(ref, "//") || strings.Contains(ref, "..") ||
+		strings.Contains(ref, "@{") || strings.HasSuffix(ref, ".") {
+		return false
+	}
+	for _, component := range strings.Split(ref, "/") {
+		if component == "" || strings.HasPrefix(component, ".") ||
+			strings.HasSuffix(component, ".lock") {
+			return false
+		}
+	}
+	for i := 0; i < len(ref); i++ {
+		c := ref[i]
+		if c <= 0x20 || c == 0x7f {
+			return false
+		}
+		switch c {
+		case '~', '^', ':', '?', '*', '[', '\\':
+			return false
+		}
+	}
+	return true
+}
+
 // sanitizeSymbolName removes invalid characters from tag names.
 func sanitizeSymbolName(s string) string {
 	const bad = "~^\\*?"
@@ -4029,6 +4056,14 @@ func parseArgs(args []string) (config, error) {
 			return nil
 		})
 	}
+	setRemote := func(remote string) error {
+		ref := "refs/remotes/" + remote + "/master"
+		if !validGitRefName(ref) {
+			return fmt.Errorf("invalid remote name %q: would create invalid Git ref %q", remote, ref)
+		}
+		cfg.Remote = remote
+		return nil
+	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -4111,7 +4146,9 @@ func parseArgs(args []string) (config, error) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
-			cfg.Remote = args[i]
+			if err := setRemote(args[i]); err != nil {
+				return cfg, err
+			}
 		case arg == "-i" || arg == "--incremental":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
@@ -4157,7 +4194,9 @@ func parseArgs(args []string) (config, error) {
 					}
 					cfg.Authors = authors
 				} else if strings.HasPrefix(arg, "--remote=") {
-					cfg.Remote = strings.SplitN(arg, "=", 2)[1]
+					if err := setRemote(strings.SplitN(arg, "=", 2)[1]); err != nil {
+						return cfg, err
+					}
 				} else if strings.HasPrefix(arg, "--log=") {
 					cfg.LogPath = strings.SplitN(arg, "=", 2)[1]
 				} else if strings.HasPrefix(arg, "--revision-map=") {

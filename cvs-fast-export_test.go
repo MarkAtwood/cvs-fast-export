@@ -362,6 +362,68 @@ func TestParseArgsRejectsUnknownOptions(t *testing.T) {
 	}
 }
 
+func TestValidGitRefName(t *testing.T) {
+	valid := []string{
+		"refs/heads/master",
+		"refs/heads/topic/subtopic",
+		"refs/heads/-dash",
+		"refs/remotes/team/origin/master",
+		"refs/tags/release-1.0",
+	}
+	invalid := []string{
+		"master",
+		"@",
+		"/refs/heads/master",
+		"refs/heads/master/",
+		"refs//heads/master",
+		"refs/.hidden/master",
+		"refs/heads/topic.lock",
+		"refs/heads/two..dots",
+		"refs/heads/with space",
+		"refs/heads/tilde~",
+		"refs/heads/caret^",
+		"refs/heads/colon:",
+		"refs/heads/question?",
+		"refs/heads/star*",
+		"refs/heads/bracket[",
+		"refs/heads/backslash\\",
+		"refs/heads/trailing.",
+		"refs/heads/reflog@{1}",
+		"refs/heads/control\x01",
+	}
+	for _, ref := range valid {
+		if !validGitRefName(ref) {
+			t.Errorf("validGitRefName(%q) = false, want true", ref)
+		}
+	}
+	for _, ref := range invalid {
+		if validGitRefName(ref) {
+			t.Errorf("validGitRefName(%q) = true, want false", ref)
+		}
+	}
+}
+
+func TestParseArgsRejectsInvalidRemoteNames(t *testing.T) {
+	for _, args := range [][]string{
+		{"-e", "bad:name"},
+		{"--remote", "two..dots"},
+		{"--remote=topic.lock"},
+		{"--remote="},
+	} {
+		_, err := parseArgs(args)
+		if err == nil || !strings.Contains(err.Error(), "invalid remote name") {
+			t.Errorf("parseArgs(%q) error = %v, want invalid remote name error", args, err)
+		}
+	}
+	cfg, err := parseArgs([]string{"--remote=team/origin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote != "team/origin" {
+		t.Fatalf("remote = %q, want team/origin", cfg.Remote)
+	}
+}
+
 func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {
