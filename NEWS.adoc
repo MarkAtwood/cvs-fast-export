@@ -7,6 +7,7 @@ Repository-head::
    Repair emission of zero-length files.
    Do branch-parent lookup on the basuc of filename as well as revision.
    Repair the fallback case in deep path comparison.
+   Stream, warning, and revision-map writers propagate their first error.
 
 2.3: 2026-07-06::
    Force correct dates on commits after a coalesce command.

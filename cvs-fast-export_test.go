@@ -130,7 +130,6 @@ func TestResolveTagAttachmentsUsesRevisionIdentity(t *testing.T) {
 		[]*GitCommit{git1, git2, git3},
 		map[string][]*Commit{"late": {rev3}},
 		commitOf,
-		false,
 		nil,
 	)
 	if got := attachments["late"]; got != git3 {
@@ -575,7 +574,7 @@ func TestLinkBranchParentsUsesPathAndRevisionIdentity(t *testing.T) {
 				baseB: gitB,
 			}
 
-			linkBranchParents(branches, byFileRev, commitOf, false, nil, nil)
+			linkBranchParents(branches, byFileRev, commitOf, nil, nil, nil)
 			if branchCommit.Parent != gitA {
 				t.Fatalf("branch parent = %p, want same-file commit %p (other-file collision %p)",
 					branchCommit.Parent, gitA, gitB)
@@ -655,6 +654,81 @@ func TestPathDeepCompareIsStrictWeakOrdering(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestBranchSeedClassificationUsesTopologyNotName(t *testing.T) {
+	parse := func(s string) Number {
+		t.Helper()
+		n, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	a11 := &Commit{Number: parse("1.1"), FileName: "a"}
+	a12 := &Commit{Number: parse("1.2"), FileName: "a"}
+	b11 := &Commit{Number: parse("1.1"), FileName: "b"}
+	b12 := &Commit{Number: parse("1.2"), FileName: "b"}
+	master1 := &GitCommit{Date: time.Unix(1, 0), Files: []*Commit{a11, b11}, RefName: "master"}
+	master2 := &GitCommit{Parent: master1, Date: time.Unix(2, 0), Files: []*Commit{a12}, RefName: "master"}
+	master3 := &GitCommit{Parent: master2, Date: time.Unix(3, 0), Files: []*Commit{b12}, RefName: "master"}
+	namedLikeFixture := &GitBranch{
+		Name: "B_MIXED",
+		Head: &GitCommit{Date: time.Unix(4, 0), RefName: "B_MIXED"},
+	}
+	renamedPathology := &GitBranch{
+		Name: "renamed-pathology",
+		Head: &GitCommit{Date: time.Unix(4, 0), RefName: "renamed-pathology"},
+	}
+	seeds := map[string]branchSeedInfo{
+		// These differently numbered bases coexist at master2.
+		"B_MIXED": {commits: []*Commit{a12, b11}},
+		// These bases never coexist in the master history.
+		"renamed-pathology": {commits: []*Commit{a11, b12}},
+	}
+	classifyBranchSeeds([]*GitBranch{
+		{Name: "master", Head: master3}, namedLikeFixture, renamedPathology,
+	}, seeds)
+	if seeds["B_MIXED"].syntheticBase {
+		t.Fatal("fixture-like branch name enabled synthetic-base handling")
+	}
+	if !seeds["renamed-pathology"].syntheticBase {
+		t.Fatal("unrepresentable renamed branch topology did not enable synthetic-base handling")
+	}
+}
+
+func TestSyntheticTagSelectionUsesTopologyNotName(t *testing.T) {
+	parse := func(s string) Number {
+		t.Helper()
+		n, err := Parse(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	a := &Commit{Number: parse("1.1"), FileName: "a"}
+	b := &Commit{Number: parse("1.1"), FileName: "b"}
+	c := &Commit{Number: parse("1.1"), FileName: "c"}
+	gitCommit := &GitCommit{Files: []*Commit{a, b, c}, RefName: "master"}
+	commitOf := map[*Commit]*GitCommit{a: gitCommit, b: gitCommit, c: gitCommit}
+	attachments, _, synthetic := resolveTagAttachments(
+		[]*GitCommit{gitCommit},
+		map[string][]*Commit{
+			"T_ALL_INITIAL_FILES_BUT_ONE": {a},
+			"renamed-near-complete-tag":   {a, b},
+		},
+		commitOf,
+		nil,
+	)
+	if attachments["T_ALL_INITIAL_FILES_BUT_ONE"] != gitCommit {
+		t.Fatal("fixture-like tag name enabled synthetic-tag handling")
+	}
+	if _, ok := synthetic["T_ALL_INITIAL_FILES_BUT_ONE"]; ok {
+		t.Fatal("fixture-like tag name was marked synthetic")
+	}
+	if _, ok := synthetic["renamed-near-complete-tag"]; !ok {
+		t.Fatal("near-complete renamed tag topology was not marked synthetic")
 	}
 }
 

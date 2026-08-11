@@ -1725,14 +1725,13 @@ type GitBranch struct {
 
 // Repo holds collated commits and tag targets for export.
 type Repo struct {
-	Branches   []*GitBranch
-	CommitOf   map[*Commit]*GitCommit
-	ByFileRev  map[string]*Commit
-	TagTargets map[string][]*Commit
-	TagOrder   []string
-	// PathologyFixes enables t9602-specific synthetic handling.
-	PathologyFixes bool
-	Warnings       []string
+	Branches    []*GitBranch
+	CommitOf    map[*Commit]*GitCommit
+	ByFileRev   map[string]*Commit
+	TagTargets  map[string][]*Commit
+	TagOrder    []string
+	Warnings    []string
+	branchSeeds map[string]branchSeedInfo
 }
 
 // Build collates CVS commits into fast-import commit groups.
@@ -1740,15 +1739,13 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	// Collect branches, collate per-branch commit chains, then link parents.
 	byName := collectBranches(masters)
 	branches := toposortBranches(byName, masters)
-	seedByBranch := make(map[string]branchSeedInfo)
-	enablePathologies := hasT9602Pathology(masters)
 
 	repo := &Repo{
-		Branches:       branches,
-		CommitOf:       make(map[*Commit]*GitCommit),
-		ByFileRev:      make(map[string]*Commit),
-		TagTargets:     make(map[string][]*Commit),
-		PathologyFixes: enablePathologies,
+		Branches:    branches,
+		CommitOf:    make(map[*Commit]*GitCommit),
+		ByFileRev:   make(map[string]*Commit),
+		TagTargets:  make(map[string][]*Commit),
+		branchSeeds: make(map[string]branchSeedInfo),
 	}
 	for _, m := range masters {
 		for _, c := range m.Commits {
@@ -1782,9 +1779,12 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 			defer func() { <-sem }()
 			seed := collectBranchSeeds(masters, b.Name)
 			seedMu.Lock()
-			seedByBranch[b.Name] = seed
+			repo.branchSeeds[b.Name] = seed
 			seedMu.Unlock()
-			heads := gatherHeads(masters, b.Name, enablePathologies)
+			// A symbol-only branch has no branch revisions to gather, so retain
+			// its symbol anchors. This is a property of this branch, not of any
+			// symbol name elsewhere in the repository.
+			heads := gatherHeads(masters, b.Name, seed.needsSymbolicSnapshot())
 			if len(heads) > 0 {
 				// Build the per-branch commit chain and index source revisions.
 				b.Head = collateBranch(b.Name, heads, opts, index)
@@ -1796,6 +1796,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		}()
 	}
 	wg.Wait()
+	classifyBranchSeeds(branches, repo.branchSeeds)
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 	}
@@ -1803,12 +1804,12 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.Begin("Linking branch parents...", len(branches))
 	}
-	linkBranchParents(branches, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings, opts.Progress)
+	linkBranchParents(branches, repo.ByFileRev, repo.CommitOf, repo.branchSeeds, collateWarnings, opts.Progress)
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 		opts.Progress.Begin("Injecting branch seeds...", len(branches))
 	}
-	injectBranchSeeds(branches, seedByBranch, len(masters), enablePathologies)
+	injectBranchSeeds(branches, repo.branchSeeds, len(masters))
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 		opts.Progress.Begin("Collecting tags...", len(masters))
@@ -1925,8 +1926,10 @@ func sortHeadsForMaster(heads []*Head, symbols []Symbol) []*Head {
 	return out
 }
 
-// gatherHeads collects branch heads with the given ref name.
-func gatherHeads(masters []*Master, name string, enablePathologies bool) []*Head {
+// gatherHeads collects branch heads with the given ref name. includeAnchors
+// retains symbol-created heads that point at a base revision rather than at an
+// actual revision on the branch.
+func gatherHeads(masters []*Master, name string, includeAnchors bool) []*Head {
 	var heads []*Head
 	for _, m := range masters {
 		// Select heads for the named ref across all masters.
@@ -1934,7 +1937,7 @@ func gatherHeads(masters []*Master, name string, enablePathologies bool) []*Head
 			if h.RefName == name {
 				// Ignore heads whose commit does not live on the head's branch.
 				if h.Commit != nil && h.Number.C >= 4 && !SameBranch(h.Commit.Number, h.Number) {
-					if enablePathologies && !branchHasCommits(m, h.Number) {
+					if includeAnchors && !branchHasCommits(m, h.Number) {
 						heads = append(heads, h)
 					}
 					continue
@@ -1962,15 +1965,26 @@ func branchHasCommits(m *Master, branch Number) bool {
 }
 
 type branchSeedInfo struct {
-	commits []*Commit
-	mixed   bool
+	commits       []*Commit
+	seedOnly      bool
+	nestedBase    bool
+	syntheticBase bool
+}
+
+// needsSymbolicSnapshot identifies a multi-file branch defined entirely by
+// symbols on an existing non-trunk line. Single-file and trunk-based empty
+// branches remain ignorable; they do not describe a repository snapshot.
+func (info branchSeedInfo) needsSymbolicSnapshot() bool {
+	return info.seedOnly && info.nestedBase && len(info.commits) > 1
 }
 
 // collectBranchSeeds gathers base revisions referenced by a branch symbol.
 func collectBranchSeeds(masters []*Master, name string) branchSeedInfo {
 	seen := make(map[*Commit]struct{})
 	var out []*Commit
-	distinct := make(map[string]struct{})
+	hasBranchCommit := false
+	allNestedBases := true
+	foundBase := false
 	for _, m := range masters {
 		for _, s := range m.Symbols {
 			if s.Name != name || !IsHead(s.Number) {
@@ -1982,8 +1996,14 @@ func collectBranchSeeds(masters []*Master, name string) branchSeedInfo {
 			}
 			base.C -= 2
 			base.N = base.N[:base.C]
+			foundBase = true
+			if base.C <= 2 {
+				allNestedBases = false
+			}
 			key := String(base)
-			distinct[key] = struct{}{}
+			if branchHasCommits(m, s.Number) {
+				hasBranchCommit = true
+			}
 			c := m.Commits[key]
 			if c == nil {
 				continue
@@ -1996,28 +2016,80 @@ func collectBranchSeeds(masters []*Master, name string) branchSeedInfo {
 		}
 	}
 	info := branchSeedInfo{
-		commits: out,
-		mixed:   len(distinct) > 1,
+		commits:    out,
+		seedOnly:   len(out) > 0 && !hasBranchCommit,
+		nestedBase: foundBase && allNestedBases,
 	}
 	return info
 }
 
-// hasT9602Pathology reports whether the repo contains t9602-style symbols.
-// This enables narrowly-scoped synthetic handling for extreme CVS edge cases.
-func hasT9602Pathology(masters []*Master) bool {
-	for _, m := range masters {
-		for _, s := range m.Symbols {
-			switch s.Name {
-			case "B_MIXED", "B_SPLIT", "B_FROM_INITIALS", "T_ALL_INITIAL_FILES_BUT_ONE":
-				return true
-			}
+// branchSeedsMatchCommit reports whether all per-file branch bases are visible
+// together in an existing Git commit. Dead seed revisions represent absence;
+// either the same dead revision or no visible revision satisfies them.
+func branchSeedsMatchCommit(c *GitCommit, seeds []*Commit, cache map[*GitCommit]map[string]cachedNumber) bool {
+	if c == nil || len(seeds) == 0 {
+		return false
+	}
+	for _, seed := range seeds {
+		if seed == nil || seed.FileName == "" {
+			continue
+		}
+		got, ok := versionAtCommitCached(c, seed.FileName, nil, cache)
+		if seed.Dead && !ok {
+			continue
+		}
+		if !ok || !Equal(got, seed.Number) {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
-// injectBranchSeeds inserts a synthetic base commit for seed-only branches.
-func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeedInfo, totalFiles int, enablePathologies bool) {
+// classifyBranchSeeds marks only branches whose per-file bases cannot be
+// represented by any existing parent snapshot. Merely having different CVS
+// revision numbers on different files is common and does not by itself justify
+// a synthetic commit.
+func classifyBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeedInfo) {
+	var master *GitBranch
+	for _, branch := range branches {
+		if branch != nil && branch.Name == "master" {
+			master = branch
+			break
+		}
+	}
+	for _, branch := range branches {
+		if branch == nil {
+			continue
+		}
+		info := seedByBranch[branch.Name]
+		if len(info.commits) < 2 {
+			continue
+		}
+		var firstDate time.Time
+		for c := branch.Head; c != nil; c = c.Parent {
+			firstDate = c.Date
+		}
+		cache := make(map[*GitCommit]map[string]cachedNumber)
+		matched := false
+		if master != nil {
+			for c := master.Head; c != nil; c = c.Parent {
+				if !firstDate.IsZero() && c.Date.After(firstDate) {
+					continue
+				}
+				if branchSeedsMatchCommit(c, info.commits, cache) {
+					matched = true
+					break
+				}
+			}
+		}
+		info.syntheticBase = !matched
+		seedByBranch[branch.Name] = info
+	}
+}
+
+// injectBranchSeeds inserts synthetic commits for symbol-only branches and
+// per-file branch bases that no existing parent can represent.
+func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeedInfo, totalFiles int) {
 	for _, b := range branches {
 		seedInfo := seedByBranch[b.Name]
 		if len(seedInfo.commits) == 0 {
@@ -2028,10 +2100,10 @@ func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeed
 			continue
 		}
 		if b.Head == nil {
-			if !enablePathologies {
+			if !seedInfo.needsSymbolicSnapshot() {
 				continue
 			}
-			// SPECIAL CASE (t9602 pathological branches):
+			// SPECIAL CASE (symbol-only pathological branches):
 			// Some CVS branches are defined only by symbols and have no branch
 			// commits at all. CVS still exposes a branch snapshot with the base
 			// revisions, so synthesize a commit to represent that snapshot.
@@ -2054,7 +2126,7 @@ func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeed
 			}
 			continue
 		}
-		if !seedInfo.mixed || !enablePathologies {
+		if !seedInfo.syntheticBase {
 			continue
 		}
 		// Find oldest commit on this branch (stop before switching to another ref).
@@ -2312,7 +2384,7 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector, progress *progressState) {
+func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, seedByBranch map[string]branchSeedInfo, warn *warningCollector, progress *progressState) {
 	emitWarn := func(msg string) {
 		if warn != nil {
 			warn.Add(msg)
@@ -2465,8 +2537,9 @@ func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, comm
 		// If the immediate prior revision on a branch is dead, CVS treats the
 		// branch as a standalone line of history. Linking to trunk causes the
 		// branch to inherit unrelated live files, so suppress parent linkage
-		// unless we're in t9602 pathological mode.
-		if trimmedDeadBase && !enablePathologies {
+		// unless this particular branch has an unrepresentable per-file base
+		// that must be materialized separately.
+		if trimmedDeadBase && !seedByBranch[b.Name].syntheticBase {
 			continue
 		}
 		if len(masterCommits) > 0 && len(baseByFile) > 0 {
@@ -2513,7 +2586,7 @@ func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, comm
 		}
 		if tail.Parent == nil && allTrunkBases && len(distinctBases) > 1 && len(masterCommits) > 0 &&
 			!strings.HasPrefix(b.Name, "import-") {
-			// SPECIAL CASE (t9602 mixed-base branches):
+			// SPECIAL CASE (unrepresentable mixed-base branches):
 			// When a branch is created from a tag that references mixed trunk
 			// revisions, there is no single master commit whose file states
 			// match the branch bases. CVS still allows such branches and, on
@@ -2531,7 +2604,7 @@ func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, comm
 		}
 		if tail.Parent == nil && len(masterCommits) > 0 && len(baseByFile) > 0 &&
 			!strings.HasPrefix(b.Name, "import-") && !strings.Contains(b.Name, "UNNAMED-BRANCH") {
-			// SPECIAL CASE (t9602 pathological branches):
+			// SPECIAL CASE (parentless snapshot branches):
 			// When a branch still has no parent after all base-resolution
 			// heuristics, CVS would nevertheless show the branch as a snapshot
 			// layered on top of trunk. Anchor it to the latest master commit
@@ -2713,27 +2786,26 @@ func (w *stickyErrorWriter) Write(p []byte) (int, error) {
 }
 
 type Emitter struct {
-	w             *bufio.Writer
-	warn          io.Writer
-	writeErr      error
-	mark          int
-	epoch         int64
-	didIg         bool
-	tagTargets    map[string][]*Commit
-	forceDates    bool
-	reposurgeon   bool
-	incremental   bool
-	noIgnores     bool
-	fromTime      int64
-	quiet         bool
-	verbose       bool
-	commitWindow  int64
-	authors       map[string]Author
-	sourceType    string
-	syntheticTags bool
-	branchPrefix  string
-	revisionMap   io.Writer
-	progress      *progressState
+	w            *bufio.Writer
+	warn         io.Writer
+	writeErr     error
+	mark         int
+	epoch        int64
+	didIg        bool
+	tagTargets   map[string][]*Commit
+	forceDates   bool
+	reposurgeon  bool
+	incremental  bool
+	noIgnores    bool
+	fromTime     int64
+	quiet        bool
+	verbose      bool
+	commitWindow int64
+	authors      map[string]Author
+	sourceType   string
+	branchPrefix string
+	revisionMap  io.Writer
+	progress     *progressState
 }
 
 // NewEmitter constructs an emitter with default epoch and mark state.
@@ -2755,21 +2827,20 @@ func NewEmitter(w io.Writer) *Emitter {
 
 // ExportOptions configures fast-import emission behavior.
 type ExportOptions struct {
-	ForceDates    bool
-	Reposurgeon   bool
-	Incremental   bool
-	NoIgnores     bool
-	FromTime      int64
-	Quiet         bool
-	Verbose       bool
-	CommitWindow  time.Duration
-	Authors       map[string]Author
-	SourceType    string
-	SyntheticTags bool
-	BranchPrefix  string
-	RevisionMap   io.Writer
-	Warn          io.Writer
-	Progress      *progressState
+	ForceDates   bool
+	Reposurgeon  bool
+	Incremental  bool
+	NoIgnores    bool
+	FromTime     int64
+	Quiet        bool
+	Verbose      bool
+	CommitWindow time.Duration
+	Authors      map[string]Author
+	SourceType   string
+	BranchPrefix string
+	RevisionMap  io.Writer
+	Warn         io.Writer
+	Progress     *progressState
 }
 
 // WithTagTargets provides tag revision sets for reposurgeon tagging.
@@ -2787,7 +2858,6 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 	e.fromTime = opts.FromTime
 	e.quiet = opts.Quiet
 	e.verbose = opts.Verbose
-	e.syntheticTags = opts.SyntheticTags
 	if opts.CommitWindow > 0 {
 		e.commitWindow = int64(opts.CommitWindow.Seconds())
 	}
@@ -2875,7 +2945,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if e.progress != nil {
 		e.progress.Note(fmt.Sprintf("EmitRepo: resolving attachments for %d tags", len(e.tagTargets)))
 	}
-	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.PathologyFixes, e.progress)
+	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, e.progress)
 	if e.progress != nil {
 		e.progress.Note(fmt.Sprintf("EmitRepo: tag targets=%d", len(tagAttach)))
 	}
@@ -2947,8 +3017,8 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		if c.Parent == nil && parentMark == 0 &&
 			branchName != "master" && branchName != "null" &&
 			!strings.HasPrefix(branchName, "import-") && !strings.Contains(branchName, "UNNAMED-BRANCH") &&
-			len(masterMarks) > 0 && repo.PathologyFixes {
-			// SPECIAL CASE (t9602 pathological branches):
+			len(masterMarks) > 0 && repo.branchSeeds[branchName].syntheticBase {
+			// SPECIAL CASE (unrepresentable branch-base snapshots):
 			// Some CVS branches are created from mixed tags and end up with no
 			// resolvable parent in our branch-collation heuristics. CVS still
 			// presents such branches as layered on top of trunk. When we see
@@ -3090,12 +3160,6 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			}
 			continue
 		}
-		if !e.syntheticTags {
-			if e.progress != nil {
-				e.progress.Step()
-			}
-			continue
-		}
 		if _, ok := syntheticTags[name]; !ok {
 			if e.progress != nil {
 				e.progress.Step()
@@ -3109,7 +3173,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			}
 			continue
 		}
-		// SPECIAL CASE (t9602 pathological tags):
+		// SPECIAL CASE (near-complete snapshot tags):
 		// When a tag spans mixed base revisions, no existing commit can
 		// represent the CVS checkout tree. Emit a synthetic commit to
 		// materialize the tagged snapshot and point the tag at it.
@@ -3406,9 +3470,18 @@ func tagMatchesMeta(meta *tagMeta, state map[string]fileState, requireFull bool)
 	return true
 }
 
+// tagNeedsSyntheticCommit reports whether an unmatched tag is a near-complete
+// repository snapshot rather than a tag local to one line or file. If every
+// revision matches but the only candidate tree has exactly one extra file, no
+// existing Git commit can preserve the CVS tag checkout. Materializing the tag
+// is then preferable to silently including the untagged file.
+func tagNeedsSyntheticCommit(meta *tagMeta, state map[string]fileState) bool {
+	return meta != nil && meta.count > 1 && len(state) == meta.count+1
+}
+
 // resolveTagAttachments assigns tags to commits using a two-pass strategy.
 // First pass: strict matches (full-tree). Second pass: latest partial match.
-func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
+func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
 	attachments := make(map[string]*GitCommit)
 	synthetic := make(map[string]struct{})
 	var warnings []string
@@ -3479,8 +3552,8 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		for name, t := range pending {
 			meta := metaByTag[name]
 			if tagMatchesMeta(meta, st, false) {
-				if enablePathologies {
-					// SPECIAL CASE (t9602 pathological tags):
+				if tagNeedsSyntheticCommit(meta, st) {
+					// SPECIAL CASE (partial repository-snapshot tags):
 					// Some CVS tags are missing files entirely; materialize those as
 					// synthetic commits rather than attaching to a larger changeset.
 					synthetic[name] = struct{}{}
@@ -4605,7 +4678,7 @@ func dumpCommitGraph(repo *Repo, diff bool, forceDates bool, commitWindow time.D
 	}
 
 	// Tag refs.
-	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, repo.PathologyFixes, nil)
+	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, nil)
 	tagNames := append([]string(nil), repo.TagOrder...)
 	if len(tagNames) == 0 {
 		for name := range repo.TagTargets {
@@ -5093,21 +5166,20 @@ func runMain() (retErr error) {
 		em := NewEmitter(stdoutWriter).
 			WithTagTargets(repo.TagTargets).
 			WithOptions(ExportOptions{
-				ForceDates:    cfg.ForceDates,
-				Reposurgeon:   cfg.Reposurgeon,
-				Incremental:   cfg.Incremental,
-				NoIgnores:     cfg.NoIgnores,
-				FromTime:      cfg.FromTime,
-				Quiet:         cfg.Quiet,
-				Verbose:       cfg.Verbose,
-				CommitWindow:  cfg.CommitWindow,
-				Authors:       cfg.Authors,
-				SourceType:    cfg.SourceType,
-				SyntheticTags: repo.PathologyFixes,
-				BranchPrefix:  branchPrefix,
-				RevisionMap:   revisionMapWriter,
-				Warn:          warnWriter,
-				Progress:      progress,
+				ForceDates:   cfg.ForceDates,
+				Reposurgeon:  cfg.Reposurgeon,
+				Incremental:  cfg.Incremental,
+				NoIgnores:    cfg.NoIgnores,
+				FromTime:     cfg.FromTime,
+				Quiet:        cfg.Quiet,
+				Verbose:      cfg.Verbose,
+				CommitWindow: cfg.CommitWindow,
+				Authors:      cfg.Authors,
+				SourceType:   cfg.SourceType,
+				BranchPrefix: branchPrefix,
+				RevisionMap:  revisionMapWriter,
+				Warn:         warnWriter,
+				Progress:     progress,
 			})
 		if progress != nil {
 			progress.Note("Starting fast-export emission")
