@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Repository-head::
+2.4: 2026-08-11::
    Code hardening by ChatGPT 5.6.
    Attach converted tags by CVS revision ID, not content hash.
    Repair emission of incremental dumps.
