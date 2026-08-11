@@ -2689,9 +2689,33 @@ func commitsMatch(g *GitCommit, c *Commit, opts CollateOptions) bool {
 }
 
 // Emitter streams git fast-import output with CVS-specific conventions.
+type stickyErrorWriter struct {
+	writer   io.Writer
+	target   string
+	firstErr *error
+}
+
+func (w *stickyErrorWriter) Write(p []byte) (int, error) {
+	if w.firstErr != nil && *w.firstErr != nil {
+		return 0, *w.firstErr
+	}
+	n, err := w.writer.Write(p)
+	if err == nil && n != len(p) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		err = fmt.Errorf("write %s: %w", w.target, err)
+		if w.firstErr != nil && *w.firstErr == nil {
+			*w.firstErr = err
+		}
+	}
+	return n, err
+}
+
 type Emitter struct {
 	w             *bufio.Writer
 	warn          io.Writer
+	writeErr      error
 	mark          int
 	epoch         int64
 	didIg         bool
@@ -2714,14 +2738,19 @@ type Emitter struct {
 
 // NewEmitter constructs an emitter with default epoch and mark state.
 func NewEmitter(w io.Writer) *Emitter {
-	return &Emitter{
-		w:            bufio.NewWriter(w),
-		warn:         os.Stderr,
+	e := &Emitter{
 		mark:         1,
 		epoch:        time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).Unix(),
 		commitWindow: 300,
 		branchPrefix: "refs/heads/",
 	}
+	e.w = bufio.NewWriter(&stickyErrorWriter{
+		writer: w, target: "fast-import stream", firstErr: &e.writeErr,
+	})
+	e.warn = &stickyErrorWriter{
+		writer: os.Stderr, target: "warning output", firstErr: &e.writeErr,
+	}
+	return e
 }
 
 // ExportOptions configures fast-import emission behavior.
@@ -2768,10 +2797,14 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 		e.branchPrefix = opts.BranchPrefix
 	}
 	if opts.RevisionMap != nil {
-		e.revisionMap = opts.RevisionMap
+		e.revisionMap = &stickyErrorWriter{
+			writer: opts.RevisionMap, target: "revision map", firstErr: &e.writeErr,
+		}
 	}
 	if opts.Warn != nil {
-		e.warn = opts.Warn
+		e.warn = &stickyErrorWriter{
+			writer: opts.Warn, target: "warning output", firstErr: &e.writeErr,
+		}
 	}
 	if opts.Progress != nil {
 		e.progress = opts.Progress
@@ -2781,7 +2814,10 @@ func (e *Emitter) WithOptions(opts ExportOptions) *Emitter {
 
 // Flush forces buffered output to be written.
 func (e *Emitter) Flush() error {
-	return e.w.Flush()
+	if err := e.w.Flush(); err != nil && e.writeErr == nil {
+		e.writeErr = fmt.Errorf("flush fast-import stream: %w", err)
+	}
+	return e.writeErr
 }
 
 // displayDate computes the timestamp used for incremental filtering.
@@ -2798,7 +2834,7 @@ func (e *Emitter) displayDate(c *GitCommit, mark int) int64 {
 // EmitRepo emits a fast-import stream for all branches, ordered by commit date.
 func (e *Emitter) EmitRepo(repo *Repo) error {
 	if repo == nil {
-		return nil
+		return e.writeErr
 	}
 	if e.progress != nil {
 		e.progress.Note("EmitRepo: start")
@@ -2851,6 +2887,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			if e.verbose || strings.Contains(w, "points at commit with no gitspace link.") {
 				fmt.Fprintf(e.warn, "cvs-fast-export: %s\n", w)
 			}
+		}
+		if e.writeErr != nil {
+			return e.writeErr
 		}
 	}
 	tagNames := append([]string(nil), repo.TagOrder...)
@@ -3100,7 +3139,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		e.progress.End("done")
 	}
 	fmt.Fprintln(e.w, "done")
-	return nil
+	return e.writeErr
 }
 
 // emitCommit writes a single fast-import commit and its file operations.
@@ -3119,6 +3158,9 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 		if op.kind == 'M' {
 			op.mark = e.emitBlob(op.path, op.text)
 		}
+	}
+	if e.writeErr != nil {
+		return 0, e.writeErr
 	}
 
 	mark := e.mark
@@ -3191,7 +3233,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 		}
 	}
 	fmt.Fprintln(e.w)
-	return mark, nil
+	return mark, e.writeErr
 }
 
 // emitBlob writes a blob object and returns its mark.
@@ -3858,6 +3900,8 @@ const (
 // config captures parsed CLI settings.
 type config struct {
 	Files           []string
+	Help            bool
+	Version         bool
 	DumpHeads       bool
 	DumpBranches    bool
 	ForceDates      bool
@@ -3932,8 +3976,8 @@ func parseArgs(args []string) (config, error) {
 
 		switch {
 		case arg == "-h" || arg == "--help":
-			printHelp()
-			os.Exit(0)
+			cfg.Help = true
+			return cfg, nil
 		case arg == "-g" || arg == "--graph":
 			if cfg.ExecMode == execGraph {
 				cfg.GraphDiff = true
@@ -3945,8 +3989,8 @@ func parseArgs(args []string) (config, error) {
 		case arg == "--dump-branches": // Undocumented
 			cfg.DumpBranches = true
 		case arg == "-V" || arg == "--version":
-			fmt.Println("cvs-fast-export ", version)
-			os.Exit(0)
+			cfg.Version = true
+			return cfg, nil
 		case arg == "-T":
 			cfg.ForceDates = true
 		case arg == "-r" || arg == "--reposurgeon":
@@ -4236,13 +4280,13 @@ func commonPrefixEndingWithSlash(a, b string) int {
 }
 
 // printHelp emits a brief usage banner.
-func printHelp() {
-	fmt.Print("Usage: cvs-fast-export [OPTIONS] [FILE]...\n")
+func printHelp(w io.Writer) {
+	fmt.Fprint(w, "Usage: cvs-fast-export [OPTIONS] [FILE]...\n")
 }
 
 // dumpHeads prints master head summaries for debugging.
-func dumpHeads(m *Master) {
-	fmt.Fprintf(os.Stderr, "== %s\n", m.Source)
+func dumpHeads(m *Master, w io.Writer) {
+	fmt.Fprintf(w, "== %s\n", m.Source)
 	for _, h := range m.Heads {
 		// Summarize head, parent, and commit number for debug output.
 		parent := ""
@@ -4253,13 +4297,13 @@ func dumpHeads(m *Master) {
 		if h.Commit != nil {
 			commit = String(h.Commit.Number)
 		}
-		fmt.Fprintf(os.Stderr, "head=%s num=%s parent=%s commit=%s\n",
+		fmt.Fprintf(w, "head=%s num=%s parent=%s commit=%s\n",
 			h.RefName, String(h.Number), parent, commit)
 	}
 }
 
 // dumpChains prints branch chain lengths for debugging.
-func dumpChains(m *Master) {
+func dumpChains(m *Master, w io.Writer) {
 	for _, h := range m.Heads {
 		if h.Commit == nil {
 			continue
@@ -4269,12 +4313,12 @@ func dumpChains(m *Master) {
 		for c := h.Commit; c != nil; c = c.Parent {
 			count++
 		}
-		fmt.Fprintf(os.Stderr, "chain %s len=%d\n", h.RefName, count)
+		fmt.Fprintf(w, "chain %s len=%d\n", h.RefName, count)
 	}
 }
 
 // dumpBranches prints branch commit numbers for debugging.
-func dumpBranches(m *Master) {
+func dumpBranches(m *Master, w io.Writer) {
 	heads := append([]*Head(nil), m.Heads...)
 	// Emit branch chains in lexicographic order for readability.
 	sort.Slice(heads, func(i, j int) bool {
@@ -4285,19 +4329,19 @@ func dumpBranches(m *Master) {
 			continue
 		}
 		// Walk the branch chain and print revision numbers.
-		fmt.Fprintf(os.Stderr, "branch %s: ", h.RefName)
+		fmt.Fprintf(w, "branch %s: ", h.RefName)
 		first := true
 		for c := h.Commit; c != nil; c = c.Parent {
 			if !first {
-				fmt.Fprint(os.Stderr, " ")
+				fmt.Fprint(w, " ")
 			}
 			first = false
-			fmt.Fprint(os.Stderr, String(c.Number))
+			fmt.Fprint(w, String(c.Number))
 			if c.Tail {
 				break
 			}
 		}
-		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(w)
 	}
 }
 
@@ -4786,55 +4830,91 @@ func dotEscape(s string) string {
 }
 
 // printSizes reports approximate Go type sizes for debugging.
-func printSizes() {
-	fmt.Printf("sizeof(uintptr)       = %d\n", unsafe.Sizeof(uintptr(0)))
-	fmt.Printf("sizeof(int)           = %d\n", unsafe.Sizeof(int(0)))
-	fmt.Printf("sizeof(int64)         = %d\n", unsafe.Sizeof(int64(0)))
-	fmt.Printf("sizeof(time.Time)     = %d\n", unsafe.Sizeof(time.Time{}))
-	fmt.Printf("sizeof(Number)        = %d\n", unsafe.Sizeof(Number{}))
-	fmt.Printf("sizeof(Commit)        = %d\n", unsafe.Sizeof(Commit{}))
-	fmt.Printf("sizeof(GitCommit)     = %d\n", unsafe.Sizeof(GitCommit{}))
-	fmt.Printf("sizeof(GitBranch)     = %d\n", unsafe.Sizeof(GitBranch{}))
-	fmt.Printf("sizeof(Master)        = %d\n", unsafe.Sizeof(Master{}))
-	fmt.Printf("sizeof(Symbol)        = %d\n", unsafe.Sizeof(Symbol{}))
-	fmt.Printf("sizeof(Version)       = %d\n", unsafe.Sizeof(Version{}))
-	fmt.Printf("sizeof(fileOp)        = %d\n", unsafe.Sizeof(fileOp{}))
-	fmt.Printf("sizeof(fileState)     = %d\n", unsafe.Sizeof(fileState{}))
+func printSizes(w io.Writer) {
+	fmt.Fprintf(w, "sizeof(uintptr)       = %d\n", unsafe.Sizeof(uintptr(0)))
+	fmt.Fprintf(w, "sizeof(int)           = %d\n", unsafe.Sizeof(int(0)))
+	fmt.Fprintf(w, "sizeof(int64)         = %d\n", unsafe.Sizeof(int64(0)))
+	fmt.Fprintf(w, "sizeof(time.Time)     = %d\n", unsafe.Sizeof(time.Time{}))
+	fmt.Fprintf(w, "sizeof(Number)        = %d\n", unsafe.Sizeof(Number{}))
+	fmt.Fprintf(w, "sizeof(Commit)        = %d\n", unsafe.Sizeof(Commit{}))
+	fmt.Fprintf(w, "sizeof(GitCommit)     = %d\n", unsafe.Sizeof(GitCommit{}))
+	fmt.Fprintf(w, "sizeof(GitBranch)     = %d\n", unsafe.Sizeof(GitBranch{}))
+	fmt.Fprintf(w, "sizeof(Master)        = %d\n", unsafe.Sizeof(Master{}))
+	fmt.Fprintf(w, "sizeof(Symbol)        = %d\n", unsafe.Sizeof(Symbol{}))
+	fmt.Fprintf(w, "sizeof(Version)       = %d\n", unsafe.Sizeof(Version{}))
+	fmt.Fprintf(w, "sizeof(fileOp)        = %d\n", unsafe.Sizeof(fileOp{}))
+	fmt.Fprintf(w, "sizeof(fileState)     = %d\n", unsafe.Sizeof(fileState{}))
 }
 
-// main executes the cvs-fast-export pipeline over the input masters.
-func main() {
+func keepFirstError(dst *error, err error) {
+	if *dst == nil && err != nil {
+		*dst = err
+	}
+}
+
+// runMain executes the cvs-fast-export pipeline over the input masters.
+func runMain() (retErr error) {
+	var outputErr error
+	stdoutWriter := io.Writer(&stickyErrorWriter{
+		writer: os.Stdout, target: "standard output", firstErr: &outputErr,
+	})
+	stderrWriter := io.Writer(&stickyErrorWriter{
+		writer: os.Stderr, target: "standard error", firstErr: &outputErr,
+	})
+	var logFile *os.File
+	var revisionMap *os.File
+	defer func() {
+		keepFirstError(&retErr, outputErr)
+		if revisionMap != nil {
+			if err := revisionMap.Close(); err != nil {
+				keepFirstError(&retErr, fmt.Errorf("close revision map: %w", err))
+			}
+		}
+		if logFile != nil {
+			if err := logFile.Close(); err != nil {
+				keepFirstError(&retErr, fmt.Errorf("close log file: %w", err))
+			}
+		}
+	}()
+
 	cfg, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
+	}
+	if cfg.Help {
+		printHelp(stdoutWriter)
+		return nil
+	}
+	if cfg.Version {
+		fmt.Fprintln(stdoutWriter, "cvs-fast-export ", version)
+		return nil
 	}
 	if cfg.ExecMode == execSizes {
-		printSizes()
-		os.Exit(0)
+		printSizes(stdoutWriter)
+		return nil
 	}
 
-	warnWriter := io.Writer(os.Stderr)
-	var logFile *os.File
+	warnWriter := stderrWriter
 	if cfg.LogPath != "" {
 		logFile, err = os.Create(cfg.LogPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return err
 		}
-		defer logFile.Close()
-		warnWriter = logFile
+		warnWriter = &stickyErrorWriter{
+			writer: logFile, target: "log file", firstErr: &outputErr,
+		}
 	}
-	var revisionMap *os.File
 	if cfg.RevisionMapPath != "" {
 		revisionMap, err = os.Create(cfg.RevisionMapPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return err
 		}
-		defer revisionMap.Close()
 	}
-	progress := newProgress(cfg.Progress, os.Stderr)
+	var revisionMapWriter io.Writer
+	if revisionMap != nil {
+		revisionMapWriter = revisionMap
+	}
+	progress := newProgress(cfg.Progress, stderrWriter)
 
 	if len(cfg.Files) == 0 {
 		// Read file list from stdin, as the C tool does.
@@ -4843,8 +4923,7 @@ func main() {
 			cfg.Files = append(cfg.Files, scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return err
 		}
 	}
 
@@ -4931,11 +5010,11 @@ func main() {
 			progress.Lock()
 		}
 		if cfg.DumpHeads {
-			dumpHeads(master)
-			dumpChains(master)
+			dumpHeads(master, stderrWriter)
+			dumpChains(master, stderrWriter)
 		}
 		if cfg.DumpBranches {
-			dumpBranches(master)
+			dumpBranches(master, stderrWriter)
 		}
 		if progress != nil {
 			progress.Unlock()
@@ -4966,8 +5045,7 @@ func main() {
 		if progress != nil {
 			progress.Interrupt()
 		}
-		fmt.Fprintln(os.Stderr, parseErr)
-		os.Exit(1)
+		return parseErr
 	}
 	if progress != nil {
 		progress.End("done, %d files", len(inputPaths))
@@ -4984,16 +5062,16 @@ func main() {
 	})
 
 	if cfg.ExecMode == execAuthors {
-		exportAuthors(repo, os.Stdout)
-		os.Exit(0)
+		exportAuthors(repo, stdoutWriter)
+		return nil
 	}
 	if cfg.ExecMode == execGraph {
 		if cfg.NoIgnores {
-			dumpCVSForest(masters, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
+			dumpCVSForest(masters, cfg.ForceDates, cfg.CommitWindow, stdoutWriter)
 		} else {
-			dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, os.Stdout)
+			dumpCommitGraph(repo, cfg.GraphDiff, cfg.ForceDates, cfg.CommitWindow, stdoutWriter)
 		}
-		os.Exit(0)
+		return nil
 	}
 	if len(repo.Warnings) > 0 && !cfg.Quiet {
 		if progress != nil {
@@ -5012,7 +5090,7 @@ func main() {
 		if cfg.Remote != "" {
 			branchPrefix = fmt.Sprintf("refs/remotes/%s/", cfg.Remote)
 		}
-		em := NewEmitter(os.Stdout).
+		em := NewEmitter(stdoutWriter).
 			WithTagTargets(repo.TagTargets).
 			WithOptions(ExportOptions{
 				ForceDates:    cfg.ForceDates,
@@ -5027,15 +5105,21 @@ func main() {
 				SourceType:    cfg.SourceType,
 				SyntheticTags: repo.PathologyFixes,
 				BranchPrefix:  branchPrefix,
-				RevisionMap:   revisionMap,
+				RevisionMap:   revisionMapWriter,
 				Warn:          warnWriter,
 				Progress:      progress,
 			})
 		if progress != nil {
 			progress.Note("Starting fast-export emission")
 		}
-		_ = em.EmitRepo(repo)
-		_ = em.Flush()
+		emitErr := em.EmitRepo(repo)
+		flushErr := em.Flush()
+		if emitErr != nil {
+			return emitErr
+		}
+		if flushErr != nil {
+			return flushErr
+		}
 	}
 
 	// Warn if commitids are missing and skew could occur.
@@ -5046,7 +5130,15 @@ func main() {
 		fmt.Fprintf(warnWriter, "cvs-fast-export: no commitids before %s.\n", skew.UTC().Format(time.RFC3339))
 	}
 
-	os.Exit(0)
+	return nil
+}
+
+// main reports pipeline errors after runMain's deferred close checks execute.
+func main() {
+	if err := runMain(); err != nil {
+		fmt.Fprintln(os.Stderr, "cvs-fast-export:", err)
+		os.Exit(1)
+	}
 }
 
 // end

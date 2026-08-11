@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,14 @@ import (
 
 	rcs "github.com/arran4/golang-rcs"
 )
+
+type alwaysErrorWriter struct {
+	err error
+}
+
+func (w alwaysErrorWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
 
 func TestLoadFilePreservesCarriageReturnsInDeltaText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "binary,v")
@@ -647,4 +656,143 @@ func TestPathDeepCompareIsStrictWeakOrdering(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestEmitterPropagatesOutputErrors(t *testing.T) {
+	sentinel := errors.New("synthetic write failure")
+	makeRepo := func(text string) *Repo {
+		t.Helper()
+		number, err := Parse("1.1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision := &Commit{
+			Number:   number,
+			Date:     time.Unix(100, 0),
+			Author:   "author",
+			Log:      "commit\n",
+			Text:     text,
+			FileName: "file",
+			Mode:     0644,
+		}
+		commit := &GitCommit{
+			Date:    revision.Date,
+			Author:  revision.Author,
+			Log:     revision.Log,
+			Files:   []*Commit{revision},
+			RefName: "master",
+			Tail:    true,
+		}
+		return &Repo{
+			Branches: []*GitBranch{{Name: "master", Head: commit}},
+			CommitOf: map[*Commit]*GitCommit{revision: commit},
+		}
+	}
+
+	t.Run("stream-during-emit", func(t *testing.T) {
+		emitter := NewEmitter(alwaysErrorWriter{err: sentinel}).
+			WithOptions(ExportOptions{NoIgnores: true})
+		err := emitter.EmitRepo(makeRepo(strings.Repeat("x", 16*1024)))
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("EmitRepo error = %v, want %v", err, sentinel)
+		}
+	})
+
+	t.Run("stream-during-flush", func(t *testing.T) {
+		emitter := NewEmitter(alwaysErrorWriter{err: sentinel}).
+			WithOptions(ExportOptions{NoIgnores: true})
+		if err := emitter.EmitRepo(makeRepo("small\n")); err != nil {
+			t.Fatalf("EmitRepo returned before buffered write: %v", err)
+		}
+		if err := emitter.Flush(); !errors.Is(err, sentinel) {
+			t.Fatalf("Flush error = %v, want %v", err, sentinel)
+		}
+	})
+
+	t.Run("revision-map", func(t *testing.T) {
+		var stream bytes.Buffer
+		emitter := NewEmitter(&stream).WithOptions(ExportOptions{
+			NoIgnores:   true,
+			RevisionMap: alwaysErrorWriter{err: sentinel},
+		})
+		err := emitter.EmitRepo(makeRepo("content\n"))
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("EmitRepo revision-map error = %v, want %v", err, sentinel)
+		}
+	})
+}
+
+func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
+	full, err := os.OpenFile("/dev/full", os.O_WRONLY, 0)
+	if err != nil {
+		t.Skip("/dev/full is unavailable")
+	}
+	defer full.Close()
+	fixture, err := filepath.Abs(filepath.Join("tests", "access,v"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("fast-import-stream", func(t *testing.T) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--", fixture)
+		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		cmd.Stdout = full
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+			t.Fatalf("output failure exit = %v, want nonzero; stderr=%s", err, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "fast-import stream") {
+			t.Fatalf("stream failure was not reported: %s", stderr.String())
+		}
+	})
+
+	t.Run("revision-map", func(t *testing.T) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--",
+			"-R", "/dev/full", fixture)
+		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+			t.Fatalf("revision-map failure exit = %v, want nonzero; stderr=%s", err, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "revision map") {
+			t.Fatalf("revision-map failure was not reported: %s", stderr.String())
+		}
+	})
+
+	t.Run("help", func(t *testing.T) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--", "--help")
+		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		cmd.Stdout = full
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() == 0 {
+			t.Fatalf("help failure exit = %v, want nonzero; stderr=%s", err, stderr.String())
+		}
+	})
+}
+
+func TestCLIOutputFailureHelper(t *testing.T) {
+	if os.Getenv("CFE_OUTPUT_FAILURE_HELPER") != "1" {
+		return
+	}
+	separator := -1
+	for i, arg := range os.Args {
+		if arg == "--" {
+			separator = i
+			break
+		}
+	}
+	if separator < 0 {
+		os.Exit(2)
+	}
+	os.Args = append([]string{"cvs-fast-export"}, os.Args[separator+1:]...)
+	main()
 }
