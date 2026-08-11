@@ -257,7 +257,7 @@ from :19
 M 100644 :22 README
 property cvs-revisions 11 README 1.5
 
-reset refs/tags/illegal
+reset refs/tags/ill%7Eegal
 from :23
 
 done

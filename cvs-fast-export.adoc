@@ -72,8 +72,9 @@ standard output:
 
 * The HEAD branch is renamed to 'master'.
 
-* Other tag and branch names are sanitized to be legal for git;
-  the characters ~^\*? are removed.
+* Other tag and branch names are sanitized to be legal for git. Invalid
+  names are percent-escaped, and literal percent signs are escaped as well,
+  so distinct CVS symbols cannot collapse onto the same git ref name.
 
 * Since .cvsignore files have a syntax (mostly) upward-compatible with that of
   .gitignore files, they're renamed. In order to simulate the default

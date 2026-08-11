@@ -403,6 +403,40 @@ func TestValidGitRefName(t *testing.T) {
 	}
 }
 
+func TestSanitizeSymbolNameIsValidAndCollisionFree(t *testing.T) {
+	tests := map[string]string{
+		"release-1":       "release-1",
+		"feature/topic":   "feature/topic",
+		"release?1":       "release%3F1",
+		"release*1":       "release%2A1",
+		"release%3F1":     "release%253F1",
+		"bad:name":        "bad%3Aname",
+		"two..dots":       "two%2E%2Edots",
+		".hidden":         "%2Ehidden",
+		"topic.lock":      "topic%2Elock",
+		"reflog@{1}":      "reflog%40%7B1%7D",
+		"back\\slash":     "back%5Cslash",
+		"with whitespace": "with%20whitespace",
+	}
+	seen := make(map[string]string)
+	for original, want := range tests {
+		got := sanitizeSymbolName(original)
+		if got != want {
+			t.Errorf("sanitizeSymbolName(%q) = %q, want %q", original, got, want)
+		}
+		if !validGitRefName("refs/heads/"+got) || !validGitRefName("refs/tags/"+got) {
+			t.Errorf("sanitizeSymbolName(%q) produced invalid ref component %q", original, got)
+		}
+		if prior, ok := seen[got]; ok {
+			t.Errorf("symbols %q and %q both sanitize to %q", prior, original, got)
+		}
+		seen[got] = original
+		if again := sanitizeSymbolName(original); again != got {
+			t.Errorf("sanitizeSymbolName(%q) changed from %q to %q", original, got, again)
+		}
+	}
+}
+
 func TestParseArgsRejectsInvalidRemoteNames(t *testing.T) {
 	for _, args := range [][]string{
 		{"-e", "bad:name"},

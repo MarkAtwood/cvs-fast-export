@@ -1369,19 +1369,26 @@ func validGitRefName(ref string) bool {
 	return true
 }
 
-// sanitizeSymbolName removes invalid characters from tag names.
+// sanitizeSymbolName maps a CVS symbol to a valid, collision-free Git ref name.
 func sanitizeSymbolName(s string) string {
-	const bad = "~^\\*?"
+	// Reserve '%' for escaping so an existing percent-looking name cannot
+	// collide with an escaped invalid name.
+	if !strings.Contains(s, "%") && validGitRefName("refs/heads/"+s) {
+		return s
+	}
+	const hex = "0123456789ABCDEF"
 	var b strings.Builder
-	// Remove control chars and characters rejected by git fast-import.
-	for _, r := range s {
-		if r <= 0x20 || r == 0x7f {
-			continue
+	b.Grow(3 * len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&0x0f])
 		}
-		if strings.ContainsRune(bad, r) {
-			continue
-		}
-		b.WriteRune(r)
 	}
 	return b.String()
 }

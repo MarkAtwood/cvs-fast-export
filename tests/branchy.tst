@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-## A branchy repo with deletions and only valid tags
+## A branchy repo with deletions and a tag requiring sanitization
 
 import sys, testlifter
 
@@ -64,7 +64,7 @@ co.switch("HEAD")
 co.write("README", "I'm back in the saddle again.\n")
 co.commit("This commit should alter the master branch.")
 
-# The tilde should be stripped from the middle of this
+# The tilde should be percent-escaped without losing the original spelling.
 co.tag("ill~egal")
 
 repo.cleanup()
