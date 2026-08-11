@@ -1,13 +1,16 @@
 = cvs-fast-export project news =
 
 Repository-head::
-   Code haredeing by ChatGPT 5.6.
-   Attach cobverted tags by CVS revion ID, not content hash.
-   Repair emission of incemental dumps.
+   Code hardening by ChatGPT 5.6.
+   Attach converted tags by CVS revision ID, not content hash.
+   Repair emission of incremental dumps.
    Repair emission of zero-length files.
-   Do branch-parent lookup on the basuc of filename as well as revision.
+   Do branch-parent lookup on the basic of filename as well as revision.
    Repair the fallback case in deep path comparison.
    Stream, warning, and revision-map writers propagate their first error.
+   Error out on collisions produced By sanitization of CVS symbols.
+   Validate all refs before fast-import emission
+   Many improvements in regression testing,
 
 2.3: 2026-07-06::
    Force correct dates on commits after a coalesce command.
