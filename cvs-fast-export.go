@@ -4199,15 +4199,7 @@ func parseArgs(args []string) (config, error) {
 				}
 			}
 		default:
-			// short options with arguments
-			if i+1 < len(args) {
-				switch arg {
-				case "-l", "-R", "-e":
-					i++
-				default:
-					// unknown short option; ignore
-				}
-			}
+			// unknown long option; ignore
 		}
 	}
 	return cfg, nil
