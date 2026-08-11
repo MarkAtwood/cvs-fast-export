@@ -4167,9 +4167,11 @@ func parseArgs(args []string) (config, error) {
 			}
 			if i+1 < len(args) {
 				switch arg {
-				case "--commit-time-window", "--log", "--revision-map",
+				case "--authormap",
+					"--commit-time-window",
 					"--remote",
-					"--threads", "--debug", "--authormap":
+					"--log",
+					"--revision-map":
 					if arg == "--authormap" {
 						// Allow long-form authormap without '='.
 						authors, err := Load(args[i+1])
@@ -4200,7 +4202,7 @@ func parseArgs(args []string) (config, error) {
 			// short options with arguments
 			if i+1 < len(args) {
 				switch arg {
-				case "-l", "-R", "-e", "-t", "-d":
+				case "-l", "-R", "-e":
 					i++
 				default:
 					// unknown short option; ignore
