@@ -1724,7 +1724,6 @@ type GitBranch struct {
 type Repo struct {
 	Branches   []*GitBranch
 	CommitOf   map[*Commit]*GitCommit
-	ByNumber   map[string]*GitCommit
 	ByFileRev  map[string]*Commit
 	TagTargets map[string][]*Commit
 	TagOrder   []string
@@ -1744,7 +1743,6 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	repo := &Repo{
 		Branches:       branches,
 		CommitOf:       make(map[*Commit]*GitCommit),
-		ByNumber:       make(map[string]*GitCommit),
 		ByFileRev:      make(map[string]*Commit),
 		TagTargets:     make(map[string][]*Commit),
 		PathologyFixes: enablePathologies,
@@ -1769,7 +1767,6 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	var seedMu sync.Mutex
 	index := &collateIndex{
 		commitOf: repo.CommitOf,
-		byNumber: repo.ByNumber,
 	}
 	sem := make(chan struct{}, maxWorkers)
 	var wg sync.WaitGroup
@@ -1786,7 +1783,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 			seedMu.Unlock()
 			heads := gatherHeads(masters, b.Name, enablePathologies)
 			if len(heads) > 0 {
-				// Build the per-branch commit chain and index commit numbers.
+				// Build the per-branch commit chain and index source revisions.
 				b.Head = collateBranch(b.Name, heads, opts, index)
 			}
 			if opts.Progress != nil {
@@ -1803,7 +1800,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 	if opts.Progress != nil {
 		opts.Progress.Begin("Linking branch parents...", len(branches))
 	}
-	linkBranchParents(branches, repo.ByNumber, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings, opts.Progress)
+	linkBranchParents(branches, repo.ByFileRev, repo.CommitOf, enablePathologies, collateWarnings, opts.Progress)
 	if opts.Progress != nil {
 		opts.Progress.End("done")
 		opts.Progress.Begin("Injecting branch seeds...", len(branches))
@@ -2093,14 +2090,12 @@ func injectBranchSeeds(branches []*GitBranch, seedByBranch map[string]branchSeed
 // collateBranch groups commits for a branch and links them into a chain.
 type collateIndex struct {
 	commitOf map[*Commit]*GitCommit
-	byNumber map[string]*GitCommit
 	mu       sync.Mutex
 }
 
 func (ci *collateIndex) set(c *Commit, g *GitCommit) {
 	ci.mu.Lock()
 	ci.commitOf[c] = g
-	ci.byNumber[String(c.Number)] = g
 	ci.mu.Unlock()
 }
 
@@ -2314,7 +2309,7 @@ func collectTags(masters []*Master, repo *Repo) {
 //
 // This is a heuristic bridge between CVS per-file branching and Git's single
 // DAG parent requirement; it aims to preserve repository-visible file states.
-func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector, progress *progressState) {
+func linkBranchParents(branches []*GitBranch, byFileRev map[string]*Commit, commitOf map[*Commit]*GitCommit, enablePathologies bool, warn *warningCollector, progress *progressState) {
 	emitWarn := func(msg string) {
 		if warn != nil {
 			warn.Add(msg)
@@ -2444,11 +2439,14 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 		// Case 1: nested branch base (non-trunk).
 		if needsBranchBase {
 			stage = "nested-base"
-			for _, base := range baseByFile {
+			for path, base := range baseByFile {
 				if base.C > 2 {
-					if gc := byNumber[String(base)]; gc != nil {
-						tail.Parent = gc
-						break
+					key := path + "\x00" + String(base)
+					if c := byFileRev[key]; c != nil {
+						if gc := commitOf[c]; gc != nil {
+							tail.Parent = gc
+							break
+						}
 					}
 				}
 			}
@@ -2503,10 +2501,6 @@ func linkBranchParents(branches []*GitBranch, byNumber map[string]*GitCommit, by
 		// Case 3: fall back to any base revision we can resolve.
 		stage = "fallback-base"
 		for path, base := range baseByFile {
-			if gc := byNumber[String(base)]; gc != nil {
-				tail.Parent = gc
-				break
-			}
 			if c := byFileRev[path+"\x00"+String(base)]; c != nil {
 				if gc := commitOf[c]; gc != nil {
 					tail.Parent = gc

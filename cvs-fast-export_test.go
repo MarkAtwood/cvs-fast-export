@@ -502,7 +502,6 @@ func TestCollateBranchEnforcesWindowAcrossWholeChangeset(t *testing.T) {
 			}
 			index := &collateIndex{
 				commitOf: make(map[*Commit]*GitCommit),
-				byNumber: make(map[string]*GitCommit),
 			}
 			head := collateBranch("master", heads, CollateOptions{
 				CommitTimeWindow: 300 * time.Second,
@@ -522,6 +521,55 @@ func TestCollateBranchEnforcesWindowAcrossWholeChangeset(t *testing.T) {
 			}
 			if index.commitOf[revisions[1]] == index.commitOf[revisions[2]] {
 				t.Fatal("598-second revision span was coalesced through a rolling window")
+			}
+		})
+	}
+}
+
+func TestLinkBranchParentsUsesPathAndRevisionIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		baseRevision   string
+		branchRevision string
+	}{
+		{name: "trunk-base-fallback", baseRevision: "1.2", branchRevision: "1.2.2.1"},
+		{name: "nested-branch-base", baseRevision: "1.2.2.1", branchRevision: "1.2.2.1.4.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parse := func(s string) Number {
+				t.Helper()
+				n, err := Parse(s)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return n
+			}
+			baseA := &Commit{Number: parse(tc.baseRevision), FileName: "a"}
+			baseB := &Commit{Number: parse(tc.baseRevision), FileName: "b"}
+			gitA := &GitCommit{Files: []*Commit{baseA}, RefName: "parent-a"}
+			gitB := &GitCommit{Files: []*Commit{baseB}, RefName: "parent-b"}
+			branchRevision := &Commit{
+				Number:   parse(tc.branchRevision),
+				FileName: "a",
+			}
+			branchCommit := &GitCommit{
+				Files:   []*Commit{branchRevision},
+				RefName: "child",
+			}
+			branches := []*GitBranch{{Name: "child", Head: branchCommit}}
+			byFileRev := map[string]*Commit{
+				"a\x00" + tc.baseRevision: baseA,
+				"b\x00" + tc.baseRevision: baseB,
+			}
+			commitOf := map[*Commit]*GitCommit{
+				baseA: gitA,
+				baseB: gitB,
+			}
+
+			linkBranchParents(branches, byFileRev, commitOf, false, nil, nil)
+			if branchCommit.Parent != gitA {
+				t.Fatalf("branch parent = %p, want same-file commit %p (other-file collision %p)",
+					branchCommit.Parent, gitA, gitB)
 			}
 		})
 	}
