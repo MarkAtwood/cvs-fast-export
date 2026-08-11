@@ -57,7 +57,7 @@ fast-import-checks:
 ,v.dot:
 	$(CVS_FAST_EXPORT) -g $< >$*.dot
 
-test: s_regress m_regress r_regress g_regress i_regress t_regress c_regress sporadic #  z_regress
+test: s_regress m_regress r_regress g_regress i_regress t_regress c_regress sporadic fast-import-checks #  z_regress
 
 update: s_update m_update r_update g_update i_update t_update # z_update
 
@@ -185,6 +185,7 @@ sporadic:
 		esac; \
 	done
 TEST_TARGETS += $(SPORADIC)
+TEST_TARGETS += $(wildcard *.chk)
 
 # These tests can't be part of normal regressions because we don't seem
 # to be able to control when a stripped master will get a new modification
@@ -217,6 +218,7 @@ detailcount:
 	@echo "Pathological cases: $(words $(PYTESTS))"
 	@echo "Conversion checks: $(words $(CD) $(CT))"
 	@echo "Sporadic tests: $(words $(SPORADIC))"
+	@echo "Fast-import checks: $(words $(wildcard *.chk))"
 	#@echo "Reduction tests: $(words $(UNSTRIPPED))"
 	@echo "Total tests: $(words $(TEST_TARGETS))"
 
