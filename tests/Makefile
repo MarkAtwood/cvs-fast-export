@@ -9,6 +9,7 @@ export CVS_FAST_EXPORT
 PYTHON = python3
 
 .PHOMY: CHECK FULLCHECK
+.PHONY: fast-import-checks
 
 # Ordinary tests, use pregenerated repos for speed.
 check:
@@ -17,6 +18,25 @@ check:
 # Full test with rebuild of generated files
 fullcheck:
 	@$(MAKE) --quiet clean tap | ./tapview
+
+# Check whether each stored output fixture is also a valid Git import stream.
+# Bazaar property records can span lines; omit each through its blank separator.
+# The fixtures also merge cvs-fast-export diagnostics into the saved output.
+fast-import-checks:
+	@status=0; \
+	for fixture in ./*.chk; do \
+		[ -f "$${fixture}" ] || continue; \
+		label=$${fixture#./}; \
+		if { sed -e '/^property /,/^$$/d' -e '/^cvs-fast-export:/d' \
+			"$${fixture}" | \
+			./fast-import-check; } >/dev/null 2>&1; then \
+			echo "ok - $${label}"; \
+		else \
+			echo "not ok - $${label}"; \
+			status=1; \
+		fi; \
+	done; \
+	exit $${status}
 
 .SUFFIXES: .tst .repo .testrepo .checkout .dot .fi ,v
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+# Validate a Git fast-export stream read from standard input.
+
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/cfe-fast-import-check.XXXXXX") || exit 1
+repository="$workdir/repository.git"
+
+trap 'rm -rf "$workdir"' 0
+trap 'exit 1' HUP INT QUIT TERM
+
+git init --bare --quiet "$repository" || exit 1
+git -C "$repository" fast-import --quiet || exit 1
+git -C "$repository" fsck --strict --no-dangling || exit 1
+
+exit 0
