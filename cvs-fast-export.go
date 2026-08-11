@@ -4094,19 +4094,19 @@ func parseArgs(args []string) (config, error) {
 				return cfg, err
 			}
 			cfg.Authors = authors
-		case arg == "-l":
+		case arg == "-l" || arg == "--log":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
 			cfg.LogPath = args[i]
-		case arg == "-R":
+		case arg == "-R" || arg == "--revision-map":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
 			i++
 			cfg.RevisionMapPath = args[i]
-		case arg == "-e":
+		case arg == "-e" || arg == "--remote":
 			if i+1 >= len(args) {
 				return cfg, fmt.Errorf("%s expects an argument", arg)
 			}
@@ -4143,9 +4143,9 @@ func parseArgs(args []string) (config, error) {
 			cfg.ExecMode = execSizes
 		case arg == "-p":
 			cfg.Progress = true
-		case arg == "-v":
+		case arg == "-v" || arg == "--verbose":
 			cfg.Verbose = true
-		case arg == "-q":
+		case arg == "-q" || arg == "--quiet":
 			cfg.Quiet = true
 		case strings.HasPrefix(arg, "--"):
 			// long options with or without =value
@@ -4162,44 +4162,20 @@ func parseArgs(args []string) (config, error) {
 					cfg.LogPath = strings.SplitN(arg, "=", 2)[1]
 				} else if strings.HasPrefix(arg, "--revision-map=") {
 					cfg.RevisionMapPath = strings.SplitN(arg, "=", 2)[1]
+				} else if strings.HasPrefix(arg, "--commit-time-window=") {
+					secs, err := parseInt(strings.SplitN(arg, "=", 2)[1])
+					if err != nil {
+						return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
+					}
+					cfg.CommitWindow = time.Duration(secs) * time.Second
+				} else {
+					return cfg, fmt.Errorf("unknown option %q", arg)
 				}
 				continue
 			}
-			if i+1 < len(args) {
-				switch arg {
-				case "--authormap",
-					"--commit-time-window",
-					"--remote",
-					"--log",
-					"--revision-map":
-					if arg == "--authormap" {
-						// Allow long-form authormap without '='.
-						authors, err := Load(args[i+1])
-						if err != nil {
-							return cfg, err
-						}
-						cfg.Authors = authors
-					} else if arg == "--commit-time-window" {
-						// Parse commit window seconds.
-						secs, err := parseInt(args[i+1])
-						if err != nil {
-							return cfg, fmt.Errorf("invalid --commit-time-window value: %w", err)
-						}
-						cfg.CommitWindow = time.Duration(secs) * time.Second
-					} else if arg == "--remote" {
-						cfg.Remote = args[i+1]
-					} else if arg == "--log" {
-						cfg.LogPath = args[i+1]
-					} else if arg == "--revision-map" {
-						cfg.RevisionMapPath = args[i+1]
-					}
-					i++
-				default:
-					// unknown long option; ignore
-				}
-			}
+			return cfg, fmt.Errorf("unknown option %q", arg)
 		default:
-			// unknown long option; ignore
+			return cfg, fmt.Errorf("unknown option %q", arg)
 		}
 	}
 	return cfg, nil

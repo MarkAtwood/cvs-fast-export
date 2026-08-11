@@ -350,6 +350,18 @@ func TestConvertDateAcceptsRFC3339AndRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestParseArgsRejectsUnknownOptions(t *testing.T) {
+	for _, arg := range []string{"-Z", "--unknown", "--unknown=value"} {
+		t.Run(arg, func(t *testing.T) {
+			_, err := parseArgs([]string{arg})
+			want := fmt.Sprintf("unknown option %q", arg)
+			if err == nil || err.Error() != want {
+				t.Fatalf("parseArgs(%q) error = %v, want %q", arg, err, want)
+			}
+		})
+	}
+}
+
 func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {
