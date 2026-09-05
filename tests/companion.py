@@ -5,6 +5,7 @@
 
 import ast
 import contextlib
+import hashlib
 import io
 import os
 from pathlib import Path
@@ -166,6 +167,39 @@ def assert_cli_exit_status(root, temp_path):
                     raise AssertionError("conversion cleanup was skipped")
 
 
+def assert_cvsstrip_eof(cvsstrip):
+    "Both escaped-text readers must reject EOF and still handle valid strings."
+    hung = []
+    for section in (b"log", b"text"):
+        for content in (b"@", b"@unterminated", b"@escaped@@"):
+            try:
+                result = subprocess.run(
+                    [str(cvsstrip)], input=section + b"\n" + content,
+                    capture_output=True, timeout=2, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                hung.append((section, content))
+                continue
+            if result.returncode != 1 or b"unexpected EOF" not in result.stderr:
+                raise AssertionError("%r EOF was not diagnosed: %r" % (section, result.stderr))
+        for content in (b"", b"body@tail\n\xff"):
+            result = run(
+                [str(cvsstrip)],
+                input=section + b"\n@" + content.replace(b"@", b"@@") + b"@\n",
+                capture_output=True, timeout=2,
+            )
+            replacement = (
+                hashlib.md5(content).hexdigest().encode() if section == b"log"
+                else b"<stdin> content for None"
+            )
+            expected = section + b"\n@" + replacement + b"\n@\n"
+            if result.stdout != expected:
+                raise AssertionError("valid %r string produced %r, expected %r" % (
+                    section, result.stdout, expected))
+    if hung:
+        raise AssertionError("cvsstrip hung on unterminated strings: %r" % hung)
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
     cvsconvert = root / "cvsconvert"
@@ -174,6 +208,7 @@ def main():
 
     assert_shell_free(cvsconvert)
     assert_shell_free(cvssync)
+    assert_cvsstrip_eof(cvsstrip)
 
     namespace = load_cvsconvert(root)
     assert_checked_references(namespace)

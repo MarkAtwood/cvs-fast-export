@@ -110,6 +110,9 @@ def replace_escaped_text(inputf, replacement, outputf):
         outputf.write(polybytes("@" + replacement.replace("@", r"@@")))
     while True:
         nxt = polystr(inputf.read(1))
+        if not nxt:
+            sys.stderr.write("cvsstrip: fatal error, unexpected EOF in @-delimited text.\n")
+            sys.exit(1)
         if nxt == "@":
             nxt2 = polystr(inputf.read(1))
             if nxt2 == "@":
@@ -134,6 +137,9 @@ def hash_escaped_text(inputf, outputf):
     txt = ""
     while True:
         nxt = polystr(inputf.read(1))
+        if not nxt:
+            sys.stderr.write("cvsstrip: fatal error, unexpected EOF in @-delimited text.\n")
+            sys.exit(1)
         if nxt == "@":
             nxt2 = polystr(inputf.read(1))
             if nxt2 == "@":
