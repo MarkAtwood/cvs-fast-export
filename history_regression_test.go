@@ -103,6 +103,44 @@ func assertLinearHistory(t *testing.T, git, repository, ref string, count int) {
 	}
 }
 
+func TestExportPreservesQuotedPaths(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	for _, path := range []string{
+		`"quoted"`, `"unterminated`, "line\nbreak", "tab\tname", `back\slash`,
+		"control-\x01\x7f", "utf8-café", "bytes-\x80\xff7", "space name", "sub/nested\nfile",
+	} {
+		t.Run(strconv.Quote(path), func(t *testing.T) {
+			first := historyCommit(nil, historyRevision(t, "1.1", 100, path, "original\n"))
+			second := historyCommit(first, historyRevision(t, "1.2", 200, path, "updated\n"))
+			dead := historyRevision(t, "1.3", 300, path, "")
+			dead.Dead = true
+			last := historyCommit(second, dead)
+			repo := &Repo{Branches: []*GitBranch{{Name: "master", Head: last}}}
+			repository := newHistoryGitRepo(t, git)
+			importHistoryStream(t, git, repository, emitHistoryStream(t, repo, ExportOptions{}))
+			for _, state := range []struct{ ref, content string }{
+				{"master~2", "original\n"}, {"master~1", "updated\n"},
+			} {
+				if got := runHistoryGit(t, git, "", "-C", repository,
+					"ls-tree", "-rz", "--name-only", state.ref); got != path+"\x00" {
+					t.Fatalf("%s paths = %q, want %q", state.ref, got, path+"\x00")
+				}
+				if got := runHistoryGit(t, git, "", "-C", repository,
+					"show", state.ref+":"+path); got != state.content {
+					t.Fatalf("%s content = %q, want %q", state.ref, got, state.content)
+				}
+			}
+			if got := runHistoryGit(t, git, "", "-C", repository,
+				"ls-tree", "-rz", "--name-only", "master"); got != "" {
+				t.Fatalf("deleted path remains in final tree: %q", got)
+			}
+		})
+	}
+}
+
 func TestIncrementalNewBranches(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {

@@ -4,6 +4,7 @@ Unreleased::
    Return a failing cvsconvert exit status when any comparison fails.
    Scan explicitly named input directories, including "." and hidden roots.
    Include go.mod and go.sum in release archives so source builds work.
+   Quote exported paths to preserve special filename bytes during Git import.
 
 2.4: 2026-08-11::
    Code hardening by ChatGPT 5.6.

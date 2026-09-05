@@ -3355,6 +3355,41 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	return e.writeErr
 }
 
+// quoteFastImportPath uses Git's C-style quoting without changing filename bytes.
+func quoteFastImportPath(path string) string {
+	needsQuoting := false
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		if c < ' ' || c >= 0x7f || c == '"' || c == '\\' {
+			needsQuoting = true
+			break
+		}
+	}
+	if !needsQuoting {
+		return path
+	}
+	var quoted strings.Builder
+	quoted.WriteByte('"')
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		switch {
+		case c == '"' || c == '\\':
+			quoted.WriteByte('\\')
+			quoted.WriteByte(c)
+		case c < ' ' || c >= 0x7f:
+			// Git accepts three-digit octal escapes, not Go's hex/Unicode escapes.
+			quoted.WriteByte('\\')
+			quoted.WriteByte('0' + (c >> 6))
+			quoted.WriteByte('0' + ((c >> 3) & 7))
+			quoted.WriteByte('0' + (c & 7))
+		default:
+			quoted.WriteByte(c)
+		}
+	}
+	quoted.WriteByte('"')
+	return quoted.String()
+}
+
 // emitCommit writes a single fast-import commit and its file operations.
 func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parentRef string, first bool, ops []*fileOp) (int, error) {
 	ref := branch
@@ -3407,9 +3442,9 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 	// Emit file modifications and deletions.
 	for _, op := range ops {
 		if op.kind == 'M' {
-			fmt.Fprintf(e.w, "M 100%o :%d %s\n", op.mode, op.mark, op.path)
+			fmt.Fprintf(e.w, "M 100%o :%d %s\n", op.mode, op.mark, quoteFastImportPath(op.path))
 		} else if op.kind == 'D' {
-			fmt.Fprintf(e.w, "D %s\n", op.path)
+			fmt.Fprintf(e.w, "D %s\n", quoteFastImportPath(op.path))
 		}
 	}
 	if first && !e.didIg && !e.noIgnores {
