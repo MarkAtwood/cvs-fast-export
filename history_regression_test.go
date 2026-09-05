@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,100 @@ func assertLinearHistory(t *testing.T, git, repository, ref string, count int) {
 			t.Fatalf("commit %d does not have the previous commit as its sole parent: %q", i+1, line)
 		}
 		previous = fields[0]
+	}
+}
+
+func TestIncrementalNewBranches(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	for _, tc := range []struct {
+		name                         string
+		older, noop, nested, advance bool
+		forceDates                   bool
+		prefix                       string
+	}{
+		{name: "trunk tip"},
+		{name: "older trunk base", older: true},
+		{name: "trunk advances in same import", older: true, advance: true},
+		{name: "no-op base and ancestor", older: true, noop: true, advance: true},
+		{name: "nested branch", older: true, nested: true, advance: true},
+		{name: "forced dates", older: true, noop: true, advance: true, forceDates: true},
+		{name: "remote refs", older: true, advance: true, prefix: "refs/remotes/cvs/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prefix := tc.prefix
+			if prefix == "" {
+				prefix = "refs/heads/"
+			}
+			root := historyCommit(nil, historyRevision(t, "1.1", 100, "file", "base\n"))
+			base, trunk := root, root
+			if tc.noop {
+				base = historyCommit(root, historyRevision(t, "1.2", 150, "file", "base\n"))
+				trunk = base
+			}
+			if tc.older {
+				trunk = historyCommit(trunk, historyRevision(t, "1.1", 200, "trunk-only", "old\n"))
+			}
+			baseline := &Repo{Branches: []*GitBranch{{Name: "master", Head: trunk}}}
+			parentRef := prefix + "master"
+			if tc.older {
+				parentRef += "~1"
+			}
+			if tc.nested {
+				base = historyCommit(root, historyRevision(t, "1.1.2.1", 250, "file", "release\n"))
+				base.RefName, base.Tail = "release", true
+				baseline.Branches = append(baseline.Branches, &GitBranch{Name: "release", Head: base})
+				parentRef = prefix + "release"
+			}
+			options := ExportOptions{ForceDates: tc.forceDates, BranchPrefix: prefix}
+			repository := newHistoryGitRepo(t, git)
+			importHistoryStream(t, git, repository, emitHistoryStream(t, baseline, options))
+			parentID := strings.TrimSpace(runHistoryGit(t, git, "", "-C", repository, "rev-parse", parentRef))
+			cutoff := int64(350)
+			if tc.forceDates {
+				cutoff, err = strconv.ParseInt(strings.TrimSpace(runHistoryGit(t, git, "",
+					"-C", repository, "log", "-1", "--format=%ct", prefix+"master")), 10, 64)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			update := &Repo{Branches: append([]*GitBranch(nil), baseline.Branches...)}
+			if tc.advance {
+				trunk = historyCommit(trunk, historyRevision(t, "1.2", 400, "trunk-only", "new\n"))
+				update.Branches[0] = &GitBranch{Name: "master", Head: trunk}
+			}
+			branch := historyCommit(base, historyRevision(t, "1.1.2.1", 500, "file", "branch\n"))
+			branch.RefName, branch.Tail = "newbranch", true
+			update.Branches = append(update.Branches, &GitBranch{Name: "newbranch", Head: branch})
+			options.Incremental, options.FromTime = true, cutoff
+			stream := emitHistoryStream(t, update, options)
+			importHistoryStream(t, git, repository, stream)
+			if got := strings.TrimSpace(runHistoryGit(t, git, "", "-C", repository,
+				"rev-parse", prefix+"newbranch^")); got != parentID {
+				t.Fatalf("new branch parent = %s, want %s\n%s", got, parentID, stream)
+			}
+			if got := runHistoryGit(t, git, "", "-C", repository, "show", prefix+"newbranch:file"); got != "branch\n" {
+				t.Fatalf("branch file = %q, want %q", got, "branch\n")
+			}
+			if got := runHistoryGit(t, git, "", "-C", repository,
+				"ls-tree", "-r", "--name-only", prefix+"newbranch"); got != "file\n" {
+				t.Fatalf("branch inherited files outside its base: %q", got)
+			}
+			// The incremental result must have the same commit identities as a full import.
+			full := newHistoryGitRepo(t, git)
+			options.Incremental, options.FromTime = false, 0
+			importHistoryStream(t, git, full, emitHistoryStream(t, update, options))
+			for _, b := range update.Branches {
+				ref := prefix + b.Name
+				got := runHistoryGit(t, git, "", "-C", repository, "rev-parse", ref)
+				want := runHistoryGit(t, git, "", "-C", full, "rev-parse", ref)
+				if got != want {
+					t.Fatalf("incremental %s = %s, full import = %s", ref, got, want)
+				}
+			}
+		})
 	}
 }
 

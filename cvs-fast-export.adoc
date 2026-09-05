@@ -216,9 +216,17 @@ option sets promiscuous mode, disabling both checks.
 -i 'date'::
 Enable incremental-dump mode. Only commits with a date after that
 specified by the argument are emitted. Disables inclusion of default
-ignores. Each branch root in the incremental dump is decorated with
-git-stream magic which, when interpreted in context of a live
-repository, will connect that branch to any branch of the same name.
+ignores. Parents omitted from the stream are identified through existing
+Git branch refs and their ancestry. A new branch can therefore start at
+an older imported commit, even when its parent branch advances in the
+same incremental import. CVS revisions omitted as content no-ops do not
+count as Git ancestors.
+
+The destination must contain the conversion through the cutoff, with
+the imported branch refs and history intact. Use the same conversion
+options as the original export, apart from the incremental cutoff.
+No separate marks file is required.
+
 The date is expected to be RFC3339 conformant
 (e.g. yy-mm-ddThh:mm:ssZ) or else an integer Unix time in seconds.
 

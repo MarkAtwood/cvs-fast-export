@@ -2992,6 +2992,56 @@ func (e *Emitter) validateRefNames(repo *Repo, commits []*GitCommit) error {
 	return nil
 }
 
+// incrementalHistory tracks the Git commits and branch tips before the cutoff.
+// Marks are local identities used to count actual Git ancestors; no-op CVS
+// revisions alias their parent's mark and do not add an ancestry step.
+type incrementalHistory struct {
+	parents map[int]int
+	heads   map[string]int
+}
+
+// parentRef identifies an omitted parent through a previously imported branch.
+func (h *incrementalHistory) parentRef(mark int, preferred, prefix string) (string, bool) {
+	if mark == 0 {
+		return "", false
+	}
+	if preferred == "" {
+		preferred = "master"
+	}
+	find := func(branch string) (string, bool) {
+		for ancestor, distance := h.heads[branch], 0; ancestor != 0; distance++ {
+			if ancestor == mark {
+				// ^0 resolves the persisted ref, even if fast-import has already
+				// advanced this branch in memory during the current import.
+				ref := prefix + branch + "^0"
+				if distance > 0 {
+					ref += fmt.Sprintf("~%d", distance)
+				}
+				return ref, true
+			}
+			ancestor = h.parents[ancestor]
+		}
+		return "", false
+	}
+	if ref, ok := find(preferred); ok {
+		return ref, true
+	}
+	// Shared branch bases can also be reachable through another existing ref.
+	var branches []string
+	for branch := range h.heads {
+		if branch != preferred {
+			branches = append(branches, branch)
+		}
+	}
+	sort.Strings(branches)
+	for _, branch := range branches {
+		if ref, ok := find(branch); ok {
+			return ref, true
+		}
+	}
+	return "", false
+}
+
 // EmitRepo emits a fast-import stream for all branches, ordered by commit date.
 func (e *Emitter) EmitRepo(repo *Repo) error {
 	if repo == nil {
@@ -3026,6 +3076,10 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	// that fast-import can actually resolve in this stream.
 	displayMarkMap := make(map[*GitCommit]int)
 	emittedMarkMap := make(map[*GitCommit]int)
+	var prior *incrementalHistory
+	if e.incremental && e.fromTime > 0 {
+		prior = &incrementalHistory{parents: make(map[int]int), heads: make(map[string]int)}
+	}
 	stateByCommit := make(map[*GitCommit]map[string]fileState)
 	liveSeen := make(map[string]bool)
 	emittedTags := make(map[string]struct{})
@@ -3079,7 +3133,6 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		sort.Strings(extra)
 		tagNames = append(tagNames, extra...)
 	}
-	realized := make(map[string]bool)
 	emitTagsForCommit := func(c *GitCommit, mark int) {
 		if c == nil || mark <= 0 {
 			return
@@ -3125,6 +3178,10 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 					break
 				}
 			}
+		}
+		logicalParent := c.Parent
+		if fallbackParent != nil {
+			logicalParent = fallbackParent
 		}
 		// Compute file operations relative to the chosen parent commit state.
 		var prevState map[string]fileState
@@ -3182,6 +3239,8 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 		if !report {
 			e.mark = commitMark + 1
 			stateByCommit[c] = next
+			prior.parents[commitMark] = displayMarkMap[logicalParent]
+			prior.heads[branchName] = commitMark
 			if branchName == "master" {
 				// Keep the state available to pathology repair, but never
 				// advertise a mark that was not emitted.
@@ -3190,21 +3249,17 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			continue
 		}
 		parentRef := ""
-		logicalParent := c.Parent
-		if fallbackParent != nil {
-			logicalParent = fallbackParent
-		}
-		if e.incremental && e.fromTime > 0 && !realized[branchName] &&
-			logicalParent != nil && parentMark == 0 {
-			// The parent is present in the repository being updated, not in
-			// this stream.  A from command is valid only inside a commit.
-			parentRef = e.branchPrefix + branchName + "^0"
+		if prior != nil && logicalParent != nil && parentMark == 0 {
+			var ok bool
+			parentRef, ok = prior.parentRef(displayMarkMap[logicalParent], logicalParent.RefName, e.branchPrefix)
+			if !ok {
+				return fmt.Errorf("cannot resolve previously imported parent for branch %q", branchName)
+			}
 		}
 		mark, err := e.emitCommit(c.RefName, c, parentMark, parentRef, first, ops)
 		if err != nil {
 			return err
 		}
-		realized[branchName] = true
 		emittedBranches[branchName] = struct{}{}
 		stateByCommit[c] = next
 		displayMarkMap[c] = mark
