@@ -49,6 +49,31 @@ func TestApplyDeltaBlankLines(t *testing.T) {
 	}
 }
 
+func TestApplyDeltaRejectsInvalidRanges(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, delta := range []string{
+		"a0 -1\n", "d1 -1\n", "a0 0\n", "d1 0\n",
+		"a-1 1\nx\n", "d0 1\n", "a2 1\nx\n", "d2 1\n", "d1 2\n",
+		"a0 2\nx\n", "d1 1\nd1 1\n",
+		fmt.Sprintf("a0 %d\n", maxInt),
+		fmt.Sprintf("a0 1\nx\na0 %d\n", maxInt),
+		fmt.Sprintf("a%d 1\nx\n", maxInt),
+		fmt.Sprintf("d1 %d\n", maxInt),
+		fmt.Sprintf("d%d %d\n", maxInt, maxInt),
+	} {
+		t.Run(delta, func(t *testing.T) {
+			defer func() {
+				if failure := recover(); failure != nil {
+					t.Fatalf("malformed delta panicked instead of returning an error: %v", failure)
+				}
+			}()
+			if got, err := applyDelta("a\n", delta); err == nil {
+				t.Fatalf("malformed delta accepted, producing %q", got)
+			}
+		})
+	}
+}
+
 func TestExportSingleBlankLineRevision(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "blank,v")
@@ -1187,6 +1212,66 @@ func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
 			t.Fatalf("help failure exit = %v, want nonzero; stderr=%s", err, stderr.String())
 		}
 	})
+}
+
+func TestCLIRejectsMalformedDelta(t *testing.T) {
+	const archive = `head 1.2;
+access;
+symbols;
+locks; strict;
+
+
+1.2
+date 2020.01.02.03.04.05; author u; state Exp;
+branches;
+next 1.1;
+
+1.1
+date 2020.01.02.03.04.04; author u; state Exp;
+branches;
+next ;
+
+
+desc
+@@
+
+
+1.2
+log
+@new
+@
+text
+@a
+@
+
+
+1.1
+log
+@old
+@
+text
+@%s@
+`
+	for _, delta := range []string{"a0 -1\n", "d1 -1\n", "a2 1\nx\n"} {
+		t.Run(delta, func(t *testing.T) {
+			fixture := filepath.Join(t.TempDir(), "invalid,v")
+			if err := os.WriteFile(fixture, []byte(fmt.Sprintf(archive, delta)), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--", fixture)
+			cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Fatalf("invalid archive exit = %v, want status 1; stderr=%s", err, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "delta") || strings.Contains(stderr.String(), "panic:") {
+				t.Fatalf("invalid archive did not report a delta error: %s", stderr.String())
+			}
+		})
+	}
 }
 
 func TestCLIExportsCurrentDirectory(t *testing.T) {

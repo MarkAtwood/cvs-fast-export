@@ -1477,7 +1477,6 @@ func nextRevisionOf(file *rcs.File, rev string) string {
 }
 
 // applyDelta applies an RCS reverse delta to the newer text, producing older text.
-// applyDelta applies a reverse delta script to newer text.
 func applyDelta(text, delta string) (string, error) {
 	lines, trailing := splitLinesForDelta(text)
 	commands, deltaTrailing := splitLinesForDelta(delta)
@@ -1505,13 +1504,17 @@ func applyDelta(text, delta string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("parse delta %q: %w", cmd, err)
 		}
+		if count <= 0 {
+			return "", fmt.Errorf("delta count must be positive: %q", cmd)
+		}
 		switch op {
 		case 'd':
 			ops = append(ops, deltaOp{op: 'd', start: start, count: count})
 			i++
 		case 'a':
 			// Add ops include inline line data that follows the command.
-			if i+count >= len(commands) {
+			// Subtract before comparing so an oversized count cannot overflow.
+			if count > len(commands)-i-1 {
 				return "", fmt.Errorf("delta add missing lines")
 			}
 			end := i + 1 + count
@@ -1526,7 +1529,7 @@ func applyDelta(text, delta string) (string, error) {
 		op := ops[i]
 		switch op.op {
 		case 'd':
-			if op.start < 1 || op.start-1+op.count > len(lines) {
+			if op.start < 1 || op.start > len(lines) || op.count > len(lines)-(op.start-1) {
 				return "", fmt.Errorf("delta delete out of range")
 			}
 			if op.start-1+op.count == len(lines) {
@@ -1538,14 +1541,11 @@ func applyDelta(text, delta string) (string, error) {
 			}
 			lines = append(lines[:op.start-1], lines[op.start-1+op.count:]...)
 		case 'a':
-			if op.start < 0 {
+			if op.start < 0 || op.start > len(lines) {
 				return "", fmt.Errorf("delta add out of range")
 			}
 			// Insert the added lines at the correct position.
 			pos := op.start
-			if pos > len(lines) {
-				pos = len(lines)
-			}
 			if pos == len(lines) {
 				trailing = op.addTrailing
 			}
