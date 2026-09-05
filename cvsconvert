@@ -538,9 +538,9 @@ class ConvertComparison(object):
         #        self.repo.cleanup()
         #        sys.exit(1)
         cvspaths = list(ftw(self.checkout.name, ignore="CVS"))
-        cvsfiles = [fn[len(self.checkout.name) + 1 :] for fn in cvspaths]
+        cvsfiles = [os.path.relpath(fn, self.checkout.name) for fn in cvspaths]
         gitpaths = list(ftw(self.gitRepoName, ignore=".git"))
-        gitfiles = [fn[len(self.gitRepoName) + 1 :] for fn in gitpaths]
+        gitfiles = [os.path.relpath(fn, self.gitRepoName) for fn in gitpaths]
         cvsfiles.sort()
         gitfiles.sort()
         success = True
@@ -561,16 +561,11 @@ class ConvertComparison(object):
                     if cvs_only:
                         sys.stderr.write(preamble + "CVS only: %s\n" % cvs_only)
             success = False
-        common = [
-            (
-                path,
-                path.replace(CVSCheckout.SUFFIX + "/", ConvertComparison.SUFFIX + "/"),
-            )
-            for path in cvspaths
-            if path.replace(CVSCheckout.SUFFIX + "/", ConvertComparison.SUFFIX + "/")
-            in gitpaths
-        ]
-        for a, b in common:
+        # Checkout directory names need not share a naming convention.
+        common = sorted(set(cvsfiles).intersection(gitfiles))
+        for filename in common:
+            a = os.path.join(self.checkout.name, filename)
+            b = os.path.join(self.gitRepoName, filename)
             if not filecmp.cmp(a, b, shallow=False):
                 success = False
                 if success_expected:

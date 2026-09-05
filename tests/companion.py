@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest import mock
 
 
 def run(command, **kwargs):
@@ -38,6 +39,72 @@ def assert_shell_free(path):
                 raise AssertionError("%s still invokes a shell" % path.name)
 
 
+def assert_content_comparisons(root, temp_path, namespace):
+    "Check actual converted bytes with ordinary and proxy checkout layouts."
+    missed = []
+    for layout in ("module", "bare", "whole"):
+        repo = temp_path / ("comparison-" + layout)
+        fixture = root / "tests" / "oldhead.testrepo"
+        shutil.copytree(fixture / "module" if layout == "bare" else fixture, repo)
+        module = repo if layout == "bare" else repo / "module"
+        # This component must stay intact when matching the two checkouts.
+        nested = module / "nested.checkout"
+        nested.mkdir()
+        shutil.copyfile(module / "Makefile.am,v", nested / "file,v")
+        if layout == "whole":
+            module.rename(repo / "one")
+            shutil.copytree(repo / "one", repo / "two")
+
+        with namespace["directory_context"](str(temp_path)):
+            comparison = namespace["ConvertComparison"](
+                srepo=str(repo),
+                smodule="module" if layout == "module" else None,
+                options=("-q",),
+                whole_repo=layout == "whole",
+            )
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    if not comparison.checkall():
+                        raise AssertionError("%s clean conversion failed" % layout)
+
+                relative = "nested.checkout/file"
+                if layout == "whole":
+                    relative = "one/" + relative
+                git_repo = temp_path / comparison.gitRepoName
+                # Comparison checks out the ref detached; corrupt the branch itself.
+                run(["git", "checkout", "--quiet", "master"], cwd=git_repo)
+                target = git_repo / relative
+                content = target.read_bytes()
+                # Keep the size unchanged; content comparison must read bytes.
+                target.write_bytes(bytes([content[0] ^ 1]) + content[1:])
+                run(["git", "add", "--", relative], cwd=git_repo)
+                run(
+                    [
+                        "git", "-c", "user.name=Test", "-c", "user.email=test@example.org",
+                        "commit", "--quiet", "--no-gpg-sign", "-m", "Corrupt converted content",
+                    ],
+                    cwd=git_repo,
+                )
+                output, errors = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                    if comparison.checkall():
+                        missed.append(layout)
+                    elif "are different" not in errors.getvalue():
+                        raise AssertionError("%s did not report the content mismatch" % layout)
+                if "compares clean" in output.getvalue() and layout not in missed:
+                    raise AssertionError("%s reported a corrupt conversion as clean" % layout)
+            finally:
+                comparison.cleanup()
+    if missed:
+        raise AssertionError("content comparisons skipped for %s" % ", ".join(missed))
+
+
+def load_cvsconvert(root):
+    "Keep the exporter path valid when comparisons change directories."
+    with mock.patch.dict(os.environ, {"CVS_FAST_EXPORT": str(root / "cvs-fast-export")}):
+        return runpy.run_path(str(root / "cvsconvert"))
+
+
 def main():
     root = Path(__file__).resolve().parent.parent
     cvsconvert = root / "cvsconvert"
@@ -47,9 +114,8 @@ def main():
     assert_shell_free(cvsconvert)
     assert_shell_free(cvssync)
 
-    namespace = runpy.run_path(str(cvsconvert))
-    comparison_type = namespace["ConvertComparison"]
-    comparison = object.__new__(comparison_type)
+    namespace = load_cvsconvert(root)
+    comparison = object.__new__(namespace["ConvertComparison"])
     comparison.branches = ["main"]
     comparison.tags = ["release"]
     comparison.repo = type("Repo", (), {"name": "sample"})()
@@ -63,6 +129,7 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="cfe-companion-") as temp:
         temp_path = Path(temp)
+        assert_content_comparisons(root, temp_path, namespace)
         fake_rsync = temp_path / "rsync"
         fake_rsync.symlink_to(shutil.which("true"))
         marker = temp_path / "shell-injection"

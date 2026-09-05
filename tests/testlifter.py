@@ -430,11 +430,12 @@ class ConvertComparison(object):
         #    if not noisy_run("git log --format=%H -1"):
         #        self.repo.cleanup()
         #        sys.exit(1)
-        cvspaths = list(ftw(self.stem + ".checkout", ignore="CVS"))
-        cvsfiles = [fn[len(self.stem + ".checkout") + 1 :] for fn in cvspaths]
+        cvsroot = self.checkout.checkout
+        cvspaths = list(ftw(cvsroot, ignore="CVS"))
+        cvsfiles = [os.path.relpath(fn, cvsroot) for fn in cvspaths]
         gitpaths = list(ftw(self.stem + ConvertComparison.SUFFIX, ignore=".git"))
         gitfiles = [
-            fn[len(self.stem + ConvertComparison.SUFFIX) + 1 :] for fn in gitpaths
+            os.path.relpath(fn, self.stem + ConvertComparison.SUFFIX) for fn in gitpaths
         ]
         cvsfiles.sort()
         gitfiles.sort()
@@ -456,12 +457,11 @@ class ConvertComparison(object):
                     if cvs_only:
                         sys.stderr.write(preamble + "CVS only: %s\n" % cvs_only)
             success = False
-        common = [
-            (path, path.replace(".checkout/", ConvertComparison.SUFFIX + "/"))
-            for path in cvspaths
-            if path.replace(".checkout/", ConvertComparison.SUFFIX + "/") in gitpaths
-        ]
-        for a, b in common:
+        # Checkout directory names need not share a naming convention.
+        common = sorted(set(cvsfiles).intersection(gitfiles))
+        for filename in common:
+            a = os.path.join(cvsroot, filename)
+            b = os.path.join(self.stem + ConvertComparison.SUFFIX, filename)
             if not filecmp.cmp(a, b, shallow=False):
                 success = False
                 if success_expected:
