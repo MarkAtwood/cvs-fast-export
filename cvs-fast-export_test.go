@@ -22,6 +22,107 @@ func (w alwaysErrorWriter) Write([]byte) (int, error) {
 	return 0, w.err
 }
 
+func TestApplyDeltaBlankLines(t *testing.T) {
+	tests := []struct {
+		name, text, delta, want string
+	}{
+		{"empty unchanged", "", "", ""},
+		{"blank unchanged", "\n", "", "\n"},
+		{"delete blank", "\n", "d1 1\n", ""},
+		{"replace blank", "\n", "d1 1\na1 1\na\n", "a\n"},
+		{"replace blank without final newline", "\n", "d1 1\na1 1\na", "a"},
+		{"append after blank", "\n", "a1 1\na\n", "\na\n"},
+		{"add blank to empty", "", "a0 1\n\n", "\n"},
+		{"append another blank", "\n", "a1 1\n\n", "\n\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := applyDelta(tt.text, tt.delta)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("applyDelta(%q, %q) = %q, want %q", tt.text, tt.delta, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExportSingleBlankLineRevision(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "blank,v")
+	const data = `head 1.2;
+access;
+symbols;
+locks; strict;
+comment @# @;
+
+
+1.2
+date 2020.01.02.03.04.05; author u; state Exp;
+branches;
+next 1.1;
+
+1.1
+date 2020.01.02.03.04.04; author u; state Exp;
+branches;
+next ;
+
+
+desc
+@@
+
+
+1.2
+log
+@new
+@
+text
+@
+@
+
+
+1.1
+log
+@old
+@
+text
+@d1 1
+a1 1
+a
+@
+`
+	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+	file, symbols, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	master, err := BuildMaster(path, file, len(dir)+1, symbols, false, &warningCollector{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for revision, want := range map[string]string{"1.1": "a\n", "1.2": "\n"} {
+		if got := master.Commits[revision].Text; got != want {
+			t.Fatalf("revision %s = %q, want %q", revision, got, want)
+		}
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	repo := Build([]*Master{master}, CollateOptions{TrustCommitIDs: true})
+	repository := newHistoryGitRepo(t, git)
+	importHistoryStream(t, git, repository, emitHistoryStream(t, repo, ExportOptions{}))
+	assertLinearHistory(t, git, repository, "master", 2)
+	for revision, want := range map[string]string{"master^:blank": "a\n", "master:blank": "\n"} {
+		if got := runHistoryGit(t, git, "", "-C", repository, "show", revision); got != want {
+			t.Fatalf("%s = %q, want %q", revision, got, want)
+		}
+	}
+}
+
 func TestLoadFilePreservesCarriageReturnsInDeltaText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "binary,v")
 	data := "" +

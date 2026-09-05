@@ -1576,12 +1576,13 @@ func rcsJoinLines(lines []string) string {
 
 // splitLinesForDelta splits lines and reports whether a trailing newline exists.
 func splitLinesForDelta(s string) ([]string, bool) {
+	// Check before removing the terminator: "\n" contains one empty line.
+	if s == "" {
+		return []string{}, false
+	}
 	trailing := strings.HasSuffix(s, "\n")
 	if trailing {
 		s = strings.TrimSuffix(s, "\n")
-	}
-	if s == "" {
-		return []string{}, trailing
 	}
 	return strings.Split(s, "\n"), trailing
 }
