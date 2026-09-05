@@ -121,7 +121,7 @@ version:
 distclean: clean
 	cd tests; $(MAKE) --quiet clean
 
-SOURCES = Makefile *.go cvssync cvsconvert cvsstrip buildprep
+SOURCES = Makefile *.go go.mod go.sum cvssync cvsconvert cvsstrip buildprep
 DOCS = control *.adoc local.dic cfe-logo.png
 ALL =  $(SOURCES) $(DOCS) tests
 
