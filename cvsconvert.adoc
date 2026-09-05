@@ -44,6 +44,10 @@ files in common are still checked for equality.
 *"%s and %s are different"*: Two corresponding CVS and Git files do 
 not compare equal. A diff listing will follow.
 
+The exit status is zero only if every comparison succeeds. A comparison
+failure returns status 1 after the remaining repositories are checked
+and cleanup is complete.
+
 == Troubleshooting ==
 
 There are two kinds of non-serious conversion glitches: file content

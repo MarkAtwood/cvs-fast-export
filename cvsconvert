@@ -684,6 +684,7 @@ if __name__ == "__main__":
     if not arguments:
         sys.stderr.write("cvsconvert: requires one or more repo/module arguments.\n")
         sys.exit(1)
+    comparisons_failed = False
     for directory in arguments:
         try:
             (repo, module) = resolve_repository_argument(directory, whole_repo)
@@ -719,7 +720,8 @@ if __name__ == "__main__":
         if verbose == 0 and "-p" in engine_opts:
             verbose = DEBUG_STEPS
         cc.repo.retain = retain
-        cc.checkall()
+        if not cc.checkall():
+            comparisons_failed = True
         cc.checkout.cleanup()
         if retain:
             sys.stderr.write(
@@ -727,5 +729,6 @@ if __name__ == "__main__":
             )
         else:
             cc.cleanup()
+    sys.exit(1 if comparisons_failed else 0)
 
 # end

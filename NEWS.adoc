@@ -1,5 +1,8 @@
 = cvs-fast-export project news =
 
+Unreleased::
+   Return a failing cvsconvert exit status when any comparison fails.
+
 2.4: 2026-08-11::
    Code hardening by ChatGPT 5.6.
    Attach converted tags by CVS revision ID, not content hash.

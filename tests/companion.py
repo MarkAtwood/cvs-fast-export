@@ -9,6 +9,7 @@ import io
 import os
 from pathlib import Path
 import runpy
+import shlex
 import shutil
 import subprocess
 import sys
@@ -105,16 +106,8 @@ def load_cvsconvert(root):
         return runpy.run_path(str(root / "cvsconvert"))
 
 
-def main():
-    root = Path(__file__).resolve().parent.parent
-    cvsconvert = root / "cvsconvert"
-    cvssync = root / "cvssync"
-    cvsstrip = root / "cvsstrip"
-
-    assert_shell_free(cvsconvert)
-    assert_shell_free(cvssync)
-
-    namespace = load_cvsconvert(root)
+def assert_checked_references(namespace):
+    "Check that each comparison visits its own branch and tag lists."
     comparison = object.__new__(namespace["ConvertComparison"])
     comparison.branches = ["main"]
     comparison.tags = ["release"]
@@ -127,8 +120,67 @@ def main():
     if compared != [("branch", "main"), ("tag", "release")]:
         raise AssertionError("comparison used state outside its instance")
 
+
+def assert_cli_exit_status(root, temp_path):
+    "Comparison failures must survive cleanup and later successful conversions."
+    work = temp_path / "exit-status"
+    work.mkdir()
+    for name in ("failing", "passing"):
+        shutil.copytree(root / "tests" / "oldhead.testrepo", work / name)
+    exporter = work / "exporter.py"
+    exporter.write_text(
+        "import subprocess, sys\n"
+        "paths = sys.stdin.buffer.read()\n"
+        "result = subprocess.run(sys.argv[1:], input=paths, stdout=subprocess.PIPE)\n"
+        "data = result.stdout\n"
+        "if b'/failing/' in paths:\n"
+        "    data = data.replace(b' content for ', b' damaged for ')\n"
+        "sys.stdout.buffer.write(data)\n"
+        "sys.exit(result.returncode)\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["CVS_FAST_EXPORT"] = " ".join(
+        shlex.quote(str(arg)) for arg in (sys.executable, exporter, root / "cvs-fast-export")
+    )
+    for names, expected in (
+        (("failing",), 1),
+        (("failing", "passing"), 1),
+        (("passing", "failing"), 1),
+        (("passing",), 0),
+    ):
+        result = subprocess.run(
+            [str(root / "cvsconvert"), "-q", "-n"] + list(names),
+            cwd=work, env=env, capture_output=True, text=True, check=False,
+        )
+        if result.returncode != expected:
+            raise AssertionError("%s exited %d, expected %d\n%s" % (
+                names, result.returncode, expected, result.stderr))
+        if expected and "are different" not in result.stderr:
+            raise AssertionError("content mismatch was not reported")
+        if "passing" in names and "passing conversion compares clean" not in result.stdout:
+            raise AssertionError("successful conversion was not checked")
+        for name in names:
+            for suffix in ("-module-git", "-module.checkout"):
+                if (work / (name + suffix)).exists():
+                    raise AssertionError("conversion cleanup was skipped")
+
+
+def main():
+    root = Path(__file__).resolve().parent.parent
+    cvsconvert = root / "cvsconvert"
+    cvssync = root / "cvssync"
+    cvsstrip = root / "cvsstrip"
+
+    assert_shell_free(cvsconvert)
+    assert_shell_free(cvssync)
+
+    namespace = load_cvsconvert(root)
+    assert_checked_references(namespace)
+
     with tempfile.TemporaryDirectory(prefix="cfe-companion-") as temp:
         temp_path = Path(temp)
+        assert_cli_exit_status(root, temp_path)
         assert_content_comparisons(root, temp_path, namespace)
         fake_rsync = temp_path / "rsync"
         fake_rsync.symlink_to(shutil.which("true"))
