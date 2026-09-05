@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -458,6 +459,57 @@ func TestParseArgsRejectsUnknownOptions(t *testing.T) {
 			want := fmt.Sprintf("unknown option %q", arg)
 			if err == nil || err.Error() != want {
 				t.Fatalf("parseArgs(%q) error = %v, want %q", arg, err, want)
+			}
+		})
+	}
+}
+
+func TestParseArgsScansExplicitDirectories(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".repo")
+	want := []string{".cvsignore,v", "file,v", filepath.Join("sub", "nested,v")}
+	for _, name := range append(append([]string{}, want...),
+		filepath.Join(".hidden", "ignored,v"), filepath.Join("sub", ".git", "ignored,v")) {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	for _, path := range []string{".", "./", root, root + string(os.PathSeparator), filepath.Join("..", ".repo")} {
+		t.Run(path, func(t *testing.T) {
+			cfg, err := parseArgs([]string{path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, file := range cfg.Files {
+				absolute, err := filepath.Abs(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				relative, err := filepath.Rel(root, absolute)
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, relative)
+			}
+			sort.Strings(got)
+			if strings.Join(got, "\n") != strings.Join(want, "\n") {
+				t.Fatalf("input files = %q, want %q", got, want)
 			}
 		})
 	}
@@ -1092,8 +1144,8 @@ func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
 	}
 
 	t.Run("fast-import-stream", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--", fixture)
-		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--", fixture)
+		cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
 		cmd.Stdout = full
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
@@ -1108,9 +1160,9 @@ func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
 	})
 
 	t.Run("revision-map", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--",
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--",
 			"-R", "/dev/full", fixture)
-		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		err := cmd.Run()
@@ -1124,8 +1176,8 @@ func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
 	})
 
 	t.Run("help", func(t *testing.T) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestCLIOutputFailureHelper", "--", "--help")
-		cmd.Env = append(os.Environ(), "CFE_OUTPUT_FAILURE_HELPER=1")
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--", "--help")
+		cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
 		cmd.Stdout = full
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
@@ -1137,8 +1189,39 @@ func TestCLIExitsNonzeroOnOutputFailure(t *testing.T) {
 	})
 }
 
-func TestCLIOutputFailureHelper(t *testing.T) {
-	if os.Getenv("CFE_OUTPUT_FAILURE_HELPER") != "1" {
+func TestCLIExportsCurrentDirectory(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("tests", "access,v"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "access,v"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	export := func(path string) []byte {
+		t.Helper()
+		cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--", "-N", path)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		output, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("export %q: %v; stderr=%s", path, err, stderr.String())
+		}
+		return output
+	}
+	want := export("access,v")
+	if !bytes.Contains(want, []byte("commit refs/heads/master\n")) {
+		t.Fatal("fixture did not export a commit")
+	}
+	if got := export("."); !bytes.Equal(got, want) {
+		t.Fatalf("export from current directory = %q, want %q", got, want)
+	}
+}
+
+func TestCLIHelper(t *testing.T) {
+	if os.Getenv("CFE_CLI_HELPER") != "1" {
 		return
 	}
 	separator := -1
@@ -1153,4 +1236,5 @@ func TestCLIOutputFailureHelper(t *testing.T) {
 	}
 	os.Args = append([]string{"cvs-fast-export"}, os.Args[separator+1:]...)
 	main()
+	os.Exit(0)
 }

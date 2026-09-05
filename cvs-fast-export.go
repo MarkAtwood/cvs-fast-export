@@ -4166,10 +4166,9 @@ func parseArgs(args []string) (config, error) {
 			if walkErr != nil {
 				return walkErr
 			}
-			if strings.HasPrefix(d.Name(), ".") {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
+			// Always visit the requested root, including "." and hidden directories.
+			if p != path && d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
 			}
 			if d.IsDir() {
 				return nil
