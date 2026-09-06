@@ -8,6 +8,7 @@ Unreleased::
    Reject invalid RCS delta counts and ranges without panics or silent clamping.
    Report unterminated log and revision text in cvsstrip instead of hanging.
    Preserve mixed vendor/trunk tag contents with synthetic snapshot commits.
+   Preserve CVS ignore resets and directory scope; leave native .gitignore files unchanged.
 
 2.4: 2026-08-11::
    Code hardening by ChatGPT 5.6.

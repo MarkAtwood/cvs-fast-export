@@ -76,15 +76,14 @@ standard output:
   names are percent-escaped, and literal percent signs are escaped as well,
   so distinct CVS symbols cannot collapse onto the same git ref name.
 
-* Since .cvsignore files have a syntax (mostly) upward-compatible with that of
-  .gitignore files, they're renamed. In order to simulate the default
-  ignore behavior of CVS, those defaults are prepended to root
-  .cvsignore blobs renamed to .gitignore, and a root .gitignore
-  containing the defaults is generated if no such blobs exist.
-  Leading # characters on .cvsignore lines are escaped so git
-  won't misunderstand them as comment leaders, and spaces in these
-  lines are mapped to line feeds because CVS treats spaces as
-  pattern separators.
+* .cvsignore files in any directory are renamed to .gitignore and translated
+  once from their original CVS contents. Whitespace separates patterns;
+  generated patterns apply only to the containing directory, and leading
+  # and ! characters in filenames stay literal. A standalone ! clears
+  defaults and earlier patterns for that directory while descendants retain
+  CVS defaults. The defaults are included in converted ignore files, and a
+  root .gitignore containing them is generated when needed. Existing native
+  .gitignore files retain their original contents.
 
 * The CVS-NT extension keywords "owner", "group", "deltatype", "kopt",
   "permissions", "mergepoint", "filename", "hardlinks", and "username"

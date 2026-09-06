@@ -44,7 +44,7 @@ property cvs-revisions 11 README 1.1
 
 blob
 mark :3
-data 219
+data 222
 # CVS default ignores begin
 tags
 TAGS
@@ -73,9 +73,10 @@ _$*
 *.ln
 core
 # CVS default ignores end
-wibble
-wobble
-\#ping
+/wibble
+/wobble
+/#ping
+
 commit refs/heads/master
 mark :4
 committer foo <foo> 102400 +0000

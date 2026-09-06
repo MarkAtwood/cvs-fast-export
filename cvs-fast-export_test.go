@@ -727,6 +727,7 @@ func TestGitignoreEscapesUseExactFastImportDataLength(t *testing.T) {
 		Log:      "add ignores\n",
 		Text:     "wibble wobble #ping",
 		FileName: ".gitignore",
+		OrigName: ".cvsignore",
 		Mode:     0644,
 	}
 	commit := &GitCommit{

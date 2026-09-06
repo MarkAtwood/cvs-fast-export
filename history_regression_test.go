@@ -318,6 +318,7 @@ func TestHistoryRegressions(t *testing.T) {
 		path := fileopName(".cvsignore")
 		rev1 := historyRevision(t, "1.1", 100, path, "#first\n")
 		rev2 := historyRevision(t, "1.2", 200, path, "*.o #second\n")
+		rev1.OrigName, rev2.OrigName = ".cvsignore", ".cvsignore"
 		git1 := historyCommit(nil, rev1)
 		git2 := historyCommit(git1, rev2)
 		repo := &Repo{

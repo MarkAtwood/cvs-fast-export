@@ -1336,7 +1336,7 @@ func exportName(source string, striplen int) string {
 
 // fileopName applies .cvsignore to .gitignore mapping for output paths.
 func fileopName(rectified string) string {
-	if strings.HasSuffix(rectified, ".cvsignore") {
+	if path.Base(rectified) == ".cvsignore" {
 		return strings.TrimSuffix(rectified, ".cvsignore") + ".gitignore"
 	}
 	return rectified
@@ -3402,7 +3402,7 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 	})
 	for _, op := range ops {
 		if op.kind == 'M' {
-			op.mark = e.emitBlob(op.path, op.text)
+			op.mark = e.emitBlob(op.text)
 		}
 	}
 	if e.writeErr != nil {
@@ -3483,13 +3483,9 @@ func (e *Emitter) emitCommit(branch string, c *GitCommit, parentMark int, parent
 }
 
 // emitBlob writes a blob object and returns its mark.
-func (e *Emitter) emitBlob(path, text string) int {
+func (e *Emitter) emitBlob(text string) int {
 	mark := e.mark
 	e.mark++
-	// Normalize .cvsignore content into .gitignore form.
-	if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
-		text = normalizeGitignore(text)
-	}
 	fmt.Fprintf(e.w, "blob\nmark :%d\n", mark)
 	fmt.Fprintf(e.w, "data %d\n%s\n", len(text), text)
 	return mark
@@ -3539,7 +3535,10 @@ func buildOps(prev map[string]fileState, files []*Commit, prune map[string]struc
 		}
 		byPath[path] = f
 		text := f.Text
-		if path == ".gitignore" && !strings.HasPrefix(text, cvsIgnores) {
+		// Translate once, while the original CVS filename is still available.
+		// Output names cannot distinguish converted ignores from native
+		// .gitignore files, whose bytes must be preserved verbatim.
+		if filepath.Base(f.OrigName) == ".cvsignore" {
 			text = normalizeGitignore(text)
 		}
 		mode := f.Mode
@@ -4033,7 +4032,7 @@ func buildRevpairs(ops []*fileOp) string {
 	return b.String()
 }
 
-// cvsIgnores is the default CVS ignore list appended to .gitignore exports.
+// cvsIgnores is the default CVS ignore list used by generated .gitignore files.
 const cvsIgnores = "# CVS default ignores begin\n" +
 	"tags\n" +
 	"TAGS\n" +
@@ -4063,34 +4062,33 @@ const cvsIgnores = "# CVS default ignores begin\n" +
 	"core\n" +
 	"# CVS default ignores end\n"
 
-// normalizeGitignore applies CVS .cvsignore rules and default ignores.
+// normalizeGitignore translates a CVS ignore list to directory-local Git rules.
 func normalizeGitignore(text string) string {
-	if text == "" {
-		return cvsIgnores
-	}
-	// Translate CVS space-separated ignores to newline-separated.
-	buf := []byte(text)
-	for i := range buf {
-		if buf[i] == ' ' {
-			buf[i] = '\n'
+	// CVS uses ASCII whitespace, including tabs and CRLF, as separators.
+	patterns := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
+	})
+	reset := -1
+	for i, pattern := range patterns {
+		if pattern == "!" {
+			reset = i
 		}
-	}
-	suppressDefaults := false
-	if len(buf) >= 2 && buf[0] == '!' && buf[1] == '\n' {
-		// Leading "!\n" suppresses default ignore list.
-		suppressDefaults = true
-		buf = buf[2:]
 	}
 	var b strings.Builder
-	if !suppressDefaults {
-		b.WriteString(cvsIgnores)
+	b.WriteString(cvsIgnores)
+	if reset >= 0 {
+		// A CVS reset clears defaults and earlier patterns in this directory
+		// only. Keep defaults for descendants, but cancel them for direct
+		// children before adding the patterns following the last reset.
+		b.WriteString("!/*\n")
+		patterns = patterns[reset+1:]
 	}
-	// Escape lines that begin with '#' so they are literal patterns.
-	for i := 0; i < len(buf); i++ {
-		if buf[i] == '#' && (i == 0 || buf[i-1] == '\n') {
-			b.WriteByte('\\')
-		}
-		b.WriteByte(buf[i])
+	for _, pattern := range patterns {
+		// CVS patterns do not apply in subdirectories. Anchoring also keeps
+		// leading '#' and '!' literal instead of Git comments or negations.
+		b.WriteByte('/')
+		b.WriteString(pattern)
+		b.WriteByte('\n')
 	}
 	return b.String()
 }
