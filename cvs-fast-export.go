@@ -3322,10 +3322,8 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 			}
 			continue
 		}
-		// SPECIAL CASE (near-complete snapshot tags):
-		// When a tag spans mixed base revisions, no existing commit can
-		// represent the CVS checkout tree. Emit a synthetic commit to
-		// materialize the tagged snapshot and point the tag at it.
+		// No existing commit preserves this tag's checkout. Materialize the
+		// tagged revisions without changing any branch history.
 		ref := "__cfe_tag__" + name
 		synth := &GitCommit{
 			Date:    latestCommitDate(targets),
@@ -3663,8 +3661,8 @@ func tagNeedsSyntheticCommit(meta *tagMeta, state map[string]fileState) bool {
 	return meta != nil && meta.count > 1 && len(state) == meta.count+1
 }
 
-// resolveTagAttachments assigns tags to commits using a two-pass strategy.
-// First pass: strict matches (full-tree). Second pass: latest partial match.
+// resolveTagAttachments finds full-tree and partial matches, then requests
+// synthetic commits for revision sets that have no matching snapshot.
 func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
 	attachments := make(map[string]*GitCommit)
 	synthetic := make(map[string]struct{})
@@ -3758,45 +3756,20 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 	if progress != nil {
 		progress.End("done")
 	}
-	// Final fallback: attach to the latest commit among the tag's referenced revisions.
+	// A tag can combine a vendor revision with a later trunk-only revision.
+	// If no snapshot contains both, choosing the newest of their commits
+	// silently substitutes the wrong revision of another file. Materialize
+	// the tagged revision set instead of attaching to that unrelated tree.
 	for name, t := range pending {
-		if _, ok := synthetic[name]; ok {
-			continue
-		}
-		var tagCommits []*GitCommit
 		for _, rev := range t {
-			if rev == nil {
-				continue
+			if rev != nil && commitOf[rev] != nil {
+				synthetic[name] = struct{}{}
+				warnings = append(warnings, fmt.Sprintf("warning - tag %s requires synthetic commit (mixed revisions)", name))
+				break
 			}
-			if gc := commitOf[rev]; gc != nil {
-				tagCommits = append(tagCommits, gc)
-			}
-		}
-		if len(tagCommits) == 0 {
-			continue
-		}
-		uniq := uniqueCommits(tagCommits)
-		pick := latestByDate(uniq)
-		if pick != nil {
-			attachments[name] = pick
-			warnings = append(warnings, fmt.Sprintf("warning - tag %s attached by fallback", name))
 		}
 	}
 	return attachments, warnings, synthetic
-}
-
-// uniqueCommits removes duplicate commit pointers.
-func uniqueCommits(commits []*GitCommit) []*GitCommit {
-	seen := make(map[*GitCommit]struct{}, len(commits))
-	out := make([]*GitCommit, 0, len(commits))
-	for _, c := range commits {
-		if _, ok := seen[c]; ok {
-			continue
-		}
-		seen[c] = struct{}{}
-		out = append(out, c)
-	}
-	return out
 }
 
 // latestLiveCommit returns the newest non-dead commit in a tag target set.
@@ -3812,25 +3785,6 @@ func latestLiveCommit(revs []*Commit) *Commit {
 		}
 		if r.Date.Equal(pick.Date) && Compare(r.Number, pick.Number) > 0 {
 			pick = r
-		}
-	}
-	return pick
-}
-
-// latestByDate picks the latest commit by date, then log text.
-func latestByDate(commits []*GitCommit) *GitCommit {
-	var pick *GitCommit
-	for _, c := range commits {
-		if pick == nil {
-			pick = c
-			continue
-		}
-		if c.Date.After(pick.Date) {
-			pick = c
-			continue
-		}
-		if c.Date.Equal(pick.Date) && c.Log > pick.Log {
-			pick = c
 		}
 	}
 	return pick

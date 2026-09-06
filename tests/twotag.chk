@@ -71,7 +71,29 @@ M 100644 :5 tweedledum
 property cvs-revisions 30 tweedledee 1.2
 tweedledum 1.2
 
+blob
+mark :7
+data 38
+Lynx c.q. vos prikt bh: dag zwemjuf!.
+
+blob
+mark :8
+data 46
+The quick brown fox jumped over the lazy dog.
+
+commit refs/heads/__cfe_tag__FUBAR
+mark :9
+committer cvs-fast-export <cvs-fast-export> 105400 +0000
+data 53
+Synthetic commit for tag FUBAR (mixed CVS tag state)
+M 100644 :7 tweedledee
+M 100644 :8 tweedledum
+property cvs-revisions 30 tweedledee 1.2
+tweedledum 1.1
+
 reset refs/tags/FUBAR
-from :6
+from :9
+
+reset refs/heads/__cfe_tag__FUBAR
 
 done

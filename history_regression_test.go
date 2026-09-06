@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -138,6 +140,56 @@ func TestExportPreservesQuotedPaths(t *testing.T) {
 				t.Fatalf("deleted path remains in final tree: %q", got)
 			}
 		})
+	}
+}
+
+func TestExportMixedVendorTag(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestCLIHelper", "--", "-N",
+		filepath.Join("tests", "vendor.testrepo", "FILE1,v"),
+		filepath.Join("tests", "vendor.testrepo", "FILE2,v"))
+	cmd.Env = append(os.Environ(), "CFE_CLI_HELPER=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stream, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("export vendor fixture: %v\n%s", err, stderr.String())
+	}
+	repository := newHistoryGitRepo(t, git)
+	importHistoryStream(t, git, repository, string(stream))
+	for _, state := range []struct{ ref, file1, file2 string }{
+		{"refs/tags/lost-repo-state", "2\n", "2\n"},
+		{"refs/tags/vend_1_0", "1\n", ""},
+		{"refs/tags/vend_1_1", "2\n", ""},
+		{"refs/heads/master", "3\n", "2\n"},
+		{"refs/heads/import-1.1.1", "2\n", ""},
+	} {
+		t.Run(state.ref, func(t *testing.T) {
+			wantFiles := "FILE1\n"
+			if state.file2 != "" {
+				wantFiles += "FILE2\n"
+			}
+			if got := runHistoryGit(t, git, "", "-C", repository,
+				"ls-tree", "-r", "--name-only", state.ref); got != wantFiles {
+				t.Fatalf("tag/branch paths = %q, want %q", got, wantFiles)
+			}
+			for file, want := range map[string]string{"FILE1": state.file1, "FILE2": state.file2} {
+				if want == "" {
+					continue
+				}
+				if got := runHistoryGit(t, git, "", "-C", repository,
+					"show", state.ref+":"+file); got != want {
+					t.Errorf("%s = %q, want %q", file, got, want)
+				}
+			}
+		})
+	}
+	if refs := runHistoryGit(t, git, "", "-C", repository,
+		"for-each-ref", "--format=%(refname)", "refs/heads/__cfe_tag__*"); refs != "" {
+		t.Fatalf("temporary tag branches remain: %s", refs)
 	}
 }
 

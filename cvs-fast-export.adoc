@@ -420,9 +420,13 @@ warning - tag <name> requires synthetic commit (partial match)::
      materialize the tag state. This is only done for pathological
      cases.
 
+warning - tag <name> requires synthetic commit (mixed revisions)::
+     The tagged revisions never coexist in an exported commit, for example
+     when a tag combines vendor and trunk revisions. A synthetic commit
+     preserves the tagged files without changing branch history.
+
 tag <name> attached by partial match::
-tag <name> attached by fallback::
-     These messages are a result of incomplete tagging - a tag that is not present
+     This message is a result of incomplete tagging - a tag that is not present
      in all masters. Tags attached this way should be considered dubious.
 
 warning - invalid branch header "<text>"::

@@ -160,7 +160,6 @@ TEST_TARGETS += $(PYTESTS)
 
 # Omitted:
 # branchy.repo - because of illegal tag
-# twotag.repo - because of inconsistent tagging
 # QED.testrepo - produces a manifest mismatch
 # t9601.testrepo - content mismatch expected
 # t9602.testrepo - manifest mismatch expected
@@ -169,11 +168,12 @@ CT = at.repo basic.repo daughterbranch.repo exec.repo \
 	tagbug.repo twobranch.repo
 CD =  oldhead.testrepo t9603.testrepo t9604.testrepo t9605.testrepo \
 	vendor.testrepo
-c_regress:
+c_regress: twotag.repo
 	@echo "# Conversion checks"
 	@for ct in $(CT); do $(MAKE) --quiet $$ct; cvsconvert -q -n -t $$ct; done
 	@for cd in $(CD); do cvsconvert -q -n -t $$cd; done
-TEST_TARGETS += $(CD) $(CT)
+	@cvsconvert -q -n -t twotag.repo/module
+TEST_TARGETS += $(CD) $(CT) twotag.repo/module
 
 SPORADIC = incremental.sh companion.py
 sporadic:
