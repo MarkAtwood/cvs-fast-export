@@ -1,6 +1,6 @@
 = cvs-fast-export project news =
 
-Unreleased::
+2.5: 2026-09-06::
    Return a failing cvsconvert exit status when any comparison fails.
    Scan explicitly named input directories, including "." and hidden roots.
    Include go.mod and go.sum in release archives so source builds work.
