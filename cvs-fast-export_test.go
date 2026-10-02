@@ -125,7 +125,7 @@ a
 	if err != nil {
 		t.Fatal(err)
 	}
-	master, err := BuildMaster(path, file, len(dir)+1, symbols, false, &warningCollector{})
+	master, err := BuildMaster(path, file, len(dir)+1, symbols, &warningCollector{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -471,6 +471,8 @@ type Commit struct {
 	Source   string
 	Mode     int
 	Tail     bool
+	// StandsFor is the identical 1.1.1.1 that this 1.1 represents on trunk.
+	StandsFor *Commit
 }
 
 // Head represents a named branch tip and its metadata.
@@ -582,8 +584,8 @@ func SetRefs(heads []*Head, symbols []Symbol, findRevision func(Number) *Commit,
 }
 
 // PatchVendorBranches detects vendor branches, synthesizes missing names,
-// and splices them into master when no 1.2 exists.
-func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbol bool, branchSpec Number, hasBranchSpec bool, warn *warningCollector) ([]*Head, bool) {
+// and puts copies of the vendor revisions that CVS shows on trunk into master.
+func PatchVendorBranches(heads []*Head, branchSpec Number, hasBranchSpec bool, warn *warningCollector) ([]*Head, bool) {
 	trunk := findHeadByName(heads, "master")
 	if trunk == nil {
 		return heads, false
@@ -632,10 +634,18 @@ func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbo
 		vendor.Number = vendor.Commit.Number
 	}
 
-	// If trunk is missing 1.2, splice the newest vendor branch into master.
-	if nvendor != nil && trunk.Commit != nil && trunk.Commit.Parent == nil {
+	// Find the oldest trunk revision (normally 1.1) and its child (1.2).
+	root := lastCommit(trunk.Commit)
+	var second *Commit
+	for c := trunk.Commit; c != nil && c.Parent != nil; c = c.Parent {
+		second = c
+	}
+	// Choose the vendor branch whose revisions CVS shows on trunk.
+	var line *Head
+	if nvendor != nil && second == nil {
+		line = nvendor
 		if preferredVendor != nil {
-			nvendor = preferredVendor
+			line = preferredVendor
 		} else if hasBranchSpec && isVendorBranchSymbol(branchSpec) {
 			warn.Add(fmt.Sprintf("warning - vendor branch %s not found; falling back to heuristic", String(branchSpec)))
 		} else if foundVendor && hasBranchSpec {
@@ -643,24 +653,54 @@ func PatchVendorBranches(heads []*Head, allowVendorBranches bool, hasVendorSymbo
 		} else if foundVendor && !hasBranchSpec && vendorCount > 1 {
 			warn.Add("warning - multiple vendor branches with no branch header; falling back to heuristic")
 		}
-		oldtip := trunk.Commit
-		trunk.Commit = nvendor.Commit
-		trunk.Degree = nvendor.Commit.Number.C
-		trunk.Number = nvendor.Commit.Number
-		vlast := trunk.Commit
-		for vlast != nil && vlast.Parent != nil {
-			vlast = vlast.Parent
+	} else if nvendor != nil && !hasBranchSpec {
+		line = findHeadByBranch(heads, Number{C: 3, N: []int{1, 1, 1}})
+	}
+	if line != nil && root != nil {
+		// Collect the vendor revisions oldest first.
+		var revs []*Commit
+		for c := line.Commit; c != nil; c = c.Parent {
+			revs = append([]*Commit{c}, revs...)
 		}
-		if vlast != nil {
-			vlast.Parent = oldtip
+		// Without a branch header, CVS follows the vendor branch only while
+		// trunk is at 1.1 and only if 1.1.1.1 has the date of 1.1; otherwise
+		// the file was added before it was imported (RCS_getdate in rcs.c).
+		if !hasBranchSpec && !revs[0].Date.Equal(root.Date) {
+			revs = nil
 		}
-		// In RCS-only mode, drop vendor heads that now point at the trunk tip.
-		if !allowVendorBranches || !hasVendorSymbol {
-			heads = removeHeadsWithCommit(heads, trunk.Commit, trunk)
+		// Once 1.2 exists, CVS shows it instead of any later vendor revision.
+		if second != nil {
+			n := 0
+			for n < len(revs) && revs[n].Date.Before(second.Date) {
+				n++
+			}
+			revs = revs[:n]
+		}
+		// cvs import writes 1.1 and 1.1.1.1 with the same date, author and
+		// text. Keep only 1.1 on trunk, with the import's log, so that the
+		// files an import adds and the files it changes form one commit.
+		if len(revs) > 0 && revs[0].Date.Equal(root.Date) && revs[0].Author == root.Author &&
+			revs[0].Text == root.Text && !revs[0].Dead && !root.Dead {
+			root.Log = revs[0].Log
+			root.StandsFor = revs[0]
+			revs = revs[1:]
+		}
+		// The revisions also stay on their vendor branch, so trunk gets copies.
+		tip := root
+		for _, v := range revs {
+			cp := *v
+			cp.Parent = tip
+			cp.Tail = false
+			tip = &cp
+		}
+		if second != nil {
+			second.Parent = tip
+		} else {
+			trunk.Commit = tip
 		}
 	}
 	// Warn about non-standard vendor branches once trunk commits exist.
-	if trunk.Commit != nil && trunk.Commit.Parent != nil && hasBranchSpec && isVendorBranchSymbol(branchSpec) {
+	if (second != nil || (nvendor != nil && root != nil)) && hasBranchSpec && isVendorBranchSymbol(branchSpec) {
 		if String(branchSpec) != "1.1.1" {
 			warn.Add(fmt.Sprintf("warning - non-standard vendor branch %s with trunk commits is ambiguous", String(branchSpec)))
 		}
@@ -922,25 +962,6 @@ func removeHead(heads []*Head, target *Head) []*Head {
 	return out
 }
 
-// removeHeadsWithCommit drops heads (except keep) that reference a commit pointer.
-func removeHeadsWithCommit(heads []*Head, commit *Commit, keep *Head) []*Head {
-	if commit == nil {
-		return heads
-	}
-	out := heads[:0]
-	for _, h := range heads {
-		if h == keep {
-			out = append(out, h)
-			continue
-		}
-		if h.Commit == commit {
-			continue
-		}
-		out = append(out, h)
-	}
-	return out
-}
-
 // Master represents one parsed RCS file with resolved commits and symbols.
 type Master struct {
 	Source   string
@@ -969,7 +990,7 @@ func (w *warningCollector) Add(msg string) {
 }
 
 // BuildMaster converts a parsed RCS file into a CVS master model.
-func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string, allowVendorBranches bool, warn *warningCollector) (*Master, error) {
+func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []string, warn *warningCollector) (*Master, error) {
 	info, err := os.Stat(source)
 	if err != nil {
 		return nil, err
@@ -1067,7 +1088,6 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	var sym []Symbol
 	symMap := file.SymbolMap()
 	seen := make(map[string]struct{}, len(symMap))
-	hasVendorSymbol := false
 	if len(symbolOrder) > 0 {
 		for i := len(symbolOrder) - 1; i >= 0; i-- {
 			name := symbolOrder[i]
@@ -1087,9 +1107,6 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 			if err != nil {
 				return nil, err
 			}
-			if isVendorBranchSymbol(n) {
-				hasVendorSymbol = true
-			}
 			sym = append(sym, Symbol{Name: name, Number: n})
 		}
 	}
@@ -1104,9 +1121,6 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 		n, err := Parse(rev)
 		if err != nil {
 			return nil, err
-		}
-		if isVendorBranchSymbol(n) {
-			hasVendorSymbol = true
 		}
 		sym = append(sym, Symbol{Name: name, Number: n})
 	}
@@ -1123,7 +1137,7 @@ func BuildMaster(source string, file *rcs.File, striplen int, symbolOrder []stri
 	}
 	// Rebuild heads after vendor-branch patching so trunk selection is correct.
 	var foundVendor bool
-	master.Heads, foundVendor = PatchVendorBranches(master.Heads, allowVendorBranches, hasVendorSymbol, branchSpec, hasBranchSpec, warn)
+	master.Heads, foundVendor = PatchVendorBranches(master.Heads, branchSpec, hasBranchSpec, warn)
 	if foundVendor {
 		warn.Add("vendor branch detected.")
 	}
@@ -3644,7 +3658,10 @@ func tagMatchesMeta(meta *tagMeta, state map[string]fileState, requireFull bool)
 		if !ok {
 			return false
 		}
-		if got.revision != revision {
+		// Compare numbers: trunk holds copies of vendor revisions, and a
+		// 1.1 there may stand for the identical 1.1.1.1.
+		if got.revision == nil || (!Equal(got.revision.Number, revision.Number) &&
+			got.revision.StandsFor != revision) {
 			return false
 		}
 	}
@@ -5142,7 +5159,7 @@ func runMain() (retErr error) {
 		if err != nil {
 			return nil, err
 		}
-		master, err := BuildMaster(path, rcsFile, striplen, symbolOrder, allowVendorBranches, warnings)
+		master, err := BuildMaster(path, rcsFile, striplen, symbolOrder, warnings)
 		if err != nil {
 			return nil, err
 		}

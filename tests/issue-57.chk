@@ -56,42 +56,34 @@ mark :4
 data 35
 metadata.xml,v content for 1.1.1.1
 
-commit refs/heads/import-1.1.1
+blob
 mark :5
-committer chriswhite <chriswhite> 103000 +0000
+data 43
+parapin-1.0.0.ebuild,v content for 1.1.1.1
+
+commit refs/heads/import-1.1.1
+mark :6
+committer chriswhite <chriswhite> 103600 +0000
 data 33
 585e3addfd28851ce8284bca18e152df
 from :3
 M 100644 :4 metadata.xml
-D parapin-1.0.0.ebuild
-property cvs-revisions 21 metadata.xml 1.1.1.1
+M 100644 :5 parapin-1.0.0.ebuild
+property cvs-revisions 50 metadata.xml 1.1.1.1
+parapin-1.0.0.ebuild 1.1.1.1
 
 blob
-mark :6
-data 43
-parapin-1.0.0.ebuild,v content for 1.1.1.1
-
-commit refs/heads/master
 mark :7
-committer chriswhite <chriswhite> 104200 +0000
-data 33
-585e3addfd28851ce8284bca18e152df
-from :3
-M 100644 :6 parapin-1.0.0.ebuild
-property cvs-revisions 29 parapin-1.0.0.ebuild 1.1.1.1
-
-blob
-mark :8
 data 31
 metadata.xml,v content for 1.2
 
 commit refs/heads/master
-mark :9
-committer jlec <jlec> 105400 +0000
+mark :8
+committer jlec <jlec> 104800 +0000
 data 33
 5878b14275f92af2aed588db1375412c
-from :7
-M 100644 :8 metadata.xml
+from :3
+M 100644 :7 metadata.xml
 property cvs-revisions 17 metadata.xml 1.2
 
 done

@@ -335,6 +335,15 @@ incorrect content on master and elsewhere. Some of these problems can
 be prevented by ensuring that the last (latest) commit in your
 repository is on trunk, rather than a branch.
 
+Trunk follows a vendor branch the way "cvs checkout -D" does. With a
+"branch" header in the master, trunk shows that vendor branch. Otherwise
+it shows branch 1.1.1 until the first trunk commit (1.2), unless
+1.1.1.1 is dated differently from 1.1, which means the file was added
+before it was imported. Those vendor revisions appear on master as
+well as on their vendor branch. A 1.1.1.1 identical to 1.1, as "cvs
+import" writes it, is not repeated on master, so one import gives one
+master commit.
+
 Some other CVS exporters try, or have tried, to deduce changesets from 
 shared tags even when comment metadata doesn't match perfectly. This
 one does not; the designers judge that to trip over too many
