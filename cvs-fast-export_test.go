@@ -258,6 +258,7 @@ func TestResolveTagAttachmentsUsesRevisionIdentity(t *testing.T) {
 		map[string][]*Commit{"late": {rev3}},
 		commitOf,
 		nil,
+		nil,
 	)
 	if got := attachments["late"]; got != git3 {
 		t.Fatalf("late tag attached to %p, want final revision commit %p", got, git3)
@@ -1081,6 +1082,7 @@ func TestSyntheticTagSelectionUsesTopologyNotName(t *testing.T) {
 			"renamed-near-complete-tag":   {a, b},
 		},
 		commitOf,
+		nil,
 		nil,
 	)
 	if attachments["T_ALL_INITIAL_FILES_BUT_ONE"] != gitCommit {

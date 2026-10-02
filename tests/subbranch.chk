@@ -1,0 +1,135 @@
+#reposurgeon sourcetype rcs
+blob
+mark :1
+data 16
+README on trunk
+
+blob
+mark :2
+data 16
+common on trunk
+
+blob
+mark :3
+data 17
+removed on trunk
+
+blob
+mark :4
+data 18
+untagged on trunk
+
+commit refs/heads/master
+mark :5
+committer foo <foo> 103000 +0000
+data 20
+Initial trunk files
+M 100644 :1 README
+M 100644 :2 common
+M 100644 :3 removed
+M 100644 :4 untagged
+M 100644 inline .gitignore
+data 199
+# CVS default ignores begin
+tags
+TAGS
+.make.state
+.nse_depinfo
+*~
+\#*
+.#*
+,*
+_$*
+*$
+*.old
+*.bak
+*.BAK
+*.orig
+*.rej
+.del-*
+*.a
+*.olb
+*.o
+*.obj
+*.so
+*.exe
+*.Z
+*.elc
+*.ln
+core
+# CVS default ignores end
+
+property cvs-revisions 47 README 1.1
+common 1.1
+removed 1.1
+untagged 1.1
+
+reset refs/tags/parent_root
+from :5
+
+blob
+mark :6
+data 17
+README on parent
+
+commit refs/heads/parent
+mark :7
+committer foo <foo> 104200 +0000
+data 17
+README on parent
+from :5
+M 100644 :6 README
+property cvs-revisions 15 README 1.1.2.1
+
+commit refs/heads/parent
+mark :8
+committer foo <foo> 104800 +0000
+data 24
+Remove a file on parent
+from :7
+D removed
+
+commit refs/heads/child
+mark :9
+committer cvs-fast-export <cvs-fast-export> 105400 +0000
+data 49
+Synthetic branch base for mixed CVS branch state
+from :7
+D removed
+D untagged
+
+reset refs/tags/child_root
+from :9
+
+blob
+mark :10
+data 16
+README on child
+
+commit refs/heads/child
+mark :11
+committer foo <foo> 106600 +0000
+data 16
+README on child
+from :9
+M 100644 :10 README
+property cvs-revisions 19 README 1.1.2.1.2.1
+
+reset refs/tags/child_tag
+from :11
+
+blob
+mark :12
+data 19
+untagged on parent
+
+commit refs/heads/parent
+mark :13
+committer foo <foo> 107800 +0000
+data 19
+untagged on parent
+from :8
+M 100644 :12 untagged
+property cvs-revisions 17 untagged 1.1.2.1
+
+done

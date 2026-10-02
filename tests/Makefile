@@ -165,7 +165,7 @@ TEST_TARGETS += $(PYTESTS)
 # t9602.testrepo - manifest mismatch expected
 CT = at.repo basic.repo daughterbranch.repo exec.repo \
 	hack1.repo hack2.repo hack3.repo longrev.repo postbranch.repo \
-	tagbug.repo twobranch.repo vendorimport.repo
+	subbranch.repo tagbug.repo twobranch.repo vendorimport.repo
 CD =  oldhead.testrepo t9603.testrepo t9604.testrepo t9605.testrepo \
 	vendor.testrepo
 c_regress: twotag.repo
