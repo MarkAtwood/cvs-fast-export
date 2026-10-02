@@ -1767,6 +1767,7 @@ type Repo struct {
 	TagOrder    []string
 	Warnings    []string
 	branchSeeds map[string]branchSeedInfo
+	branchFiles map[string]map[string]struct{}
 }
 
 // Build collates CVS commits into fast-import commit groups.
@@ -1781,6 +1782,7 @@ func Build(masters []*Master, opts CollateOptions) *Repo {
 		ByFileRev:   make(map[string]*Commit),
 		TagTargets:  make(map[string][]*Commit),
 		branchSeeds: make(map[string]branchSeedInfo),
+		branchFiles: collectBranchFiles(masters),
 	}
 	for _, m := range masters {
 		for _, c := range m.Commits {
@@ -1997,6 +1999,44 @@ func branchHasCommits(m *Master, branch Number) bool {
 		}
 	}
 	return false
+}
+
+// collectBranchFiles maps each CVS branch name to the files carrying its
+// branch symbol. CVS checks out a branch only from files with that symbol.
+func collectBranchFiles(masters []*Master) map[string]map[string]struct{} {
+	out := make(map[string]map[string]struct{})
+	for _, m := range masters {
+		for _, s := range m.Symbols {
+			if !IsHead(s.Number) {
+				continue
+			}
+			if out[s.Name] == nil {
+				out[s.Name] = make(map[string]struct{})
+			}
+			out[s.Name][m.FileName] = struct{}{}
+		}
+	}
+	return out
+}
+
+// branchForkPrune returns the inherited paths a branch's first commit must
+// drop: files in its parent's tree that lack the branch symbol, such as files
+// never tagged for a sub-branch or removed on the parent branch before it.
+func branchForkPrune(c, parent *GitCommit, prev map[string]fileState, branchFiles map[string]map[string]struct{}) map[string]struct{} {
+	files := branchFiles[c.RefName]
+	if files == nil || parent == nil || parent.RefName == c.RefName || c.RefName == "master" {
+		return nil
+	}
+	var prune map[string]struct{}
+	for path := range prev {
+		if _, ok := files[path]; !ok {
+			if prune == nil {
+				prune = make(map[string]struct{})
+			}
+			prune[path] = struct{}{}
+		}
+	}
+	return prune
 }
 
 type branchSeedInfo struct {
@@ -3093,7 +3133,7 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 	if e.progress != nil {
 		e.progress.Note(fmt.Sprintf("EmitRepo: resolving attachments for %d tags", len(e.tagTargets)))
 	}
-	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, e.progress)
+	tagAttach, tagWarnings, syntheticTags := resolveTagAttachments(commits, e.tagTargets, repo.CommitOf, repo.branchFiles, e.progress)
 	if e.progress != nil {
 		e.progress.Note(fmt.Sprintf("EmitRepo: tag targets=%d", len(tagAttach)))
 	}
@@ -3204,6 +3244,9 @@ func (e *Emitter) EmitRepo(repo *Repo) error {
 					}
 				}
 			}
+		}
+		if prune == nil {
+			prune = branchForkPrune(c, logicalParent, prevState, repo.branchFiles)
 		}
 		ops, next := buildOps(prevState, c.Files, prune)
 		branchSeen := liveSeen[branchName]
@@ -3662,7 +3705,7 @@ func tagNeedsSyntheticCommit(meta *tagMeta, state map[string]fileState) bool {
 
 // resolveTagAttachments finds full-tree and partial matches, then requests
 // synthetic commits for revision sets that have no matching snapshot.
-func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
+func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, commitOf map[*Commit]*GitCommit, branchFiles map[string]map[string]struct{}, progress *progressState) (map[string]*GitCommit, []string, map[string]struct{}) {
 	attachments := make(map[string]*GitCommit)
 	synthetic := make(map[string]struct{})
 	var warnings []string
@@ -3701,7 +3744,7 @@ func resolveTagAttachments(commits []*GitCommit, targets map[string][]*Commit, c
 		if prev == nil {
 			prev = map[string]fileState{}
 		}
-		_, next := buildOps(prev, c.Files, nil)
+		_, next := buildOps(prev, c.Files, branchForkPrune(c, c.Parent, prev, branchFiles))
 		stateSnap[c] = copyState(next)
 		candidates := pendingByCount[len(next)]
 		for _, name := range candidates {
@@ -4795,7 +4838,7 @@ func dumpCommitGraph(repo *Repo, diff bool, forceDates bool, commitWindow time.D
 	}
 
 	// Tag refs.
-	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, nil)
+	tagAttach, _, _ := resolveTagAttachments(commits, repo.TagTargets, repo.CommitOf, repo.branchFiles, nil)
 	tagNames := append([]string(nil), repo.TagOrder...)
 	if len(tagNames) == 0 {
 		for name := range repo.TagTargets {

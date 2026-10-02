@@ -79,7 +79,7 @@ cc.repo.retain = "-k" in sys.argv[1:]
 cc.compare_tree("branch", "master", True)
 cc.compare_tree("branch", "vendorbranch", True)
 cc.compare_tree("branch", "B_FROM_INITIALS", True)
-cc.compare_tree("branch", "B_FROM_INITIALS_BUT_ONE", False)
+cc.compare_tree("branch", "B_FROM_INITIALS_BUT_ONE", True)
 cc.compare_tree("branch", "B_MIXED", True)
 cc.compare_tree("branch", "B_SPLIT", True)
 cc.compare_tree("tag", "vendortag", True)
