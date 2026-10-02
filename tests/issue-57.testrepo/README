@@ -12,5 +12,8 @@ After conversion, I see commit 3481164 in the git master branch which doesn't be
 Also, commit a01ad40 in the import-1.1.1 branch removes parapin-1.0.0.ebuild but it shouldn't.
 ----------------------------------------------------
 
-The spurious delete is at mark :5.
-The commit that puts branch data on master is mark :7.
+Both symptoms are fixed (see GitLab issue #78). The import-1.1.1 commit
+(mark :6) modifies both files and deletes neither, and master (marks :3
+and :8) carries only trunk revisions: the two files' 1.1.1.1 dates differ
+from their 1.1 dates, so CVS never shows them on trunk. Every branch, tag
+and trunk state matches cvs export.

@@ -1,0 +1,54 @@
+head	1.2;
+access;
+symbols
+	start:1.1.1.1 VENDOR:1.1.1;
+locks; strict;
+comment	@# @;
+
+
+1.2
+date	2026.10.02.22.07.07;	author jrandom;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2026.10.02.22.07.04;	author jrandom;	state Exp;
+branches
+	1.1.1.1;
+next	;
+
+1.1.1.1
+date	2026.10.02.22.07.04;	author jrandom;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.2
+log
+@Trunk edit of x
+@
+text
+@x one
+x two
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d2 1
+@
+
+
+1.1.1.1
+log
+@Vendor release start
+@
+text
+@@
