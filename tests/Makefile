@@ -116,7 +116,7 @@ i_regress: neutralize.map
 	done
 TEST_TARGETS += $(INCREMENTAL)
 
-REDUCED=oldhead issue-57
+REDUCED=oldhead issue-57 vendorsplit
 r_update: neutralize.map
 	@-for file in $(REDUCED); do \
 	    echo "Remaking $${file}.chk"; \
@@ -165,7 +165,7 @@ TEST_TARGETS += $(PYTESTS)
 # t9602.testrepo - manifest mismatch expected
 CT = at.repo basic.repo daughterbranch.repo exec.repo \
 	hack1.repo hack2.repo hack3.repo longrev.repo postbranch.repo \
-	tagbug.repo twobranch.repo
+	tagbug.repo twobranch.repo vendorimport.repo
 CD =  oldhead.testrepo t9603.testrepo t9604.testrepo t9605.testrepo \
 	vendor.testrepo
 c_regress: twotag.repo

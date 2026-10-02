@@ -1,0 +1,211 @@
+cvs-fast-export: vendor branch detected.
+#reposurgeon sourcetype rcs
+blob
+mark :1
+data 4
+one
+
+blob
+mark :2
+data 8
+bee one
+
+commit refs/heads/master
+mark :3
+committer foo <foo> 101800 +0000
+data 18
+Vendor release v1
+M 100644 :1 a
+M 100644 :2 b
+M 100644 inline .gitignore
+data 199
+# CVS default ignores begin
+tags
+TAGS
+.make.state
+.nse_depinfo
+*~
+\#*
+.#*
+,*
+_$*
+*$
+*.old
+*.bak
+*.BAK
+*.orig
+*.rej
+.del-*
+*.a
+*.olb
+*.o
+*.obj
+*.so
+*.exe
+*.Z
+*.elc
+*.ln
+core
+# CVS default ignores end
+
+property cvs-revisions 12 a 1.1
+b 1.1
+
+reset refs/tags/v1
+from :3
+
+commit refs/heads/VENDOR
+mark :4
+committer foo <foo> 102400 +0000
+data 18
+Vendor release v1
+from :3
+
+commit refs/heads/import-1.1.1
+mark :5
+committer foo <foo> 103000 +0000
+data 18
+Vendor release v1
+from :3
+
+blob
+mark :6
+data 4
+two
+
+blob
+mark :7
+data 8
+bee two
+
+commit refs/heads/VENDOR
+mark :8
+committer foo <foo> 104800 +0000
+data 18
+Vendor release v2
+from :4
+M 100644 :6 a
+M 100644 :7 b
+property cvs-revisions 20 a 1.1.1.2
+b 1.1.1.2
+
+reset refs/tags/v2
+from :8
+
+blob
+mark :9
+data 4
+two
+
+blob
+mark :10
+data 8
+bee two
+
+commit refs/heads/import-1.1.1
+mark :11
+committer foo <foo> 106600 +0000
+data 18
+Vendor release v2
+from :5
+M 100644 :9 a
+M 100644 :10 b
+property cvs-revisions 20 a 1.1.1.2
+b 1.1.1.2
+
+blob
+mark :12
+data 4
+two
+
+blob
+mark :13
+data 8
+bee two
+
+commit refs/heads/master
+mark :14
+committer foo <foo> 108400 +0000
+data 18
+Vendor release v2
+from :3
+M 100644 :12 a
+M 100644 :13 b
+property cvs-revisions 20 a 1.1.1.2
+b 1.1.1.2
+
+blob
+mark :15
+data 10
+two
+three
+
+commit refs/heads/master
+mark :16
+committer foo <foo> 109600 +0000
+data 16
+Trunk edit of a
+from :14
+M 100644 :15 a
+property cvs-revisions 6 a 1.2
+
+blob
+mark :17
+data 5
+four
+
+blob
+mark :18
+data 10
+bee three
+
+commit refs/heads/VENDOR
+mark :19
+committer foo <foo> 111400 +0000
+data 18
+Vendor release v3
+from :8
+M 100644 :17 a
+M 100644 :18 b
+property cvs-revisions 20 a 1.1.1.3
+b 1.1.1.3
+
+reset refs/tags/v3
+from :19
+
+blob
+mark :20
+data 5
+four
+
+blob
+mark :21
+data 10
+bee three
+
+commit refs/heads/import-1.1.1
+mark :22
+committer foo <foo> 113200 +0000
+data 18
+Vendor release v3
+from :11
+M 100644 :20 a
+M 100644 :21 b
+property cvs-revisions 20 a 1.1.1.3
+b 1.1.1.3
+
+blob
+mark :23
+data 10
+bee three
+
+commit refs/heads/master
+mark :24
+committer foo <foo> 114400 +0000
+data 18
+Vendor release v3
+from :16
+M 100644 :23 b
+property cvs-revisions 10 b 1.1.1.3
+
+done

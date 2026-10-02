@@ -1,0 +1,86 @@
+cvs-fast-export: vendor branch detected.
+#reposurgeon sourcetype rcs
+blob
+mark :1
+data 6
+x one
+
+blob
+mark :2
+data 6
+y one
+
+blob
+mark :3
+data 6
+z one
+
+commit refs/heads/master
+mark :4
+committer jrandom <jrandom> 102400 +0000
+data 21
+Vendor release start
+M 100644 :1 x
+M 100644 :2 y
+M 100644 :3 z
+M 100644 inline .gitignore
+data 199
+# CVS default ignores begin
+tags
+TAGS
+.make.state
+.nse_depinfo
+*~
+\#*
+.#*
+,*
+_$*
+*$
+*.old
+*.bak
+*.BAK
+*.orig
+*.rej
+.del-*
+*.a
+*.olb
+*.o
+*.obj
+*.so
+*.exe
+*.Z
+*.elc
+*.ln
+core
+# CVS default ignores end
+
+property cvs-revisions 18 x 1.1
+y 1.1
+z 1.1
+
+reset refs/tags/start
+from :4
+
+commit refs/heads/import-1.1.1
+mark :5
+committer jrandom <jrandom> 103000 +0000
+data 21
+Vendor release start
+from :4
+
+blob
+mark :6
+data 12
+x one
+x two
+
+commit refs/heads/master
+mark :7
+committer jrandom <jrandom> 104200 +0000
+data 16
+Trunk edit of x
+from :4
+M 100644 :6 x
+property cvs-revisions 6 x 1.2
+
+done

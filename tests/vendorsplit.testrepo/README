@@ -1,0 +1,11 @@
+## one vendor import without commitids is one trunk commit
+
+Made with CVS 1.12.13: "cvs import" of x, y and z (vendor branch VENDOR,
+release tag start), then a trunk commit to x.  The commitid fields were
+deleted afterwards, as in repositories written by CVS before 1.12, and the
+author was renamed.  There is no CVSROOT, so the conversion runs in RCS mode.
+
+y and z keep "branch 1.1.1;".  cvs-fast-export 2.5 split the import into
+two trunk commits at y, and in RCS mode deleted y and z from the vendor
+branch commit, so tag start lacked them.  "cvs export -r start" has all
+three files.
